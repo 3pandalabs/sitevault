@@ -37,6 +37,10 @@ value as advault-api `SITEVAULT_INTERNAL_TOKEN`). Same validation as the
 public form, no attest field (attested in AdVault), no per-IP limit, 8 MB
 photo limit. Replies `{ ok, slug, siteUrl, editUrl }`.
 
+## Addresses (`src/address.ts`)
+
+The business picks `<slug>.3pandasite.com`; the default is the shortest free one of name, name-type, name-town. Rules: 3-40 chars, a-z0-9 and single hyphens, RESERVED service words, and big-brand names refused (substring for long brands, whole word for short or ambiguous ones like "irs", "chase", "apple", so "first" and "pineapple" still pass). `GET /api/address` checks availability (public, CORS *). Renames: up to `MAX_RENAMES` (3) from the edit page; every old address is an `alias:<old>` KV key pointing at the current slug (no chains), served as a 301, and is never handed to anyone else. Photos keep their original R2 keys; the subdomain serves a file only if it is in that site's `photos`/`video`. `GET /api/internal/resolve?slug=` (INTERNAL_TOKEN) lets AdVault follow a rename.
+
 ## Rules that matter
 
 - **Facts only.** A site shows only what the business typed. No generated

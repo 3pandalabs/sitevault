@@ -22,7 +22,8 @@
 import { renderSite, type RenderContext } from "./render.js";
 import { builderPage, donePage, homePage, messagePage, privacyPage, termsPage } from "./pages.js";
 import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, parseContent, type FieldErrors, type Site, type SiteContent } from "./site.js";
-import { randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
+import { randomKey, safeEqual, sha256Hex } from "./util.js";
+import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
 export interface Env {
   SITES: KVNamespace;
@@ -41,7 +42,6 @@ export interface Env {
   DAILY_CREATE_LIMIT?: string;
 }
 
-const RESERVED = new Set(["www", "api", "admin", "app", "mail", "new", "edit", "help", "support", "s", "p"]);
 const bootedAt = Date.now();
 
 export default {
@@ -70,16 +70,25 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (env.SITES_DOMAIN && url.hostname.endsWith(`.${env.SITES_DOMAIN}`)) {
     const slug = url.hostname.slice(0, -(env.SITES_DOMAIN.length + 1));
     if (!/^[a-z0-9-]+$/.test(slug)) return new Response("Not found", { status: 404 });
-    // Photos and the video are served from the site's own host, so the page
-    // needs nothing from another origin (CSP 'self'), and only this site's files.
-    if (method === "GET" && path.startsWith(`/p/sites/${slug}/`)) {
-      return photo(env, decodeURIComponent(path.slice(3)), request);
-    }
     if (method === "GET" && path === "/robots.txt") {
       return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain" } });
     }
-    if (path !== "/" || method !== "GET") return Response.redirect(`https://${url.hostname}/`, 302);
-    return serveSite(env, slug);
+    if (method !== "GET") return Response.redirect(`https://${url.hostname}/`, 302);
+    const site = await loadSite(env, slug);
+    if (!site) {
+      // A renamed site: the old address keeps working, permanently.
+      const target = await aliasTarget(env, slug);
+      if (target) return Response.redirect(`https://${target}.${env.SITES_DOMAIN}${path}`, 301);
+    }
+    // Photos and the video come from the site's own host, so the page needs
+    // nothing from another origin (CSP 'self'), and only this site's files.
+    if (path.startsWith("/p/")) {
+      const key = decodeURIComponent(path.slice(3));
+      if (site?.status === "live" && (site.photos.includes(key) || site.video === key)) return photo(env, key, request);
+      return new Response("Not found", { status: 404 });
+    }
+    if (path !== "/") return Response.redirect(`https://${url.hostname}/`, 302);
+    return serveSite(env, slug, site);
   }
 
   if (method === "GET") {
@@ -90,11 +99,21 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (path === "/robots.txt") return new Response("User-agent: *\nDisallow: /edit/\nDisallow: /api/\n", { headers: { "content-type": "text/plain" } });
     if (path === "/metrics") return metrics(request, env);
     if (path === "/api/admin/sites") return adminList(request, env);
+    if (path === "/api/address") return addressCheck(env, url);
+    if (path === "/api/internal/resolve") return resolveInternal(request, env, url);
     let m = path.match(/^\/s\/([a-z0-9-]+)\/?$/);
     // Old path links (before the customer-site domain) move to the subdomain.
-    if (m) return env.SITES_DOMAIN ? Response.redirect(siteUrl(env, m[1]!), 301) : serveSite(env, m[1]!);
+    if (m) {
+      const current = (await aliasTarget(env, m[1]!)) ?? m[1]!;
+      return env.SITES_DOMAIN ? Response.redirect(siteUrl(env, current), 301) : serveSite(env, current);
+    }
     m = path.match(/^\/edit\/([a-z0-9-]+)$/);
-    if (m) return editPage(env, m[1]!, url.searchParams.get("k") ?? "");
+    if (m) {
+      const target = (await env.SITES.get(siteKey(m[1]!))) ? null : await aliasTarget(env, m[1]!);
+      const k = url.searchParams.get("k") ?? "";
+      if (target) return Response.redirect(`${env.PUBLIC_ORIGIN}/edit/${target}?k=${encodeURIComponent(k)}`, 302);
+      return editPage(env, m[1]!, k);
+    }
     if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
     m = path.match(/^\/done\/([A-Za-z0-9_-]+)$/);
     if (m) return done(env, m[1]!);
@@ -168,13 +187,62 @@ async function saveSite(env: Env, site: Site): Promise<void> {
   });
 }
 
-async function uniqueSlug(env: Env, businessName: string, city: string): Promise<string> {
-  const base = slugify(businessName, city.split(",")[0] ?? "") || "my-business";
-  for (let i = 0; i < 20; i += 1) {
-    const candidate = i === 0 ? base : `${base}-${i + 1}`;
-    if (!RESERVED.has(candidate) && !(await env.SITES.get(siteKey(candidate)))) return candidate;
+const aliasKey = (slug: string) => `alias:${slug}`;
+
+/** The current address of a renamed site, or null. */
+async function aliasTarget(env: Env, slug: string): Promise<string | null> {
+  return env.SITES.get(aliasKey(slug));
+}
+
+/** Taken by a site, or held by a renamed site as its old address. */
+async function addressTaken(env: Env, slug: string): Promise<boolean> {
+  return Boolean((await env.SITES.get(siteKey(slug))) || (await env.SITES.get(aliasKey(slug))));
+}
+
+/** The first free default (name, name-type, name-town), else name-2, name-3… */
+async function uniqueSlug(env: Env, businessName: string, category: string, city: string): Promise<string> {
+  const suggestions = suggestAddresses(businessName, category, city);
+  for (const s of suggestions) if (!(await addressTaken(env, s))) return s;
+  const base = suggestions[0] ?? "my-business";
+  for (let i = 2; i < 30; i += 1) {
+    const candidate = `${base}-${i}`.slice(0, MAX_LEN);
+    if (addressProblem(candidate) === null && !(await addressTaken(env, candidate))) return candidate;
   }
-  return `${base}-${randomKey(4).toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+  return `${base.slice(0, 30)}-${randomKey(6).toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+}
+
+/** Checks a requested address; null when it can be used. */
+async function requestedAddressProblem(env: Env, slug: string): Promise<string | null> {
+  return addressProblem(slug) ?? ((await addressTaken(env, slug)) ? "That address is taken. Try another." : null);
+}
+
+// GET /api/address?slug=&name=&category=&city=  (public, read-only; CORS open
+// so AdVault's page can check as the owner types).
+async function addressCheck(env: Env, url: URL): Promise<Response> {
+  const q = (k: string) => (url.searchParams.get(k) ?? "").slice(0, 120);
+  const typed = q("slug");
+  const suggestions = [];
+  for (const s of suggestAddresses(q("name"), q("category"), q("city"))) {
+    if (!(await addressTaken(env, s))) suggestions.push(s);
+    if (suggestions.length >= 3) break;
+  }
+  let address = typed ? normaliseAddress(typed) : (suggestions[0] ?? "");
+  const problem = address ? await requestedAddressProblem(env, address) : "Type an address.";
+  const res = json({ address, available: problem === null, problem, suggestions, domain: env.SITES_DOMAIN ?? null });
+  res.headers.set("access-control-allow-origin", "*");
+  return res;
+}
+
+// GET /api/internal/resolve?slug=  -> the site's current address (follows a
+// rename). AdVault calls it so a campaign's link follows the site.
+async function resolveInternal(request: Request, env: Env, url: URL): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const slug = url.searchParams.get("slug") ?? "";
+  const current = (await env.SITES.get(siteKey(slug))) ? slug : await aliasTarget(env, slug);
+  const site = current ? await loadSite(env, current) : null;
+  if (!site || site.status !== "live") return json({ ok: false, error: "not_found" }, 404);
+  return json({ ok: true, slug: site.slug, siteUrl: siteUrl(env, site.slug) });
 }
 
 function renderCtx(env: Env, slug: string): RenderContext {
@@ -193,8 +261,8 @@ function siteUrl(env: Env, slug: string): string {
 // ---------------------------------------------------------------------------
 // Pages
 
-async function serveSite(env: Env, slug: string): Promise<Response> {
-  const site = await loadSite(env, slug);
+async function serveSite(env: Env, slug: string, preloaded?: Site | null): Promise<Response> {
+  const site = preloaded !== undefined ? preloaded : await loadSite(env, slug);
   if (!site || site.status !== "live") {
     return html(messagePage("This website isn't available", "It may have been removed by its owner."), 404);
   }
@@ -217,7 +285,7 @@ async function done(env: Env, handoff: string): Promise<Response> {
 
 function builder(_env: Env, mode: Parameters<typeof builderPage>[0], errors?: FieldErrors, values?: Record<string, string>, status = 200): Response {
   const n = nonce();
-  return html(builderPage(mode, n, errors, values), status, n);
+  return html(builderPage(mode, n, errors, values, _env.SITES_DOMAIN ?? null), status, n);
 }
 
 async function editPage(env: Env, slug: string, key: string): Promise<Response> {
@@ -306,8 +374,15 @@ function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES
 }
 
 /** Store a validated site and mint its edit key. Shared by both create paths. */
-async function insertSite(env: Env, content: SiteContent, files: File[], source: Site["source"], videoFile: File | null = null) {
-  const slug = await uniqueSlug(env, content.businessName, content.city);
+async function insertSite(
+  env: Env,
+  content: SiteContent,
+  files: File[],
+  source: Site["source"],
+  videoFile: File | null = null,
+  requested: string | null = null,
+) {
+  const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
   const now = new Date().toISOString();
   const site: Site = {
@@ -344,8 +419,13 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
     errors.video = "Video must be an MP4 under 40 MB.";
   }
+  const requested = form.fields.slug ? normaliseAddress(form.fields.slug) : null;
+  if (requested) {
+    const problem = await requestedAddressProblem(env, requested);
+    if (problem) errors.slug = problem;
+  }
   if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
-  return json({ ok: true, ...(await insertSite(env, parsed.value, form.files, "advault", form.video)) }, 201);
+  return json({ ok: true, ...(await insertSite(env, parsed.value, form.files, "advault", form.video, requested)) }, 201);
 }
 
 // Web size: at most 1600 px on the long side, JPEG q82 (~150-300 KB). A
@@ -419,13 +499,18 @@ async function createSite(request: Request, env: Env): Promise<Response> {
   if (fields.attest !== "yes") errors.attest = "Please confirm this.";
   const photoErr = checkPhotos(files, 0);
   if (photoErr) errors.photos = photoErr;
+  const requested = fields.slug ? normaliseAddress(fields.slug) : null;
+  if (requested) {
+    const problem = await requestedAddressProblem(env, requested);
+    if (problem) errors.slug = problem;
+  }
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, fields);
 
   if (await rateLimited(request, env)) {
     return rejected(request, env, mode, { form: "Too many websites created from this connection today. Try again tomorrow." }, fields, 429);
   }
 
-  const { slug, editUrl } = await insertSite(env, parsed.value, files, "web");
+  const { slug, editUrl } = await insertSite(env, parsed.value, files, "web", null, requested);
   const n = nonce();
   const page = donePage({ siteUrl: siteUrl(env, slug), editUrl, nonce: n });
   // The done page carries the only copy of the edit key: render it straight
@@ -456,6 +541,19 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   const kept = site.photos.filter((k) => form.keep.includes(k));
   const photoErr = checkPhotos(form.files, kept.length);
   if (photoErr) errors.photos = photoErr;
+  // A new address: allowed a few times; the old one becomes a permanent redirect.
+  const wanted = form.fields.slug ? normaliseAddress(form.fields.slug) : site.slug;
+  const renaming = wanted !== site.slug;
+  if (renaming) {
+    if ((site.renames ?? 0) >= MAX_RENAMES) errors.slug = "This website's address has been changed the maximum number of times.";
+    else if ((site.aliases ?? []).includes(wanted)) errors.slug = "";
+    else {
+      const problem = await requestedAddressProblem(env, wanted);
+      if (problem) errors.slug = problem;
+    }
+    // Going back to one of its own old addresses is allowed.
+    if (errors.slug === "") delete errors.slug;
+  }
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
   const removed = site.photos.filter((k) => !kept.includes(k));
@@ -469,10 +567,23 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     video: dropVideo ? null : (site.video ?? null),
     updatedAt: new Date().toISOString(),
   };
-  await saveSite(env, next);
+  if (renaming) {
+    const aliases = [...new Set([...(site.aliases ?? []), site.slug])].filter((a) => a !== wanted);
+    next.slug = wanted;
+    next.aliases = aliases;
+    next.renames = (site.renames ?? 0) + 1;
+    await saveSite(env, next);
+    // Every old address points at the new one (no redirect chains).
+    await env.SITES.delete(aliasKey(wanted));
+    for (const a of aliases) await env.SITES.put(aliasKey(a), wanted);
+    await env.SITES.delete(siteKey(site.slug));
+    console.log("site_renamed", { from: site.slug, to: wanted });
+  } else {
+    await saveSite(env, next);
+  }
   await deletePhotos(env, removed);
 
-  const target = siteUrl(env, slug);
+  const target = siteUrl(env, next.slug);
   return wantsJson(request) ? json({ ok: true, next: target }) : Response.redirect(target, 303);
 }
 
