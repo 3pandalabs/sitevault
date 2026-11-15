@@ -6,6 +6,8 @@
 // card, not a page that can send visitors elsewhere (that is how a free page
 // builder becomes a phishing host).
 
+import type { Billing } from "./billing.js";
+
 export const CATEGORIES = {
   landscaping: { label: "Landscaping & lawn care", brand: "#166534" },
   cleaning: { label: "Cleaning", brand: "#115e59" },
@@ -60,6 +62,8 @@ export type Site = SiteContent & {
   status: "live" | "removed";
   source: "web" | "advault";
   editKeyHash: string;
+  /** Paid plans (billing.ts). Absent = made before billing started (early access). */
+  billing?: Billing;
   createdAt: string;
   updatedAt: string;
 };

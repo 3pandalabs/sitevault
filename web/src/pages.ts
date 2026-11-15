@@ -6,6 +6,8 @@
 import { CATEGORIES, MAX_PHOTOS, servicesToText, type FieldErrors, type Site } from "./site.js";
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
+import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type SiteState, type Source } from "./billing.js";
+import type { SiteStats } from "./stats.js";
 
 const CONTACT = "3pandas@3pandalabs.com";
 
@@ -102,6 +104,20 @@ footer .links{display:flex;flex-wrap:wrap;gap:8px 20px;padding-bottom:16px}
 footer .links a{color:var(--muted);text-decoration:none}footer .links a:hover{color:var(--fg2)}
 footer .legal{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--dim)}
 .prose{max-width:46rem}.prose h2{margin-top:28px;font-size:1.25rem}.prose li,.prose p{color:var(--fg2)}
+.panel{border:1px solid var(--line);border-radius:16px;padding:18px;margin:0 0 20px;background:var(--panel)}
+.panel h2{margin:0 0 10px;font-size:1.25rem}
+.panel p{margin:0 0 10px;color:var(--fg2)}
+.buttons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}
+.buttons form{margin:0}
+dl.facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0 0 8px}
+dl.facts dt{color:var(--muted)}dl.facts dd{margin:0;color:var(--fg)}
+.warn{color:#fcd34d}
+.stats{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+table.bars{width:100%;border-collapse:collapse;font-size:.9rem}
+table.bars caption{text-align:left;font-weight:600;padding-bottom:6px;color:var(--fg)}
+table.bars th,table.bars td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);color:var(--fg2);font-weight:400}
+table.bars td.n{text-align:right;white-space:nowrap;width:1%}
+.bar{display:block;height:8px;border-radius:4px;background:var(--accent);min-width:2px}
 </style>
 </head>
 <body>
@@ -122,14 +138,14 @@ ${opts.script && opts.nonce ? `<script nonce="${opts.nonce}">${opts.script}</scr
 </html>`;
 }
 
-export function homePage(): string {
+export function homePage(billingOn = false): string {
   return layout({
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>
   <h1>Your business online in five minutes.</h1>
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
-  <p class="price"><b>Free</b> during early access.</p>
+  <p class="price">${billingOn ? `<b>$${DOLLARS.build}</b> to build, then $${DOLLARS.basic} a year.` : "<b>Free</b> during early access."}</p>
   <div style="display:flex;flex-wrap:wrap;gap:12px"><a class="btn" href="/new">Build my website</a><a class="btn ghost" href="#features">What you get</a></div>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
@@ -144,14 +160,138 @@ export function homePage(): string {
     <div class="card"><h3>Tap to call and text</h3><p>Big buttons, made for phones, where most customers find you.</p></div>
     <div class="card"><h3>Services and prices</h3><p>Exactly what you offer, in your own words.</p></div>
     <div class="card"><h3>Hours, area, directions</h3><p>Everything a customer checks before they call.</p></div>
-    <div class="card"><h3>Fast and private</h3><p>Loads quickly on any phone. No cookies, no tracking.</p></div>
+    <div class="card"><h3>Fast and private</h3><p>Loads quickly on any phone. No cookies, no trackers.</p></div>
   </div>
   <p>Running video ads with <a href="https://advault.3pandalabs.com">AdVault</a>? Your SiteVault link works as your ad's website.</p>
 </section>`,
   });
 }
 
-export type FormMode = { kind: "new" } | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string };
+export type FormMode =
+  | { kind: "new" }
+  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView };
+
+/** Everything the edit page's "Plan & billing" section shows. Only built while BILLING is on. */
+export type BillingView = {
+  state: SiteState;
+  billing: Billing;
+  source: Source;
+  prices: { build: number; basic: number | null; pro: number };
+  /** End of the paid period, counting early access (null = no end date). */
+  paidUntil: Date | null;
+  /** Back from Stripe Checkout (the webhook may still be on its way). */
+  justPaid: boolean;
+};
+
+/** The edit page's "Visitors" section. `stats` null = stats not available. */
+export type VisitorsView = { stats: SiteStats | null; full: boolean };
+
+const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+
+function payButton(slug: string, key: string, kind: CheckoutKind, label: string, ghost = false): string {
+  return `<form method="post" action="/api/billing/checkout"><input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="slug" value="${esc(slug)}"><input type="hidden" name="kind" value="${kind}"><button class="btn${ghost ? " ghost" : ""}" type="submit">${esc(label)}</button></form>`;
+}
+
+/** Buttons to publish a SiteVault-made site (done page and edit page). */
+function publishButtons(slug: string, key: string, prices: BillingView["prices"]): string {
+  const build = prices.build ? `$${prices.build} + ` : "";
+  return `<div class="buttons">${
+    prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: ${build}$${prices.basic}/year`) : ""
+  }${payButton(slug, key, "publish_pro", `Publish with Pro: ${build}$${prices.pro}/year`, prices.basic !== null)}</div>`;
+}
+
+export function billingSection(slug: string, key: string, v: BillingView): string {
+  const b = v.billing;
+  const planName = b.plan === "pro" ? "Pro (keeps your site running, with visitor stats)" : "Basic (keeps your site running)";
+  const rows: string[] = [];
+  let status = "";
+  if (v.state === "unpublished") {
+    status = `<p>Your website isn't published yet. Visitors see "This site isn't published yet" until you pay.</p>`;
+  } else {
+    rows.push(`<dt>Plan</dt><dd>${b.earlyAccess && !b.subscriptionId ? "Early access (free)" : esc(planName)}</dd>`);
+    if (v.paidUntil) {
+      const label = v.state === "paused" || v.state === "grace" ? "Paid period ended" : b.renewing ? "Renews on" : "Paid until";
+      rows.push(`<dt>${label}</dt><dd>${esc(fmtDate(v.paidUntil))}</dd>`);
+    }
+    if (v.state === "grace") status = `<p class="warn">Your payment is overdue. Your website stays online for 14 days after the paid period ends, then it's paused. Paying brings it back instantly.</p>`;
+    if (v.state === "paused") status = `<p class="warn">Your website is paused. Visitors see your business name and phone number only. Pay to bring it back instantly; nothing has been deleted.</p>`;
+  }
+  rows.push(`<dt>Offer credits</dt><dd>${b.credits} left</dd>`);
+
+  const buttons: string[] = [];
+  if (v.state === "unpublished") {
+    buttons.push(publishButtons(slug, key, v.prices));
+  } else {
+    const renewLabel = (p: number) => (b.renewing ? `$${p}/year` : `Pay $${p}/year`);
+    const plans: string[] = [];
+    if (!b.renewing && v.prices.basic !== null) {
+      plans.push(payButton(slug, key, "renew_basic", `Basic: ${renewLabel(v.prices.basic)}`, true));
+    }
+    if (!(b.renewing && b.plan === "pro")) {
+      const upgrade = b.renewing && b.plan === "basic";
+      plans.push(payButton(slug, key, "renew_pro", upgrade ? `Upgrade to Pro: $${v.prices.pro}/year` : `Pro: ${renewLabel(v.prices.pro)}`));
+    }
+    if (plans.length) buttons.push(`<div class="buttons">${plans.join("")}</div>`);
+  }
+  const extra = [
+    payButton(slug, key, "credits", `Buy ${PACK_CREDITS} offer credits for $${DOLLARS.pack}`, true),
+    b.customerId
+      ? `<form method="post" action="/api/billing/portal"><input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="slug" value="${esc(slug)}"><button class="btn ghost" type="submit">Manage billing</button></form>`
+      : "",
+  ].join("");
+
+  return `<section class="panel" aria-labelledby="billing-h" id="billing">
+  <h2 id="billing-h">Plan &amp; billing</h2>
+  ${v.justPaid ? `<p class="notice ok" role="status">Thanks, your payment went through. It can take a minute to show here.</p>` : ""}
+  ${status}
+  <dl class="facts">${rows.join("")}</dl>
+  ${buttons.join("")}
+  <p class="hint">Changing your current special uses 1 credit. Clearing it is free. Upgrading from Basic to Pro starts a new yearly Pro plan; the unused part of Basic is credited to your next payment. Payments are handled by Stripe.</p>
+  <div class="buttons">${extra}</div>
+</section>`;
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  youtube: "YouTube",
+  google: "Google",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  whatsapp: "WhatsApp",
+  advault: "AdVault ads",
+  direct: "Direct or typed in",
+  other: "Other websites",
+};
+
+function barTable(caption: string, head: string, rows: { label: string; n: number }[]): string {
+  if (!rows.length) return "";
+  const max = Math.max(...rows.map((r) => r.n), 1);
+  return `<table class="bars"><caption>${esc(caption)}</caption><thead><tr><th scope="col">${esc(head)}</th><th scope="col"><span class="hint">Share</span></th><th scope="col" class="n">Visits</th></tr></thead><tbody>${rows
+    .map(
+      (r) =>
+        `<tr><th scope="row">${esc(r.label)}</th><td aria-hidden="true"><span class="bar" style="width:${Math.round((r.n / max) * 100)}%"></span></td><td class="n">${r.n}</td></tr>`,
+    )
+    .join("")}</tbody></table>`;
+}
+
+export function visitorsSection(v: VisitorsView): string {
+  const s = v.stats;
+  if (!s) return "";
+  const total = `<p><strong>${s.total}</strong> visit${s.total === 1 ? "" : "s"} in the last 30 days.</p>`;
+  if (!v.full) {
+    return `<section class="panel" aria-labelledby="visitors-h"><h2 id="visitors-h">Visitors</h2>${total}<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p></section>`;
+  }
+  const place = (p: { city: string; country: string }) => [p.city, p.country].filter(Boolean).join(", ") || "Unknown";
+  const tables = [
+    barTable("Where visitors came from", "Source", s.sources.map((r) => ({ label: SOURCE_LABELS[r.source] ?? r.source, n: Number(r.views) }))),
+    barTable("Where visitors are", "Place", s.places.map((r) => ({ label: place(r), n: Number(r.views) }))),
+    barTable("Devices", "Device", s.devices.map((r) => ({ label: r.device.charAt(0).toUpperCase() + r.device.slice(1), n: Number(r.views) }))),
+    barTable("Visits by day", "Day", s.days.map((r) => ({ label: fmtDate(new Date(`${r.day}T00:00:00Z`)), n: Number(r.views) }))),
+  ].filter(Boolean);
+  return `<section class="panel" aria-labelledby="visitors-h"><h2 id="visitors-h">Visitors</h2>${total}
+  <dl class="facts"><dt>Taps to call</dt><dd>${s.taps.calls}</dd><dt>Taps for directions</dt><dd>${s.taps.directions}</dd></dl>
+  ${tables.length ? `<div class="stats">${tables.join("")}</div>` : ""}
+  <p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p></section>`;
+}
 
 const FIELD_ORDER = [
   "businessName",
@@ -210,6 +350,8 @@ export function builderPage(
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
 <p class="lead">${mode.kind === "edit" ? `Changes go live as soon as you save.` : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>
+${mode.kind === "edit" && mode.billing ? billingSection(mode.site.slug, mode.key, mode.billing) : ""}
+${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors) : ""}
 <form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate>
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
 <fieldset><legend>Your business</legend>
@@ -235,7 +377,11 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
 </fieldset>
 <fieldset><legend>What you offer</legend>
   <div class="field"><label for="tagline">One line about you <span class="hint">Optional. Shown under your name.</span></label><input type="text" id="tagline" name="tagline" maxlength="120" value="${v("tagline", site?.tagline)}" placeholder="Family-owned lawn care since 2009">${e("tagline")}</div>
-  <div class="field"><label for="offer">Current special <span class="hint">Optional. Shown in a banner.</span></label><input type="text" id="offer" name="offer" maxlength="160" value="${v("offer", site?.offer ?? "")}" placeholder="Spring cleanup from $149, this month only">${e("offer")}</div>
+  <div class="field"><label for="offer">Current special <span class="hint">Optional. Shown in a banner.${
+    mode.kind === "edit" && mode.billing
+      ? ` Changing it uses 1 credit (${mode.billing.billing.credits} left). Clearing it is free.`
+      : ""
+  }</span></label><input type="text" id="offer" name="offer" maxlength="160" value="${v("offer", site?.offer ?? "")}" placeholder="Spring cleanup from $149, this month only">${e("offer")}</div>
   <div class="field"><label for="services">Services and prices <span class="hint">Optional. One per line, price after a dash.</span></label><textarea id="services" name="services" placeholder="Lawn mowing - from $35&#10;Spring cleanup - $149&#10;Hedge trimming">${v("services", site ? servicesToText(site.services) : "")}</textarea>${e("services")}</div>
   <div class="field"><label for="hours">Opening hours <span class="hint">Optional</span></label><textarea id="hours" name="hours" placeholder="Mon-Fri 8am-6pm&#10;Sat 9am-2pm&#10;Sun closed">${v("hours", site?.hours ?? "")}</textarea>${e("hours")}</div>
   <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${e("about")}</div>
@@ -340,14 +486,27 @@ const BUILDER_SCRIPT = `
   });
 })();`;
 
-export function donePage(opts: { siteUrl: string; editUrl: string; nonce: string }): string {
+export function donePage(opts: {
+  siteUrl: string;
+  editUrl: string;
+  nonce: string;
+  /** BILLING on and made on SiteVault: the site waits for payment. */
+  publish?: { slug: string; key: string; prices: BillingView["prices"] };
+}): string {
+  const pub = opts.publish;
+  const ready = pub
+    ? `<div class="notice" style="margin-top:16px">
+  <p><strong>Publish your website.</strong> It's saved, but visitors see "This site isn't published yet" until you pay. Pro adds visitor stats: how many people visit, where they come from, and how many tap to call.</p>
+  ${publishButtons(pub.slug, pub.key, pub.prices)}
+</div>`
+    : "";
   return layout({
-    title: "Your website is live | SiteVault",
+    title: pub ? "Your website is ready | SiteVault" : "Your website is live | SiteVault",
     noindex: true,
     nonce: opts.nonce,
     script: `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='Copied';});});});`,
     body: `<section>
-<h1>Your website is live 🎉</h1>
+<h1>${pub ? "Your website is ready" : "Your website is live 🎉"}</h1>
 <div class="notice ok">
   <p><strong>Your website</strong></p>
   <div class="copybox"><code>${esc(opts.siteUrl)}</code><button class="btn ghost" type="button" data-copy="${esc(opts.siteUrl)}">Copy</button><a class="btn" href="${esc(opts.siteUrl)}" target="_blank">Open</a></div>
@@ -356,6 +515,7 @@ export function donePage(opts: { siteUrl: string; editUrl: string; nonce: string
   <p><strong>Your private edit link. Save it now.</strong> It's the only way to change your site. Anyone with it can edit, so don't share it. Bookmark this page or email the link to yourself.</p>
   <div class="copybox"><code>${esc(opts.editUrl)}</code><button class="btn ghost" type="button" data-copy="${esc(opts.editUrl)}">Copy</button></div>
 </div>
+${ready}
 <h2>Next steps</h2>
 <ul>
   <li>Add the link to your <strong>Google Business Profile</strong> (Website field).</li>
@@ -387,14 +547,16 @@ export function privacyPage(): string {
   <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
   <li><strong>A short-lived counter per network address</strong> to limit how many sites can be created in a day. It expires after about a day.</li>
+  <li><strong>Visit counts for each website, in total only</strong>: per day, the number of visits and of taps on the call and directions buttons, grouped by rough location (country and city, as worked out by Cloudflare), device type (phone, tablet or computer) and where visitors came from (for example YouTube, Google or a typed-in address). We don't store visitors' IP addresses, the full address of the page they came from, or their browser details, and we keep no record of any individual visitor. The business owner sees these totals on their edit page.</li>
+  <li><strong>If you pay for a plan</strong>: payments are handled by Stripe, which processes your card details; we never see or store them. We store the Stripe customer and subscription IDs for your website and the email address Stripe gives us for the payer, plus your plan, paid-until date and offer credits.</li>
 </ul>
 <h2>What we don't do</h2>
 <ul>
-  <li>No cookies, analytics or advertising trackers on SiteVault or on the websites it makes.</li>
+  <li>No cookies, advertising trackers or third-party analytics on SiteVault or on the websites it makes. Visit counts are kept by SiteVault itself, as described above.</li>
   <li>We don't sell or share your details. They're shown on your website because you asked us to publish them.</li>
 </ul>
 <h2>Where it's kept</h2>
-<p>Sites and photos are stored and served by Cloudflare, our hosting provider, in its global network. Visitors' browsers connect to Cloudflare to load your site, as with any website.</p>
+<p>Sites, photos and visit counts are stored and served by Cloudflare, our hosting provider, in its global network. Visitors' browsers connect to Cloudflare to load your site, as with any website. Payment records are kept by Stripe.</p>
 <h2>Your choices</h2>
 <p>Change or remove anything at any time with your edit link. Removing your website deletes its photos and takes it offline. If you've lost your edit link, email us from the address on your site and we'll help.</p>
 <h2>Children</h2>
@@ -416,7 +578,13 @@ export function termsPage(): string {
 <h2>Real estate</h2>
 <p>Housing-related sites must follow US fair-housing law, including not stating preferences based on protected characteristics.</p>
 <h2>Price</h2>
-<p>SiteVault is free during early access. If we introduce paid plans we'll tell you before anything changes for your site, and you can remove your site at any time.</p>
+<p>SiteVault is free during early access. When paid plans start, prices in US dollars are:</p>
+<ul>
+  <li><strong>Websites made on SiteVault</strong>: $5 one-time to build and publish, then Basic at $15 a year to keep the site running, or Pro at $20 a year, which adds visitor stats.</li>
+  <li><strong>Websites made from AdVault</strong>: free to build, with the first month free; then Pro at $15 a year.</li>
+  <li><strong>Offer credits</strong>: every site starts with 2. Changing your current special uses 1 credit; clearing it is free. Extra credits are $10 for 5.</li>
+</ul>
+<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until the early-access end date we announce. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Sites are billed separately from any AdVault plan. You can remove your site at any time.</p>
 <h2>No guarantee</h2>
 <p>SiteVault is provided as is. We work to keep sites online but don't guarantee uninterrupted service. To the extent the law allows, our liability is limited to the amount you've paid us in the last 12 months.</p>
 <h2>Law</h2>

@@ -88,6 +88,12 @@ problem hits every customer (and every AdVault ad pointing at them).
 
 ## Ops
 
+- [ ] **Paid plans (code merged behind `BILLING=off`)**:
+  - [ ] Apply the stats migration: `npx wrangler d1 migrations apply sitevault-stats --remote` (in `web/`; D1 id already in wrangler.jsonc).
+  - [ ] Stripe (shared org account): create a restricted key (write: Checkout Sessions, Billing Portal, Subscriptions; read: Customers, Invoices), five prices (Build $5 one-time, Basic $15/yr, Pro $20/yr, Pro-AdVault $15/yr, Credits $10 one-time = 5 credits), enable the Customer Portal, and a webhook endpoint `https://sitevault.3pandalabs.com/webhooks/stripe` for `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`.
+  - [ ] `wrangler secret put STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`; set the `STRIPE_PRICE_*` vars in wrangler.jsonc.
+  - [ ] Confirm `EARLY_ACCESS_UNTIL` (currently 2027-01-31), then flip `BILLING` to `"on"` and deploy. Test a Basic, a Pro, an upgrade and a credit pack in test mode first.
+
 - [ ] Set `METRICS_TOKEN` (shared org token) and add SiteVault to the
       admin.3pandalabs.com Usage & resources table.
 - [ ] Set `ADMIN_TOKEN` (takedowns: `POST /api/admin/sites/<slug>/remove`).

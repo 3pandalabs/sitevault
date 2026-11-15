@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { headline, parseContent, parseServices, servicesToText } from "../src/site.js";
-import { renderSite } from "../src/render.js";
+import { renderHold, renderSite } from "../src/render.js";
 import { esc, jsonForScript, phoneIdentity, slugify, telHref } from "../src/util.js";
 import type { Site } from "../src/site.js";
 
@@ -122,5 +122,24 @@ describe("renderSite", () => {
       homeUrl: "https://x",
     });
     expect(re).toContain("Equal Housing Opportunity");
+  });
+  it("counts taps with ping only when asked (customer subdomain), never with script", () => {
+    expect(html).not.toContain("ping=");
+    const p = renderSite({ ...site, address: "1 Main St" }, { siteUrl: "https://a.x/", assetOrigin: "https://a.x", homeUrl: "https://x", ping: true });
+    expect(p).toContain('ping="/t/call"');
+    expect(p).toContain('ping="/t/directions"');
+    expect(p).not.toMatch(/<script(?! type="application\/ld\+json")/);
+  });
+  it("paused page keeps the name and a tap-to-call phone; unpublished is neutral; both noindex", () => {
+    const paused = renderHold({ ...site, businessName: "Bella <b>Hair</b>" }, "paused");
+    expect(paused).toContain("This site is paused");
+    expect(paused).toContain("Bella &lt;b&gt;Hair&lt;/b&gt;");
+    expect(paused).toContain('href="tel:+12015550100"');
+    expect(paused).toContain('name="robots" content="noindex"');
+    expect(paused).not.toContain("<script");
+    const unpub = renderHold(site, "unpublished");
+    expect(unpub).toContain("isn't published yet");
+    expect(unpub).not.toContain(site.businessName);
+    expect(unpub).toContain('content="noindex"');
   });
 });

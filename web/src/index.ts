@@ -18,9 +18,35 @@
 //   GET  /api/admin/sites          list (ADMIN_TOKEN)
 //   POST /api/admin/sites/<slug>/remove   takedown (ADMIN_TOKEN)
 //   POST /api/internal/sites       one-click create from AdVault (INTERNAL_TOKEN)
+//   POST /api/billing/checkout     Stripe Checkout (edit key in the form; BILLING on)
+//   POST /api/billing/portal       Stripe billing portal (edit key in the form)
+//   POST /webhooks/stripe          Stripe events (signature-checked; metadata.app = sitevault only)
+//   POST <slug>.<SITES_DOMAIN>/t/<call|directions|offer>   tap counter (HTML ping), 204
+//
+// D1 STATS (optional): aggregate visit counters, see stats.ts. Writes go
+// through ctx.waitUntil so a stats failure never slows or breaks a page.
 
-import { renderSite, type RenderContext } from "./render.js";
-import { builderPage, donePage, homePage, messagePage, privacyPage, termsPage } from "./pages.js";
+import { renderHold, renderSite, type RenderContext } from "./render.js";
+import { builderPage, donePage, homePage, messagePage, privacyPage, termsPage, type BillingView, type FormMode } from "./pages.js";
+import {
+  applyEvent,
+  billingConfig,
+  billingOf,
+  checkoutParams,
+  checkoutProblem,
+  countsVisits,
+  effectivePaidUntil,
+  eventFromStripe,
+  initialBilling,
+  offerSpend,
+  planPrices,
+  siteState,
+  statsVisible,
+  type CheckoutKind,
+  type PriceIds,
+} from "./billing.js";
+import { cancelSubscription, createCheckoutSession, createPortalSession, verifyStripeSignature } from "./stripe.js";
+import { TAP_KINDS, classifySource, hitFor, isBot, isPrefetch, readStats, recordHit, tapSource, type TapKind } from "./stats.js";
 import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, parseContent, type FieldErrors, type Site, type SiteContent } from "./site.js";
 import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
@@ -40,14 +66,27 @@ export interface Env {
   INTERNAL_TOKEN?: string;
   /** Sites one network address may create per day. */
   DAILY_CREATE_LIMIT?: string;
+  /** Visit stats (D1 sitevault-stats). Optional: skipped silently when absent. */
+  STATS?: D1Database;
+  /** Paid plans switch: "on" or anything else (off). */
+  BILLING?: string;
+  /** ISO date: sites made before billing started are paid until then. */
+  EARLY_ACCESS_UNTIL?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_BUILD?: string;
+  STRIPE_PRICE_BASIC?: string;
+  STRIPE_PRICE_PRO?: string;
+  STRIPE_PRICE_PRO_ADVAULT?: string;
+  STRIPE_PRICE_CREDITS?: string;
 }
 
 const bootedAt = Date.now();
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
-      return await route(request, env);
+      return await route(request, env, ctx);
     } catch (err) {
       console.error("unhandled", err instanceof Error ? err.stack : err);
       return html(messagePage("Something went wrong", "Please try again in a minute.", "Error"), 500);
@@ -55,7 +94,7 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function route(request: Request, env: Env): Promise<Response> {
+async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
@@ -73,6 +112,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "GET" && path === "/robots.txt") {
       return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain" } });
     }
+    const tap = path.match(/^\/t\/([a-z]+)$/);
+    if (method === "POST" && tap) return countTap(request, env, ctx, slug, tap[1]!);
     if (method !== "GET") return Response.redirect(`https://${url.hostname}/`, 302);
     const site = await loadSite(env, slug);
     if (!site) {
@@ -88,11 +129,11 @@ async function route(request: Request, env: Env): Promise<Response> {
       return new Response("Not found", { status: 404 });
     }
     if (path !== "/") return Response.redirect(`https://${url.hostname}/`, 302);
-    return serveSite(env, slug, site);
+    return serveSite(env, slug, site, { request, ctx, ping: true });
   }
 
   if (method === "GET") {
-    if (path === "/") return html(homePage());
+    if (path === "/") return html(homePage(billingConfig(env).on));
     if (path === "/new") return builder(env, { kind: "new" });
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
@@ -105,14 +146,14 @@ async function route(request: Request, env: Env): Promise<Response> {
     // Old path links (before the customer-site domain) move to the subdomain.
     if (m) {
       const current = (await aliasTarget(env, m[1]!)) ?? m[1]!;
-      return env.SITES_DOMAIN ? Response.redirect(siteUrl(env, current), 301) : serveSite(env, current);
+      return env.SITES_DOMAIN ? Response.redirect(siteUrl(env, current), 301) : serveSite(env, current, undefined, { request, ctx, ping: false });
     }
     m = path.match(/^\/edit\/([a-z0-9-]+)$/);
     if (m) {
       const target = (await env.SITES.get(siteKey(m[1]!))) ? null : await aliasTarget(env, m[1]!);
       const k = url.searchParams.get("k") ?? "";
       if (target) return Response.redirect(`${env.PUBLIC_ORIGIN}/edit/${target}?k=${encodeURIComponent(k)}`, 302);
-      return editPage(env, m[1]!, k);
+      return editPage(env, m[1]!, k, url.searchParams.get("paid") === "1");
     }
     if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
     m = path.match(/^\/done\/([A-Za-z0-9_-]+)$/);
@@ -122,6 +163,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "POST") {
     if (path === "/api/sites") return createSite(request, env);
     if (path === "/api/internal/sites") return createInternal(request, env);
+    if (path === "/api/billing/checkout") return billingCheckout(request, env);
+    if (path === "/api/billing/portal") return billingPortal(request, env);
+    if (path === "/webhooks/stripe") return stripeWebhook(request, env);
     let m = path.match(/^\/api\/sites\/([a-z0-9-]+)$/);
     if (m) return updateSite(request, env, m[1]!);
     m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/delete$/);
@@ -266,12 +310,27 @@ function siteUrl(env: Env, slug: string): string {
 // ---------------------------------------------------------------------------
 // Pages
 
-async function serveSite(env: Env, slug: string, preloaded?: Site | null): Promise<Response> {
+async function serveSite(
+  env: Env,
+  slug: string,
+  preloaded: Site | null | undefined,
+  visit: { request: Request; ctx: ExecutionContext; ping: boolean },
+): Promise<Response> {
   const site = preloaded !== undefined ? preloaded : await loadSite(env, slug);
   if (!site || site.status !== "live") {
     return html(messagePage("This website isn't available", "It may have been removed by its owner."), 404);
   }
-  const res = html(renderSite(site, renderCtx(env, slug)));
+  // BILLING off: always "live", exactly as before paid plans.
+  const cfg = billingConfig(env);
+  const now = new Date();
+  const state = siteState(site, cfg, now);
+  if (state === "unpublished" || state === "paused") {
+    const res = html(renderHold(site, state));
+    res.headers.set("x-robots-tag", "noindex");
+    return res;
+  }
+  if (countsVisits(site, cfg, now)) countView(env, visit.ctx, visit.request, site);
+  const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) }));
   // Short edge cache: edits show within a minute, traffic spikes from an ad
   // don't hit KV for every visitor.
   res.headers.set("cache-control", "public, max-age=60");
@@ -280,7 +339,10 @@ async function serveSite(env: Env, slug: string, preloaded?: Site | null): Promi
 
 /** The "your site is live" page after a script-driven create (10-minute handoff). */
 async function done(env: Env, handoff: string): Promise<Response> {
-  const data = await env.SITES.get<{ siteUrl: string; editUrl: string }>(`done:${handoff}`, "json");
+  const data = await env.SITES.get<{ siteUrl: string; editUrl: string; publish?: Parameters<typeof donePage>[0]["publish"] }>(
+    `done:${handoff}`,
+    "json",
+  );
   if (!data) return html(messagePage("This page has expired", "Open your website or your edit link directly.", "Expired"), 404);
   const n = nonce();
   const res = html(donePage({ ...data, nonce: n }), 200, n);
@@ -293,10 +355,177 @@ function builder(_env: Env, mode: Parameters<typeof builderPage>[0], errors?: Fi
   return html(builderPage(mode, n, errors, values, _env.SITES_DOMAIN ?? null), status, n);
 }
 
-async function editPage(env: Env, slug: string, key: string): Promise<Response> {
+async function editPage(env: Env, slug: string, key: string, justPaid = false): Promise<Response> {
   const site = await authorize(env, slug, key);
   if (!site) return html(messagePage("Edit link not valid", "Check you copied the whole link. Lost it? Email 3pandas@3pandalabs.com.", "Can't open"), 403);
-  return builder(env, { kind: "edit", site, key, photoUrl: (k) => `${env.PUBLIC_ORIGIN}/p/${k}` });
+  return builder(env, await editMode(env, site, key, justPaid));
+}
+
+/** The edit form plus its "Plan & billing" (BILLING on) and "Visitors" (STATS bound) sections. */
+async function editMode(env: Env, site: Site, key: string, justPaid = false): Promise<FormMode & { kind: "edit" }> {
+  const cfg = billingConfig(env);
+  const now = new Date();
+  let billing: BillingView | undefined;
+  if (cfg.on) {
+    const b = billingOf(site);
+    billing = {
+      state: siteState(site, cfg, now),
+      billing: b,
+      source: site.source,
+      prices: planPrices(site.source),
+      paidUntil: effectivePaidUntil(b, cfg),
+      justPaid,
+    };
+  }
+  let stats = null;
+  if (env.STATS) {
+    try {
+      stats = await readStats(env.STATS, [site.slug, ...(site.aliases ?? [])], now);
+    } catch (err) {
+      console.warn("stats read failed", String(err));
+    }
+  }
+  return {
+    kind: "edit",
+    site,
+    key,
+    photoUrl: (k) => `${env.PUBLIC_ORIGIN}/p/${k}`,
+    billing,
+    visitors: stats ? { stats, full: statsVisible(site, cfg, now) } : undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stats
+
+function countView(env: Env, ctx: ExecutionContext, request: Request, site: Site): void {
+  if (!env.STATS || request.method !== "GET") return;
+  const ua = request.headers.get("user-agent");
+  if (isBot(ua) || isPrefetch(request.headers)) return;
+  const url = new URL(request.url);
+  const source = classifySource(url, request.headers.get("referer"), url.hostname);
+  const hit = hitFor(site.slug, source, request.cf as { country?: unknown; city?: unknown } | undefined, ua, new Date());
+  ctx.waitUntil(recordHit(env.STATS, hit, "view").catch((err) => console.warn("stats write failed", String(err))));
+}
+
+// POST /t/<kind> from an HTML ping attribute on a customer site. Always 204,
+// even when nothing is counted, so a ping never shows an error anywhere.
+async function countTap(request: Request, env: Env, ctx: ExecutionContext, slug: string, kind: string): Promise<Response> {
+  const done = new Response(null, { status: 204 });
+  if (!env.STATS || !TAP_KINDS.includes(kind as TapKind)) return done;
+  const ua = request.headers.get("user-agent");
+  if (isBot(ua)) return done;
+  const site = await loadSite(env, slug);
+  if (!site || site.status !== "live" || !countsVisits(site, billingConfig(env), new Date())) return done;
+  const source = tapSource(request.headers.get("ping-from"), request.headers.get("referer"));
+  const hit = hitFor(site.slug, source, request.cf as { country?: unknown; city?: unknown } | undefined, ua, new Date());
+  ctx.waitUntil(recordHit(env.STATS, hit, kind as TapKind).catch((err) => console.warn("tap write failed", String(err))));
+  return done;
+}
+
+// ---------------------------------------------------------------------------
+// Billing (see billing.ts for the rules, stripe.ts for the API calls)
+
+function priceIds(env: Env): PriceIds {
+  return {
+    BUILD: env.STRIPE_PRICE_BUILD || undefined,
+    BASIC: env.STRIPE_PRICE_BASIC || undefined,
+    PRO: env.STRIPE_PRICE_PRO || undefined,
+    PRO_ADVAULT: env.STRIPE_PRICE_PRO_ADVAULT || undefined,
+    CREDITS: env.STRIPE_PRICE_CREDITS || undefined,
+  };
+}
+
+const editUrlFor = (env: Env, slug: string, key: string) => `${env.PUBLIC_ORIGIN}/edit/${slug}?k=${encodeURIComponent(key)}`;
+
+async function billingCheckout(request: Request, env: Env): Promise<Response> {
+  const form = await readForm(request);
+  const slug = form?.fields.slug ?? "";
+  const key = form?.fields.key ?? "";
+  const site = /^[a-z0-9-]+$/.test(slug) ? await authorize(env, slug, key) : null;
+  if (!site) return html(messagePage("Edit link not valid", "Reload your edit link and try again.", "Can't pay"), 403);
+  if (!billingConfig(env).on) return html(messagePage("Nothing to pay", "SiteVault is free during early access.", "Free"), 404);
+  const kind = form?.fields.kind ?? "";
+  const problem = checkoutProblem(kind, site.source, billingOf(site));
+  if (problem) return html(messagePage("Can't start the payment", problem, "Billing"), 400);
+  const unavailable = () => html(messagePage("Payments are not available right now", "Please try again later. Your website is not affected.", "Unavailable"), 503);
+  if (!env.STRIPE_SECRET_KEY) return unavailable();
+  const params = checkoutParams({
+    kind: kind as CheckoutKind,
+    slug: site.slug,
+    source: site.source,
+    billing: billingOf(site),
+    prices: priceIds(env),
+    returnUrl: editUrlFor(env, site.slug, key),
+  });
+  if (!params.ok) {
+    console.error("stripe price missing", { price: params.missing });
+    return unavailable();
+  }
+  try {
+    return Response.redirect(await createCheckoutSession(env.STRIPE_SECRET_KEY, params.params), 303);
+  } catch (err) {
+    console.error("checkout failed", String(err));
+    return unavailable();
+  }
+}
+
+async function billingPortal(request: Request, env: Env): Promise<Response> {
+  const form = await readForm(request);
+  const slug = form?.fields.slug ?? "";
+  const key = form?.fields.key ?? "";
+  const site = /^[a-z0-9-]+$/.test(slug) ? await authorize(env, slug, key) : null;
+  if (!site) return html(messagePage("Edit link not valid", "Reload your edit link and try again.", "Can't open"), 403);
+  const customer = site.billing?.customerId;
+  if (!customer) return html(messagePage("No billing yet", "There's no payment on this website yet.", "Billing"), 404);
+  const unavailable = () => html(messagePage("Billing is not available right now", "Please try again later. Your website is not affected.", "Unavailable"), 503);
+  if (!env.STRIPE_SECRET_KEY) return unavailable();
+  try {
+    return Response.redirect(await createPortalSession(env.STRIPE_SECRET_KEY, customer, editUrlFor(env, site.slug, key)), 303);
+  } catch (err) {
+    console.error("portal failed", String(err));
+    return unavailable();
+  }
+}
+
+// Stripe webhook. The account is shared by several 3PandaLabs apps: events
+// for objects not tagged metadata.app = "sitevault" are acknowledged (200)
+// and ignored. Every processed event id is kept 30 days (evt:<id>) so a
+// retried delivery can't add credits twice.
+async function stripeWebhook(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_WEBHOOK_SECRET) return json({ error: "webhook_disabled" }, 503);
+  const raw = await request.text();
+  const ok = await verifyStripeSignature(request.headers.get("stripe-signature"), raw, env.STRIPE_WEBHOOK_SECRET, Math.floor(Date.now() / 1000));
+  if (!ok) return json({ error: "bad_signature" }, 400);
+  let evt: { id?: unknown; type?: unknown };
+  try {
+    evt = JSON.parse(raw);
+  } catch {
+    return json({ error: "bad_json" }, 400);
+  }
+  const ev = eventFromStripe(evt);
+  if (!ev) return json({ ok: true, ignored: true });
+  const evtId = typeof evt.id === "string" ? evt.id : "";
+  if (evtId && (await env.SITES.get(`evt:${evtId}`))) return json({ ok: true, duplicate: true });
+  // Metadata holds the slug at payment time; follow a later rename.
+  const current = (await env.SITES.get(siteKey(ev.slug))) ? ev.slug : await aliasTarget(env, ev.slug);
+  const site = current ? await loadSite(env, current) : null;
+  if (!site) {
+    console.warn("stripe event for unknown site", { type: ev.type, slug: ev.slug });
+    return json({ ok: true, unknownSite: true });
+  }
+  const { billing, cancel } = applyEvent(billingOf(site), ev, new Date());
+  await saveSite(env, { ...site, billing });
+  if (evtId) await env.SITES.put(`evt:${evtId}`, "1", { expirationTtl: 30 * 24 * 60 * 60 });
+  console.log("billing_event", { type: ev.type, slug: site.slug, plan: billing.plan, paidUntil: billing.paidUntil });
+  if (cancel && env.STRIPE_SECRET_KEY) {
+    try {
+      await cancelSubscription(env.STRIPE_SECRET_KEY, cancel);
+    } catch (err) {
+      console.error("cancel replaced subscription failed", { slug: site.slug, subscription: cancel, err: String(err) });
+    }
+  }
+  return json({ ok: true });
 }
 
 async function authorize(env: Env, slug: string, key: string): Promise<Site | null> {
@@ -394,8 +623,14 @@ async function phoneOwner(env: Env, phone: string, self?: string): Promise<strin
   const slug = await env.SITES.get(phoneKey(phone));
   if (!slug || slug === self) return null;
   const site = await loadSite(env, slug);
-  return site?.status === "live" ? slug : null;
+  if (site?.status !== "live") return null;
+  // An unpaid draft (BILLING on, never published) holds the number for 2 days
+  // only, so an abandoned checkout can't lock the business out for good.
+  if (site.billing?.status === "pending" && Date.now() - Date.parse(site.createdAt) > PENDING_PHONE_HOLD_MS) return null;
+  return slug;
 }
+
+const PENDING_PHONE_HOLD_MS = 2 * 24 * 60 * 60 * 1000;
 
 const PHONE_TAKEN =
   "A website already exists for this phone number. Use its edit link to change it, or email 3pandas@3pandalabs.com if you didn't make it.";
@@ -429,8 +664,12 @@ async function insertSite(
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  // BILLING off: no billing record, so the site counts as early access later.
+  const billing = initialBilling(source, billingConfig(env), nowDate);
   const site: Site = {
+    ...(billing ? { billing } : {}),
     ...content,
     slug,
     photos: await storePhotos(env, slug, files),
@@ -446,7 +685,7 @@ async function insertSite(
   await saveSite(env, site);
   await indexSite(env, site);
   console.log("site_created", { slug, source, photos: site.photos.length, category: site.category, possibleDuplicateOf: dup });
-  return { slug, siteUrl: siteUrl(env, slug), editUrl: `${env.PUBLIC_ORIGIN}/edit/${slug}?k=${encodeURIComponent(key)}` };
+  return { slug, siteUrl: siteUrl(env, slug), editUrl: editUrlFor(env, slug, key), key, pending: billing?.status === "pending" };
 }
 
 // One-click from AdVault. Server to server, bearer INTERNAL_TOKEN. The
@@ -474,7 +713,8 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   }
   if (parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
   if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
-  return json({ ok: true, ...(await insertSite(env, parsed.value, form.files, "advault", form.video, requested)) }, 201);
+  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested);
+  return json({ ok: true, slug: made.slug, siteUrl: made.siteUrl, editUrl: made.editUrl }, 201);
 }
 
 // Web size: at most 1600 px on the long side, JPEG q82 (~150-300 KB). A
@@ -560,16 +800,20 @@ async function createSite(request: Request, env: Env): Promise<Response> {
     return rejected(request, env, mode, { form: "Too many websites created from this connection today. Try again tomorrow." }, fields, 429);
   }
 
-  const { slug, editUrl } = await insertSite(env, parsed.value, files, "web", null, requested);
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested);
+  // BILLING on: the site waits for payment; the done page offers Publish.
+  const publish = pending ? { slug, key, prices: planPrices("web") } : undefined;
   const n = nonce();
-  const page = donePage({ siteUrl: siteUrl(env, slug), editUrl, nonce: n });
+  const page = donePage({ siteUrl: siteUrl(env, slug), editUrl, nonce: n, publish });
   // The done page carries the only copy of the edit key: render it straight
   // into this response rather than redirecting with the key in a URL that
   // ends up in history. The script path gets the same page via a one-time
   // KV handoff that expires in 10 minutes.
   if (wantsJson(request)) {
     const handoff = randomKey(18);
-    await env.SITES.put(`done:${handoff}`, JSON.stringify({ siteUrl: siteUrl(env, slug), editUrl }), { expirationTtl: 600 });
+    await env.SITES.put(`done:${handoff}`, JSON.stringify({ siteUrl: siteUrl(env, slug), editUrl, ...(publish ? { publish } : {}) }), {
+      expirationTtl: 600,
+    });
     return json({ ok: true, next: `/done/${handoff}` });
   }
   return html(page, 201, n);
@@ -584,10 +828,16 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
       ? json({ ok: false, errors: { form: "Your edit link isn't valid any more. Reload it and try again." } }, 403)
       : html(messagePage("Edit link not valid", "Reload your edit link and try again.", "Can't save"), 403);
   }
-  const mode = { kind: "edit", site, key: form.fields.key!, photoUrl: (k: string) => `${env.PUBLIC_ORIGIN}/p/${k}` } as const;
+  const mode = await editMode(env, site, form.fields.key!);
 
   const parsed = parseContent(form.fields);
   const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
+  // Offer credits (BILLING on): a new, different, non-empty offer costs 1.
+  const cfg = billingConfig(env);
+  const spend = parsed.ok ? offerSpend(site.offer, parsed.value.offer, billingOf(site).credits, cfg.on) : ({ ok: true, spend: 0 } as const);
+  if (!spend.ok) {
+    errors.offer = "Changing your special uses 1 credit and you have none left. Buy more credits in Plan & billing above, or keep the current special.";
+  }
   const kept = site.photos.filter((k) => form.keep.includes(k));
   const photoErr = checkPhotos(form.files, kept.length);
   if (photoErr) errors.photos = photoErr;
@@ -611,9 +861,19 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   const dropVideo = Boolean(site.video) && form.fields.keepVideo !== "yes";
   if (dropVideo && site.video) removed.push(site.video);
   const added = await storePhotos(env, slug, form.files);
+  // Billing may have changed while the owner was editing (a webhook landed):
+  // start from the freshest copy so a save never undoes a payment.
+  const fresh = (await loadSite(env, slug))?.billing ?? site.billing;
+  let billing = fresh;
+  if (spend.ok && spend.spend === 1) {
+    const b = billingOf({ billing: fresh });
+    if (b.credits < 1) return rejected(request, env, mode, { offer: "You have no offer credits left. Buy more in Plan & billing above." }, form.fields, 402);
+    billing = { ...b, credits: b.credits - 1 };
+  }
   const next: Site = {
     ...site,
     ...parsed.value,
+    ...(billing ? { billing } : {}),
     photos: [...kept, ...added],
     video: dropVideo ? null : (site.video ?? null),
     updatedAt: new Date().toISOString(),
