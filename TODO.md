@@ -8,7 +8,8 @@
       AI site builders (Durable, Wix AI, Squarespace Blueprint, GoDaddy Airo,
       Hostinger AI) before deciding. Update the terms page "Price" section and
       the home-page pill when decided.
-- [ ] **Customer-site domain: pick a name and buy it** (Cloudflare Registrar,
+- [x] **Customer-site domain: 3pandasite.com** (bought 2026-11-15, Cloudflare Registrar, $11.17/yr, paid personally: reimbursable). Sites live at `<slug>.3pandasite.com`; `/s/<slug>` 301s there. Optional: buy `threepandasite.com` as a redirect.
+- [ ] ~~Customer-site domain: pick a name and buy it~~ (done, kept for the record) (Cloudflare Registrar,
       about $10–15/year). Customer sites will move from
       `sitevault.3pandalabs.com/s/<slug>` to `<slug>.<domain>`. Name ideas
       (availability NOT checked yet):

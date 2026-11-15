@@ -60,9 +60,24 @@ async function route(request: Request, env: Env): Promise<Response> {
   const path = url.pathname;
   const method = request.method;
 
-  // Customer-site domain: <slug>.<SITES_DOMAIN>/ serves that site only.
+  // Customer-site domain (3pandasite.com since 2026-11-15). Each business has
+  // its own subdomain, which Google Ads' destination rules want (shared
+  // hosting without a per-site subdomain gets flagged). The bare domain and
+  // www go to SiteVault's home page.
+  if (env.SITES_DOMAIN && (url.hostname === env.SITES_DOMAIN || url.hostname === `www.${env.SITES_DOMAIN}`)) {
+    return Response.redirect(env.PUBLIC_ORIGIN, 301);
+  }
   if (env.SITES_DOMAIN && url.hostname.endsWith(`.${env.SITES_DOMAIN}`)) {
     const slug = url.hostname.slice(0, -(env.SITES_DOMAIN.length + 1));
+    if (!/^[a-z0-9-]+$/.test(slug)) return new Response("Not found", { status: 404 });
+    // Photos and the video are served from the site's own host, so the page
+    // needs nothing from another origin (CSP 'self'), and only this site's files.
+    if (method === "GET" && path.startsWith(`/p/sites/${slug}/`)) {
+      return photo(env, decodeURIComponent(path.slice(3)), request);
+    }
+    if (method === "GET" && path === "/robots.txt") {
+      return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain" } });
+    }
     if (path !== "/" || method !== "GET") return Response.redirect(`https://${url.hostname}/`, 302);
     return serveSite(env, slug);
   }
@@ -76,7 +91,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (path === "/metrics") return metrics(request, env);
     if (path === "/api/admin/sites") return adminList(request, env);
     let m = path.match(/^\/s\/([a-z0-9-]+)\/?$/);
-    if (m) return serveSite(env, m[1]!);
+    // Old path links (before the customer-site domain) move to the subdomain.
+    if (m) return env.SITES_DOMAIN ? Response.redirect(siteUrl(env, m[1]!), 301) : serveSite(env, m[1]!);
     m = path.match(/^\/edit\/([a-z0-9-]+)$/);
     if (m) return editPage(env, m[1]!, url.searchParams.get("k") ?? "");
     if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
@@ -164,7 +180,8 @@ async function uniqueSlug(env: Env, businessName: string, city: string): Promise
 function renderCtx(env: Env, slug: string): RenderContext {
   return {
     siteUrl: siteUrl(env, slug),
-    assetOrigin: env.PUBLIC_ORIGIN,
+    // Same host as the page once sites have their own subdomain.
+    assetOrigin: env.SITES_DOMAIN ? `https://${slug}.${env.SITES_DOMAIN}` : env.PUBLIC_ORIGIN,
     homeUrl: env.PUBLIC_ORIGIN,
   };
 }
