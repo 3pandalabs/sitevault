@@ -41,6 +41,10 @@ photo limit. Replies `{ ok, slug, siteUrl, editUrl }`.
 
 The business picks `<slug>.3pandasite.com`; the default is the shortest free one of name, name-type, name-town. Rules: 3-40 chars, a-z0-9 and single hyphens, RESERVED service words, and big-brand names refused (substring for long brands, whole word for short or ambiguous ones like "irs", "chase", "apple", so "first" and "pineapple" still pass). `GET /api/address` checks availability (public, CORS *). Renames: up to `MAX_RENAMES` (3) from the edit page; every old address is an `alias:<old>` KV key pointing at the current slug (no chains), served as a 301, and is never handed to anyone else. Photos keep their original R2 keys; the subdomain serves a file only if it is in that site's `photos`/`video`. `GET /api/internal/resolve?slug=` (INTERNAL_TOKEN) lets AdVault follow a rename.
 
+## One website per business
+
+No accounts, so the business PHONE is the identity: one live site per phone (`phone:<digits>` -> slug, `phoneIdentity` drops formatting and the US 1). Create (public and internal) and phone edits are refused with `PHONE_TAKEN`; removal frees the number; renames re-point it. Same name in the same town (`nt:<name>|<town>`) is only flagged (`possibleDuplicateOf`, in KV metadata and the admin list), never blocked. AdVault adds one site per AdVault account on top. Admin override for a shared number: delete the `phone:` key by hand.
+
 ## Rules that matter
 
 - **Facts only.** A site shows only what the business typed. No generated

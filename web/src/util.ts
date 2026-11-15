@@ -25,6 +25,12 @@ export function slugify(...parts: string[]): string {
     .replace(/-+$/g, "");
 }
 
+/** A phone as an identity: "(201) 555-0100" / "+1 201 555 0100" -> "2015550100" (US numbers lose the 1). */
+export function phoneIdentity(phone: string): string {
+  const d = phone.replace(/\D/g, "");
+  return d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
+}
+
 /** Digits only, keeping a leading +. "(201) 555-0100" -> "2015550100". */
 export function phoneDigits(phone: string): string {
   const trimmed = phone.trim();
