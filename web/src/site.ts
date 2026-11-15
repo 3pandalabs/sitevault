@@ -55,6 +55,8 @@ export type Site = SiteContent & {
   aliases?: string[];
   /** How many times the address was changed (capped). */
   renames?: number;
+  /** Another live site had the same name in the same town at creation: admin review. */
+  possibleDuplicateOf?: string;
   status: "live" | "removed";
   source: "web" | "advault";
   editKeyHash: string;

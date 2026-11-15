@@ -22,7 +22,7 @@
 import { renderSite, type RenderContext } from "./render.js";
 import { builderPage, donePage, homePage, messagePage, privacyPage, termsPage } from "./pages.js";
 import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, parseContent, type FieldErrors, type Site, type SiteContent } from "./site.js";
-import { randomKey, safeEqual, sha256Hex } from "./util.js";
+import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
 export interface Env {
@@ -183,7 +183,12 @@ async function loadSite(env: Env, slug: string): Promise<Site | null> {
 
 async function saveSite(env: Env, site: Site): Promise<void> {
   await env.SITES.put(siteKey(site.slug), JSON.stringify(site), {
-    metadata: { status: site.status, source: site.source, createdAt: site.createdAt },
+    metadata: {
+      status: site.status,
+      source: site.source,
+      createdAt: site.createdAt,
+      ...(site.possibleDuplicateOf ? { possibleDuplicateOf: site.possibleDuplicateOf } : {}),
+    },
   });
 }
 
@@ -374,6 +379,46 @@ function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES
 }
 
 /** Store a validated site and mint its edit key. Shared by both create paths. */
+// ---------------------------------------------------------------------------
+// One website per business. SiteVault has no accounts, so the business phone
+// is the identity: one LIVE site per phone number (phone:<digits> -> slug).
+// The same name in the same town is only a soft signal (a different phone,
+// a second location): it is flagged for admin review, never blocked.
+// AdVault adds its own stronger rule on top: one site per AdVault account.
+
+const phoneKey = (phone: string) => `phone:${phoneIdentity(phone)}`;
+const nameTownKey = (name: string, city: string) => `nt:${slugify(name)}|${slugify(city.split(",")[0] ?? "")}`;
+
+/** The live site already using this phone (other than `self`), or null. */
+async function phoneOwner(env: Env, phone: string, self?: string): Promise<string | null> {
+  const slug = await env.SITES.get(phoneKey(phone));
+  if (!slug || slug === self) return null;
+  const site = await loadSite(env, slug);
+  return site?.status === "live" ? slug : null;
+}
+
+const PHONE_TAKEN =
+  "A website already exists for this phone number. Use its edit link to change it, or email 3pandas@3pandalabs.com if you didn't make it.";
+
+async function indexSite(env: Env, site: Site): Promise<void> {
+  await env.SITES.put(phoneKey(site.phone), site.slug);
+  await env.SITES.put(nameTownKey(site.businessName, site.city), site.slug);
+}
+
+async function unindexSite(env: Env, site: Pick<Site, "slug" | "phone" | "businessName" | "city">): Promise<void> {
+  for (const k of [phoneKey(site.phone), nameTownKey(site.businessName, site.city)]) {
+    if ((await env.SITES.get(k)) === site.slug) await env.SITES.delete(k);
+  }
+}
+
+/** Another live site with the same name in the same town, for admin review. */
+async function nameTownDuplicate(env: Env, name: string, city: string, self?: string): Promise<string | null> {
+  const slug = await env.SITES.get(nameTownKey(name, city));
+  if (!slug || slug === self) return null;
+  const site = await loadSite(env, slug);
+  return site?.status === "live" ? slug : null;
+}
+
 async function insertSite(
   env: Env,
   content: SiteContent,
@@ -396,8 +441,11 @@ async function insertSite(
     createdAt: now,
     updatedAt: now,
   };
+  const dup = await nameTownDuplicate(env, content.businessName, content.city);
+  if (dup) site.possibleDuplicateOf = dup;
   await saveSite(env, site);
-  console.log("site_created", { slug, source, photos: site.photos.length, category: site.category });
+  await indexSite(env, site);
+  console.log("site_created", { slug, source, photos: site.photos.length, category: site.category, possibleDuplicateOf: dup });
   return { slug, siteUrl: siteUrl(env, slug), editUrl: `${env.PUBLIC_ORIGIN}/edit/${slug}?k=${encodeURIComponent(key)}` };
 }
 
@@ -424,6 +472,7 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
     const problem = await requestedAddressProblem(env, requested);
     if (problem) errors.slug = problem;
   }
+  if (parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
   if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
   return json({ ok: true, ...(await insertSite(env, parsed.value, form.files, "advault", form.video, requested)) }, 201);
 }
@@ -504,6 +553,7 @@ async function createSite(request: Request, env: Env): Promise<Response> {
     const problem = await requestedAddressProblem(env, requested);
     if (problem) errors.slug = problem;
   }
+  if (parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, fields);
 
   if (await rateLimited(request, env)) {
@@ -554,6 +604,7 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     // Going back to one of its own old addresses is allowed.
     if (errors.slug === "") delete errors.slug;
   }
+  if (parsed.ok && (await phoneOwner(env, parsed.value.phone, site.slug))) errors.phone = PHONE_TAKEN;
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
   const removed = site.photos.filter((k) => !kept.includes(k));
@@ -581,6 +632,8 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   } else {
     await saveSite(env, next);
   }
+  await unindexSite(env, site);
+  await indexSite(env, next);
   await deletePhotos(env, removed);
 
   const target = siteUrl(env, next.slug);
@@ -600,6 +653,7 @@ async function removeSite(env: Env, site: Site): Promise<void> {
   // and an abuse report can still be traced; the content is the photos.
   await deletePhotos(env, site.video ? [...site.photos, site.video] : site.photos);
   await saveSite(env, { ...site, photos: [], video: null, status: "removed", updatedAt: new Date().toISOString() });
+  await unindexSite(env, site);
 }
 
 // ---------------------------------------------------------------------------

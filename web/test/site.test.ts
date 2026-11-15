@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { headline, parseContent, parseServices, servicesToText } from "../src/site.js";
 import { renderSite } from "../src/render.js";
-import { esc, jsonForScript, slugify, telHref } from "../src/util.js";
+import { esc, jsonForScript, phoneIdentity, slugify, telHref } from "../src/util.js";
 import type { Site } from "../src/site.js";
 
 const base = {
@@ -56,6 +56,11 @@ describe("services", () => {
 describe("helpers", () => {
   it("slugifies names", () => {
     expect(slugify("Bella's Hair & Nails", "Secaucus")).toBe("bellas-hair-nails-secaucus");
+  });
+  it("treats formatting and the US +1 as the same phone", () => {
+    expect(phoneIdentity("(201) 555-0100")).toBe("2015550100");
+    expect(phoneIdentity("+1 201 555 0100")).toBe("2015550100");
+    expect(phoneIdentity("201.555.0100")).toBe("2015550100");
   });
   it("dials US numbers with +1", () => {
     expect(telHref("(201) 555-0100")).toBe("tel:+12015550100");
