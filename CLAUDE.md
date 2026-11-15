@@ -84,7 +84,7 @@ No accounts, so the business PHONE is the identity: one live site per phone (`ph
   customer sites (our own aggregate visit counts are described on the privacy page). Maps are a link, never an embed. Change the privacy page in the
   same PR as any change to what is stored.
 - Edit access is a **secret edit key** (only its SHA-256 is stored), shown
-  once on the done page. Removal deletes photos and keeps a `removed` record
+  once on the done page. **No self-service delete** (2026-11-15): owners email 3pandas@3pandalabs.com; ops confirms by calling the site phone, cancels any Stripe subscription, checks no AdVault campaign links to it, then `POST /api/admin/sites/<slug>/remove` (ADMIN_TOKEN). Removal deletes photos and keeps a `removed` record
   so the slug isn't reused.
 - `/metrics` uses the shared org envelope (`app/collectedAt/uptimeSeconds/
   counts/traffic/process/database`); `traffic/process/database` are null for
