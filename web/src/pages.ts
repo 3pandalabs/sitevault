@@ -644,7 +644,7 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
 </form>
 <p class="hint" style="margin-top:20px">${
       login
-        ? `New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>. Forgot your password? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.`
+        ? `<strong>AdVault customer?</strong> Sign in with your AdVault email and password.<br>New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>. Forgot your password? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.`
         : `Already have an account? <a href="/login">Sign in</a>.`
     }</p>
 </section>`,
@@ -705,7 +705,7 @@ export function privacyPage(): string {
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
   <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
-  <li><strong>Your account</strong>: your email address, a scrambled (hashed) copy of your password, which can't be turned back into the password, and which websites are yours. While you're signed in we keep a session record that expires after 30 days or when you sign out.</li>
+  <li><strong>Your account</strong>: your email address (if you signed in with your AdVault login, we ask AdVault to check it and store only your AdVault account ID, never your AdVault password), a scrambled (hashed) copy of your password, which can't be turned back into the password, and which websites are yours. While you're signed in we keep a session record that expires after 30 days or when you sign out.</li>
   <li><strong>A short-lived counter per network address</strong> to limit how many sites can be created in a day. It expires after about a day.</li>
   <li><strong>Visit counts for each website, in total only</strong>: per day, the number of visits and of taps on the call and directions buttons, grouped by rough location (country and city, as worked out by Cloudflare), device type (phone, tablet or computer) and where visitors came from (for example YouTube, Google or a typed-in address). We don't store visitors' IP addresses, the full address of the page they came from, or their browser details, and we keep no record of any individual visitor. The business owner sees these totals on their edit page.</li>
   <li><strong>If you pay for a plan</strong>: payments are handled by Stripe, which processes your card details; we never see or store them. We store the Stripe customer and subscription IDs for your website and the email address Stripe gives us for the payer, plus your plan, paid-until date and offer credits.</li>

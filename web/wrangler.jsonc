@@ -29,6 +29,8 @@
   "observability": { "enabled": true },
   "vars": {
     "PUBLIC_ORIGIN": "https://sitevault.3pandalabs.com",
+    // AdVault API, DNS-only host (Workers can't fetch the proxied one): AdVault logins are checked there.
+    "ADVAULT_API_URL": "https://api-internal.advault.3pandalabs.com",
     "DAILY_CREATE_LIMIT": "5",
     "SITES_DOMAIN": "3pandasite.com",
     // Paid plans switch. "off" = everything free, exactly as before paid plans.

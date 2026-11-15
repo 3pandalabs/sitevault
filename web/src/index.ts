@@ -32,6 +32,8 @@ import { renderHold, renderSite, type RenderContext } from "./render.js";
 import { accountPage, authPage, builderPage, donePage, homePage, messagePage, privacyPage, termsPage, type AccountSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
+  accountForAdvault,
+  verifyAdvaultLogin,
   addSiteToAccount,
   clearCookie,
   createAccount,
@@ -90,6 +92,8 @@ export interface Env {
   ADMIN_TOKEN?: string;
   /** Shared with advault-api (SITEVAULT_INTERNAL_TOKEN) for one-click sites. */
   INTERNAL_TOKEN?: string;
+  /** AdVault API (DNS-only internal host: Workers can't fetch the proxied one). AdVault logins are checked there. */
+  ADVAULT_API_URL?: string;
   /** Sites one network address may create per day. */
   DAILY_CREATE_LIMIT?: string;
   /** Visit stats (D1 sitevault-stats). Optional: skipped silently when absent. */
@@ -214,6 +218,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (m) return setOfferInternal(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/paid$/);
     if (m) return paidInternal(request, env, m[1]!);
+    m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/owner$/);
+    if (m) return ownerInternal(request, env, m[1]!);
     m = path.match(/^\/api\/admin\/sites\/([a-z0-9-]+)\/remove$/);
     if (m) return adminRemove(request, env, m[1]!);
   }
@@ -407,6 +413,31 @@ async function setOfferInternal(request: Request, env: Env, slug: string): Promi
   };
   await env.SITES.put(offerRefKey(ref), JSON.stringify(result), { expirationTtl: OFFER_REF_TTL_SECONDS });
   return json(result);
+}
+
+// POST /api/internal/sites/<slug>/owner  { advaultUserId, email }
+// Puts an AdVault-made site on its owner's SiteVault account (AdVault backfills
+// sites made before accounts). Never moves a site that already has an owner.
+async function ownerInternal(request: Request, env: Env, slug: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  let body: { advaultUserId?: unknown; email?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return json({ ok: false, error: "bad_json" }, 400);
+  }
+  const advaultUserId = typeof body.advaultUserId === "string" && /^[A-Za-z0-9-]{8,64}$/.test(body.advaultUserId) ? body.advaultUserId : null;
+  const email = normaliseEmail(typeof body.email === "string" ? body.email : "");
+  if (!advaultUserId || emailProblem(email)) return json({ ok: false, error: "invalid" }, 400);
+  const site = await liveSiteFollowingAliases(env, slug);
+  if (!site) return json({ ok: false, error: "not_found" }, 404);
+  if (site.source !== "advault") return json({ ok: false, error: "not_an_advault_site" }, 409);
+  const account = await accountForAdvault(env.SITES, { advaultUserId, email });
+  if (site.ownerId && site.ownerId !== account.id) return json({ ok: false, error: "owned_by_another_account" }, 409);
+  if (!site.ownerId) await saveSite(env, { ...site, ownerId: account.id, updatedAt: new Date().toISOString() });
+  await addSiteToAccount(env.SITES, account, site.slug);
+  return json({ ok: true, slug: site.slug });
 }
 
 const paidRefKey = (ref: string) => `paidref:${ref}`;
@@ -731,10 +762,16 @@ async function authSubmit(request: Request, env: Env, kind: "login" | "signup"):
   if (await authRateLimited(request, env)) return again("Too many tries. Wait 15 minutes and try again.", 429);
   if (kind === "login") {
     const account = email ? await accountByEmail(env.SITES, email) : null;
-    if (!account || !(await verifyPassword(password, account.pw))) {
-      return again(account && !account.pw ? "This account signs in with AdVault. Use Manage my website in AdVault." : "Wrong email or password.", 401);
+    if (account && (await verifyPassword(password, account.pw))) {
+      return redirectTo(env, next, sessionCookie(await startSession(env.SITES, account.id)));
     }
-    return redirectTo(env, next, sessionCookie(await startSession(env.SITES, account.id)));
+    // Same login as AdVault: an AdVault customer's email + password works here too.
+    const adv = await verifyAdvaultLogin(env.ADVAULT_API_URL, env.INTERNAL_TOKEN, email, password);
+    if (adv) {
+      const linked = await accountForAdvault(env.SITES, adv);
+      return redirectTo(env, next, sessionCookie(await startSession(env.SITES, linked.id)));
+    }
+    return again("Wrong email or password.", 401);
   }
   const problem = emailProblem(email) ?? passwordProblem(password);
   if (problem) return again(problem);
@@ -977,7 +1014,12 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
   // "1": AdVault charges $10 first; the site waits unpublished until /paid.
   const awaiting = form.fields.awaitingPayment === "1";
-  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting);
+  // Same login: the site goes to the AdVault user's SiteVault account.
+  const advId = form.fields.ownerAdvaultUserId ?? "";
+  const advEmail = normaliseEmail(form.fields.ownerEmail ?? "");
+  const owner = /^[A-Za-z0-9-]{8,64}$/.test(advId) && !emailProblem(advEmail) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
+  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting, owner?.id ?? null);
+  if (owner) await addSiteToAccount(env.SITES, owner, made.slug);
   return json({ ok: true, slug: made.slug, siteUrl: made.siteUrl, editUrl: made.editUrl }, 201);
 }
 

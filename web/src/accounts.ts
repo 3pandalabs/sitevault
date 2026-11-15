@@ -29,6 +29,7 @@ export const PBKDF2_ITER = 100_000;
 const acctKey = (id: string) => `acct:${id}`;
 const emailKey = (email: string) => `acctemail:${email}`;
 const sessKey = (hash: string) => `sess:${hash}`;
+const advKey = (userId: string) => `acctadv:${userId}`;
 
 export function normaliseEmail(raw: string): string {
   return raw.trim().toLowerCase();
@@ -102,6 +103,52 @@ export async function accountByEmail(kv: KVNamespace, email: string): Promise<Ac
 export async function saveAccount(kv: KVNamespace, a: Account): Promise<void> {
   await kv.put(acctKey(a.id), JSON.stringify(a));
   await kv.put(emailKey(a.email), a.id);
+  if (a.advaultUserId) await kv.put(advKey(a.advaultUserId), a.id);
+}
+
+/**
+ * The SiteVault account for an AdVault user (same login on both): found by
+ * AdVault user id, else by email (and linked), else created with no
+ * SiteVault password (they sign in with their AdVault password).
+ */
+export async function accountForAdvault(kv: KVNamespace, user: { advaultUserId: string; email: string }): Promise<Account> {
+  const byAdv = await kv.get(advKey(user.advaultUserId));
+  const linked = byAdv ? await loadAccount(kv, byAdv) : null;
+  if (linked) return linked;
+  const email = normaliseEmail(user.email);
+  const byEmail = await accountByEmail(kv, email);
+  if (byEmail) {
+    const next = { ...byEmail, advaultUserId: user.advaultUserId };
+    await saveAccount(kv, next);
+    return next;
+  }
+  const made = await createAccount(kv, email, null, { advaultUserId: user.advaultUserId });
+  // A race with another create for the same email: use whichever won.
+  return made === "exists" ? ((await accountByEmail(kv, email)) as Account) : made;
+}
+
+/** Ask AdVault whether this is a valid AdVault login (server to server). */
+export async function verifyAdvaultLogin(
+  apiUrl: string | undefined,
+  token: string | undefined,
+  email: string,
+  password: string,
+): Promise<{ advaultUserId: string; email: string } | null> {
+  if (!apiUrl || !token || !email || !password) return null;
+  try {
+    const res = await fetch(`${apiUrl.replace(/\/$/, "")}/internal/sitevault/verify-login`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { ok?: boolean; userId?: string; email?: string };
+    return body.ok && body.userId && body.email ? { advaultUserId: body.userId, email: body.email } : null;
+  } catch (err) {
+    console.warn("advault login check failed", String(err));
+    return null;
+  }
 }
 
 /** A new account, or "exists" when the email already has one. */
