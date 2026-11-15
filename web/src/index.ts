@@ -623,8 +623,14 @@ async function phoneOwner(env: Env, phone: string, self?: string): Promise<strin
   const slug = await env.SITES.get(phoneKey(phone));
   if (!slug || slug === self) return null;
   const site = await loadSite(env, slug);
-  return site?.status === "live" ? slug : null;
+  if (site?.status !== "live") return null;
+  // An unpaid draft (BILLING on, never published) holds the number for 2 days
+  // only, so an abandoned checkout can't lock the business out for good.
+  if (site.billing?.status === "pending" && Date.now() - Date.parse(site.createdAt) > PENDING_PHONE_HOLD_MS) return null;
+  return slug;
 }
+
+const PENDING_PHONE_HOLD_MS = 2 * 24 * 60 * 60 * 1000;
 
 const PHONE_TAKEN =
   "A website already exists for this phone number. Use its edit link to change it, or email 3pandas@3pandalabs.com if you didn't make it.";
