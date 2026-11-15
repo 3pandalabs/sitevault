@@ -32,16 +32,16 @@
     "DAILY_CREATE_LIMIT": "5",
     "SITES_DOMAIN": "3pandasite.com",
     // Paid plans switch. "off" = everything free, exactly as before paid plans.
-    "BILLING": "off",
+    "BILLING": "on",
     // With BILLING "on": sites made before billing started count as paid until
     // the end of this day (UTC).
     "EARLY_ACCESS_UNTIL": "2027-01-31",
     // Stripe price ids (shared org account). Empty = that checkout answers 503.
-    "STRIPE_PRICE_BUILD": "",
-    "STRIPE_PRICE_BASIC": "",
-    "STRIPE_PRICE_PRO": "",
-    "STRIPE_PRICE_PRO_ADVAULT": "",
-    "STRIPE_PRICE_CREDITS": ""
+    "STRIPE_PRICE_BUILD": "price_1Uc8ebCrSBBxBBeWD4vWcOgr",
+    "STRIPE_PRICE_BASIC": "price_1Uc8ebCrSBBxBBeWZmZqEU0i",
+    "STRIPE_PRICE_PRO": "price_1Uc8ebCrSBBxBBeWdM84HWnb",
+    "STRIPE_PRICE_PRO_ADVAULT": "price_1Uc8ecCrSBBxBBeWcUEVHEWE",
+    "STRIPE_PRICE_CREDITS": "price_1Uc8ecCrSBBxBBeWb1OpSjo6"
     // Secrets (wrangler secret put): METRICS_TOKEN (shared org token, for
     // admin.3pandalabs.com), ADMIN_TOKEN (takedowns). Both optional: the
     // endpoints answer 503 while unset, so a missing secret never bricks a deploy.
