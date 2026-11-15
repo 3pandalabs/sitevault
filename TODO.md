@@ -2,16 +2,34 @@
 
 ## Decisions pending (owner: Anil + Prachi)
 
-- [x] **Pricing DECIDED (2026-11-15, keep it simple)**. Not built yet; free
-      during early access until payments ship.
-  - **$5 one-time to create a site.** Waived when the site is made from
-    AdVault ("Make me a website").
-  - **$2/month upkeep, billed yearly as $24.** Stripe's fixed 30¢ would take
-    about 18% of a $2 monthly charge but only about 4% of $24 a year.
-    Standalone signup = $29 at checkout ($5 + first year), then $24/year.
-  - **AdVault customers on an active plan** (Keep it running and up) pay no
-    upkeep. A $10-ad-only customer (no plan) pays the $2/month (billed yearly)
-    after the first month.
+- [x] **Pricing DECIDED (2026-11-15, revised same day: sites are SEPARATE from
+      AdVault once created).** Not built yet; free during early access until
+      payments ship. All plans billed yearly (Stripe's fixed 30¢ makes small
+      monthly charges lose ~18%).
+
+  | | Made on SiteVault | Made from AdVault |
+  |---|---|---|
+  | Build the site | **$5** one-time | **Free** |
+  | Basic (keep it running) | **$15/year** | (they get Pro instead) |
+  | Pro (visit stats) | **$20/year** | **$15/year** (Pro at the Basic price) |
+  | New offer on the site | 1 credit | 1 credit |
+  | Offer on the site AND as an AdVault ad | **$12** | **$12** |
+
+  - **Separate products after creation.** A site's billing never depends on
+    the owner's AdVault plan; cancelling AdVault changes nothing for the
+    site. AdVault is only the referral (free build, Pro at $15). Needs
+    SiteVault's own owner email + billing per site (see Build next).
+  - **Offer credits: 1 credit = 1 offer** (a featured offer banner on the
+    site). Every new site gets **2 free credits** (first two offers free).
+    Then **5 credits for $10** (one Stripe charge instead of five $2 ones).
+  - **Combo (site offer + AdVault offer ad) = $12 from either side** ($10 ad
+    + $2 site offer). If the owner has a SiteVault credit, the site part uses
+    1 credit and they pay $10.
+  - **Pro stats, no cookies or trackers** (counted server-side in the
+    Worker): visits per day/week/month, where visitors came from (Google,
+    the YouTube ad, Facebook, WhatsApp, direct, from the Referer header /
+    utm), city/country and device (Cloudflare request data), taps on Call,
+    Directions and the offer. Update the privacy page in the same PR.
   - **Unpaid:** 14-day grace, then a simple "This site is paused" page that
     still shows the business name and phone. Never delete: an AdVault ad may
     point at the site, and paying again restores it instantly with all data.
@@ -19,7 +37,8 @@
     upgrade (see Build next); we never register domains in our name for them.
   - When building: Stripe via the shared org account (`metadata.app =
     sitevault`), update the terms page "Price" section and the home-page pill
-    in the same PR.
+    in the same PR. AdVault side: the $12 combo is a new AdVault SKU that
+    also posts the offer to SiteVault (internal API).
 - [x] **Customer-site domain: 3pandasite.com** (bought 2026-11-15, Cloudflare Registrar, $11.17/yr, paid personally: reimbursable). Sites live at `<slug>.3pandasite.com`; `/s/<slug>` 301s there. Optional: buy `threepandasite.com` as a redirect.
 - [ ] ~~Customer-site domain: pick a name and buy it~~ (done, kept for the record) (Cloudflare Registrar,
       about $10–15/year). Customer sites will move from
@@ -37,7 +56,7 @@
   `*.<domain>/*` route in `web/wrangler.jsonc`, set `SITES_DOMAIN`, and deploy.
   Keep old `/s/<slug>` links working (redirect to the new host).
 - [x] **When an AdVault customer stops paying**: covered by the pricing
-      decision above (falls to $2/month upkeep; unpaid = paused page, never
+      decision above (site is billed on its own; unpaid = paused page, never
       deleted).
 
 ## Before taking paying customers (shared-domain risks)
