@@ -409,7 +409,7 @@ describe("billing UI", () => {
     expect(d).toContain("Publish: $49/year");
     const f = donePage({ siteUrl: "https://a/", editUrl: "https://e/", nonce: "n", publish: { slug: "a", key: "k", prices: planPrices("web", true) } });
     expect(f).toContain("Publish: $29/year");
-    expect(f).toContain("Festive season price: $29/year, locked for life");
+    expect(f).toContain("Festive season price: $29/year (price locked for life");
     expect(d).toContain("https://e/");
   });
 

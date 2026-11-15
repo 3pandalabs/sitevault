@@ -63,7 +63,12 @@ nav.links a.plain:hover{background:rgba(255,255,255,.10)}
 h1{font-weight:600;letter-spacing:-.02em}
 h2{font-size:1.5rem;font-weight:600;letter-spacing:-.015em}
 .lead{font-size:1.125rem;color:var(--fg2);margin:0 0 28px;max-width:42rem}
-.price{font-size:1.25rem;font-weight:600;margin:0 0 28px}.price b{color:var(--accent)}
+.price{font-size:1.25rem;font-weight:600;margin:0 0 20px}.price b{color:var(--accent)}
+.included{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:16px 20px;margin:0 0 28px;max-width:640px}
+.included h2{font-size:1rem;margin:0 0 10px}
+.included ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px 20px}
+.included li{color:var(--muted);font-size:.95rem;padding-left:22px;position:relative}
+.included li::before{content:"✓";position:absolute;left:0;color:var(--accent);font-weight:700}
 .steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));padding:8px 0 40px}
 .card{border:1px solid var(--line);border-radius:16px;padding:20px;background:var(--panel)}
 .card h3{margin:0 0 6px;font-size:1rem;font-weight:600}
@@ -138,11 +143,23 @@ ${opts.script && opts.nonce ? `<script nonce="${opts.nonce}">${opts.script}</scr
 </html>`;
 }
 
+/** What the yearly price covers (home page). Keep every line true. */
+const INCLUDED = [
+  "Website created for you in minutes",
+  "Hosting included",
+  "Your own web address (yourbusiness.3pandasite.com)",
+  "Secure HTTPS",
+  "Made for phones, with tap-to-call and directions",
+  "Edit anytime from your phone",
+  "Fully managed: we keep it online, fast and secure",
+  "No ads, no cookies, no trackers",
+];
+
 /** The home page's price line. `festiveUntil`: the festive offer's last day, while it's open. */
 function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   if (!billingOn) return "<b>Free</b> during early access.";
   if (festiveUntil) {
-    return `<b>Festive season price: $${DOLLARS.festive}/year, locked for life.</b> Join before ${esc(fmtDate(festiveUntil))}. After that, $${DOLLARS.basic}/year.<br>Build it free. Pay only when you publish.`;
+    return `<b>Festive season price: $${DOLLARS.festive}/year</b> (price locked for life). Join before ${esc(fmtDate(festiveUntil))}. After that, $${DOLLARS.basic}/year.<br>Build it free. Pay only when you publish.`;
   }
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
@@ -155,6 +172,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null): s
   <h1>Your business online in five minutes.</h1>
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
+  <div class="included"><h2>Everything included in the price</h2><ul>${INCLUDED.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>
   <div style="display:flex;flex-wrap:wrap;gap:12px"><a class="btn" href="/new">Build my website</a><a class="btn ghost" href="#features">What you get</a></div>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
@@ -203,7 +221,7 @@ function payButton(slug: string, key: string, kind: CheckoutKind, label: string,
 
 /** Buttons to publish a SiteVault-made site (done page and edit page). */
 function publishButtons(slug: string, key: string, prices: BillingView["prices"]): string {
-  const festive = prices.festive ? `<p class="hint">Festive season price: $${prices.basic}/year, locked for life (normally $${DOLLARS.basic}).</p>` : "";
+  const festive = prices.festive ? `<p class="hint">Festive season price: $${prices.basic}/year (price locked for life; normally $${DOLLARS.basic}).</p>` : "";
   return `${festive}<div class="buttons">${
     prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: $${prices.basic}/year`) : ""
   }${payButton(slug, key, "publish_pro", `Publish with Pro: $${prices.pro}/year`, prices.basic !== null)}</div>`;
