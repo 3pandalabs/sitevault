@@ -11,6 +11,7 @@ businesses that have none. Born from AdVault, where a website became optional
   holds `site:<slug>` JSON (metadata: status, source, createdAt), short-lived
   `rl:` rate-limit counters and `done:` handoffs. R2 `sitevault-photos` holds
   `sites/<slug>/<random>.<ext>` (random keys, so photos cache forever).
+- **Customer sites: `<slug>.3pandasite.com`** (2026-11-15). Wildcard route `*.3pandasite.com/*` + a proxied `* AAAA 100::` DNS record (added by hand; wrangler can't). Photos/video are served from the site's own host. Apex and www redirect to the home page; old `/s/<slug>` links 301 to the subdomain.
 - Main site `sitevault.3pandalabs.com` (custom_domain route, one first label:
   see the org's Cloudflare two-label cert rule). Customer sites are served at
   `/s/<slug>` until the separate customer-site domain exists; then set

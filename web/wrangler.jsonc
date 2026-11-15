@@ -7,9 +7,13 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
   "routes": [
-    { "pattern": "sitevault.3pandalabs.com", "custom_domain": true }
-    // Customer sites, once the separate domain is bought (see TODO.md):
-    // { "pattern": "*.<domain>/*", "zone_name": "<domain>" }  + set SITES_DOMAIN
+    { "pattern": "sitevault.3pandalabs.com", "custom_domain": true },
+    // Customer sites: <slug>.3pandasite.com (bought 2026-11-15). The wildcard
+    // route needs a PROXIED wildcard DNS record (* AAAA 100::) in the zone,
+    // which wrangler can't create; the apex is a custom domain (wrangler
+    // owns that record) and redirects to the home page.
+    { "pattern": "*.3pandasite.com/*", "zone_name": "3pandasite.com" },
+    { "pattern": "3pandasite.com", "custom_domain": true }
   ],
   "kv_namespaces": [{ "binding": "SITES", "id": "3b04019ee45b408f9e53edd403d14db7" }],
   "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "sitevault-photos" }],
@@ -19,7 +23,8 @@
   "observability": { "enabled": true },
   "vars": {
     "PUBLIC_ORIGIN": "https://sitevault.3pandalabs.com",
-    "DAILY_CREATE_LIMIT": "5"
+    "DAILY_CREATE_LIMIT": "5",
+    "SITES_DOMAIN": "3pandasite.com"
     // Secrets (wrangler secret put): METRICS_TOKEN (shared org token, for
     // admin.3pandalabs.com), ADMIN_TOKEN (takedowns). Both optional: the
     // endpoints answer 503 while unset, so a missing secret never bricks a deploy.
