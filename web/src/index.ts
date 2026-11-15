@@ -29,7 +29,24 @@
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
 import { renderHold, renderSite, type RenderContext } from "./render.js";
-import { builderPage, donePage, homePage, messagePage, privacyPage, termsPage, type BillingView, type FormMode } from "./pages.js";
+import { accountPage, authPage, builderPage, donePage, homePage, messagePage, privacyPage, termsPage, type AccountSite, type BillingView, type FormMode } from "./pages.js";
+import {
+  accountByEmail,
+  addSiteToAccount,
+  clearCookie,
+  createAccount,
+  currentAccount,
+  emailProblem,
+  endSession,
+  normaliseEmail,
+  passwordProblem,
+  sameOrigin,
+  sessionCookie,
+  sessionToken,
+  startSession,
+  verifyPassword,
+  type Account,
+} from "./accounts.js";
 import {
   applyAdvaultPaid,
   applyEvent,
@@ -149,7 +166,12 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       const cfg = billingConfig(env);
       return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null));
     }
-    if (path === "/new") return builder(env, { kind: "new" });
+    if (path === "/new") return builder(env, { kind: "new", account: await currentAccount(env.SITES, request) });
+    if (path === "/login" || path === "/signup") {
+      if (await currentAccount(env.SITES, request)) return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
+      return html(authPage(path === "/login" ? "login" : "signup", { next: url.searchParams.get("next") ?? undefined }));
+    }
+    if (path === "/account") return accountHome(request, env, url);
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
     if (path === "/robots.txt") return new Response("User-agent: *\nDisallow: /edit/\nDisallow: /api/\n", { headers: { "content-type": "text/plain" } });
@@ -170,7 +192,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       const target = (await env.SITES.get(siteKey(m[1]!))) ? null : await aliasTarget(env, m[1]!);
       const k = url.searchParams.get("k") ?? "";
       if (target) return Response.redirect(`${env.PUBLIC_ORIGIN}/edit/${target}?k=${encodeURIComponent(k)}`, 302);
-      return editPage(env, m[1]!, k, url.searchParams.get("paid") === "1");
+      return editPage(request, env, m[1]!, k, url.searchParams.get("paid") === "1");
     }
     if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
     m = path.match(/^\/done\/([A-Za-z0-9_-]+)$/);
@@ -179,6 +201,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (method === "POST") {
     if (path === "/api/sites") return createSite(request, env);
+    if (path === "/login" || path === "/signup") return authSubmit(request, env, path === "/login" ? "login" : "signup");
+    if (path === "/logout") return logout(request, env);
+    if (path === "/account/claim") return claimSite(request, env);
     if (path === "/api/internal/sites") return createInternal(request, env);
     if (path === "/api/billing/checkout") return billingCheckout(request, env);
     if (path === "/api/billing/portal") return billingPortal(request, env);
@@ -475,9 +500,13 @@ function builder(_env: Env, mode: Parameters<typeof builderPage>[0], errors?: Fi
   return html(builderPage(mode, n, errors, values, _env.SITES_DOMAIN ?? null), status, n);
 }
 
-async function editPage(env: Env, slug: string, key: string, justPaid = false): Promise<Response> {
-  const site = await authorize(env, slug, key);
-  if (!site) return html(messagePage("Edit link not valid", "Check you copied the whole link. Lost it? Email 3pandas@3pandalabs.com.", "Can't open"), 403);
+async function editPage(request: Request, env: Env, slug: string, key: string, justPaid = false): Promise<Response> {
+  const site = await authorize(env, slug, key, request);
+  if (!site) {
+    // No key: send them to sign in, then back here.
+    if (!key && !(await currentAccount(env.SITES, request))) return Response.redirect(`${env.PUBLIC_ORIGIN}/login?next=/edit/${slug}`, 302);
+    return html(messagePage("Edit link not valid", "Check you copied the whole link, or sign in to the account that owns this website. Lost it? Email 3pandas@3pandalabs.com.", "Can't open"), 403);
+  }
   return builder(env, await editMode(env, site, key, justPaid));
 }
 
@@ -563,7 +592,7 @@ async function billingCheckout(request: Request, env: Env): Promise<Response> {
   const form = await readForm(request);
   const slug = form?.fields.slug ?? "";
   const key = form?.fields.key ?? "";
-  const site = /^[a-z0-9-]+$/.test(slug) ? await authorize(env, slug, key) : null;
+  const site = /^[a-z0-9-]+$/.test(slug) ? await authorize(env, slug, key, request) : null;
   if (!site) return html(messagePage("Edit link not valid", "Reload your edit link and try again.", "Can't pay"), 403);
   if (!billingConfig(env).on) return html(messagePage("Nothing to pay", "SiteVault is free during early access.", "Free"), 404);
   const kind = form?.fields.kind ?? "";
@@ -596,7 +625,7 @@ async function billingPortal(request: Request, env: Env): Promise<Response> {
   const form = await readForm(request);
   const slug = form?.fields.slug ?? "";
   const key = form?.fields.key ?? "";
-  const site = /^[a-z0-9-]+$/.test(slug) ? await authorize(env, slug, key) : null;
+  const site = /^[a-z0-9-]+$/.test(slug) ? await authorize(env, slug, key, request) : null;
   if (!site) return html(messagePage("Edit link not valid", "Reload your edit link and try again.", "Can't open"), 403);
   const customer = site.billing?.customerId;
   if (!customer) return html(messagePage("No billing yet", "There's no payment on this website yet.", "Billing"), 404);
@@ -650,11 +679,119 @@ async function stripeWebhook(request: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
-async function authorize(env: Env, slug: string, key: string): Promise<Site | null> {
-  if (!key) return null;
+/**
+ * Edit access: the secret edit key, or (accounts) a signed-in owner. A POST
+ * acting on the session alone must come from our own pages (Origin check).
+ */
+async function authorize(env: Env, slug: string, key: string, request?: Request): Promise<Site | null> {
   const site = await loadSite(env, slug);
   if (!site || site.status !== "live") return null;
-  return safeEqual(await sha256Hex(key), site.editKeyHash) ? site : null;
+  if (key && safeEqual(await sha256Hex(key), site.editKeyHash)) return site;
+  if (!request || !site.ownerId) return null;
+  if (request.method !== "GET" && !sameOrigin(request, env.PUBLIC_ORIGIN)) return null;
+  const account = await currentAccount(env.SITES, request);
+  return account && account.id === site.ownerId ? site : null;
+}
+
+// ---------------------------------------------------------------------------
+// Accounts (accounts.ts)
+
+const LOGIN_LIMIT = 10;
+
+/** 10 sign-in or sign-up tries per connection per 15 minutes. */
+async function authRateLimited(request: Request, env: Env): Promise<boolean> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const key = `rl:auth:${await sha256Hex(`${ip}:${Math.floor(Date.now() / 900_000)}`)}`;
+  const n = Number((await env.SITES.get(key)) ?? "0");
+  if (n >= LOGIN_LIMIT) return true;
+  await env.SITES.put(key, String(n + 1), { expirationTtl: 1800 });
+  return false;
+}
+
+function withSession(res: Response, token: string): Response {
+  const out = new Response(res.body, res);
+  out.headers.append("set-cookie", sessionCookie(token));
+  return out;
+}
+
+function redirectTo(env: Env, path: string, cookie?: string): Response {
+  const res = new Response(null, { status: 303, headers: { location: `${env.PUBLIC_ORIGIN}${path}` } });
+  if (cookie) res.headers.append("set-cookie", cookie);
+  return res;
+}
+
+async function authSubmit(request: Request, env: Env, kind: "login" | "signup"): Promise<Response> {
+  const form = await readForm(request);
+  const email = normaliseEmail(form?.fields.email ?? "");
+  const password = form?.fields.password ?? "";
+  const nextRaw = form?.fields.next ?? "/account";
+  const next = /^\/[a-z0-9/_?=&-]*$/i.test(nextRaw) ? nextRaw : "/account";
+  const again = (error: string, status = 400) => html(authPage(kind, { error, email, next }), status);
+  if (!sameOrigin(request, env.PUBLIC_ORIGIN)) return again("Please use the form on this page.", 403);
+  if (await authRateLimited(request, env)) return again("Too many tries. Wait 15 minutes and try again.", 429);
+  if (kind === "login") {
+    const account = email ? await accountByEmail(env.SITES, email) : null;
+    if (!account || !(await verifyPassword(password, account.pw))) {
+      return again(account && !account.pw ? "This account signs in with AdVault. Use Manage my website in AdVault." : "Wrong email or password.", 401);
+    }
+    return redirectTo(env, next, sessionCookie(await startSession(env.SITES, account.id)));
+  }
+  const problem = emailProblem(email) ?? passwordProblem(password);
+  if (problem) return again(problem);
+  const made = await createAccount(env.SITES, email, password);
+  if (made === "exists") return again("This email already has an account. Sign in instead.", 409);
+  console.log("account_created", { id: made.id });
+  return redirectTo(env, next, sessionCookie(await startSession(env.SITES, made.id)));
+}
+
+async function logout(request: Request, env: Env): Promise<Response> {
+  const token = sessionToken(request.headers.get("cookie"));
+  if (token && sameOrigin(request, env.PUBLIC_ORIGIN)) await endSession(env.SITES, token);
+  return redirectTo(env, "/", clearCookie);
+}
+
+async function accountSites(env: Env, account: Account): Promise<AccountSite[]> {
+  const cfg = billingConfig(env);
+  const now = new Date();
+  const out: AccountSite[] = [];
+  for (const slug of account.sites) {
+    const site = await loadSite(env, slug);
+    if (!site || site.status !== "live" || site.ownerId !== account.id) continue;
+    out.push({ slug: site.slug, name: site.businessName, siteUrl: siteUrl(env, site.slug), state: siteState(site, cfg, now) });
+  }
+  return out;
+}
+
+async function accountHome(request: Request, env: Env, url: URL, claimError?: string): Promise<Response> {
+  const account = await currentAccount(env.SITES, request);
+  if (!account) return Response.redirect(`${env.PUBLIC_ORIGIN}/login`, 302);
+  return html(accountPage(account.email, await accountSites(env, account), { claimError, claimed: url.searchParams.get("claimed") === "1" }), claimError ? 400 : 200);
+}
+
+// Add a site made before accounts: prove ownership with its edit link.
+async function claimSite(request: Request, env: Env): Promise<Response> {
+  const account = await currentAccount(env.SITES, request);
+  if (!account || !sameOrigin(request, env.PUBLIC_ORIGIN)) return redirectTo(env, "/login");
+  const form = await readForm(request);
+  const fail = (msg: string) => accountHome(request, env, new URL(`${env.PUBLIC_ORIGIN}/account`), msg);
+  let slug = "";
+  let key = "";
+  try {
+    const link = new URL(form?.fields.editLink ?? "");
+    const m = link.pathname.match(/^\/edit\/([a-z0-9-]+)$/);
+    slug = m ? m[1]! : "";
+    key = link.searchParams.get("k") ?? "";
+  } catch {
+    return fail("That isn't a SiteVault edit link.");
+  }
+  const current = slug ? ((await env.SITES.get(siteKey(slug))) ? slug : await aliasTarget(env, slug)) : null;
+  const site = current && key ? await authorize(env, current, key) : null;
+  if (!site) return fail("That edit link didn't work. Check you copied all of it.");
+  if (site.ownerId && site.ownerId !== account.id) return fail("This website already belongs to another account. Email 3pandas@3pandalabs.com if that's wrong.");
+  await saveSite(env, { ...site, ownerId: account.id, updatedAt: new Date().toISOString() });
+  await addSiteToAccount(env.SITES, account, site.slug);
+  console.log("site_claimed", { slug: site.slug, account: account.id });
+  return redirectTo(env, "/account?claimed=1");
 }
 
 // Photos and the ad video. Byte ranges are supported because iPhone Safari
@@ -784,6 +921,7 @@ async function insertSite(
   videoFile: File | null = null,
   requested: string | null = null,
   awaitingPayment = false,
+  ownerId: string | null = null,
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
@@ -793,6 +931,7 @@ async function insertSite(
   const billing = initialBilling(source, billingConfig(env), nowDate, awaitingPayment);
   const site: Site = {
     ...(billing ? { billing } : {}),
+    ...(ownerId ? { ownerId } : {}),
     ...content,
     slug,
     photos: await storePhotos(env, slug, files),
@@ -904,9 +1043,13 @@ async function rateLimited(request: Request, env: Env): Promise<boolean> {
 
 async function createSite(request: Request, env: Env): Promise<Response> {
   const form = await readForm(request);
-  const mode = { kind: "new" } as const;
+  const signedIn = await currentAccount(env.SITES, request);
+  const mode = { kind: "new", account: signedIn } as const;
   if (!form) return rejected(request, env, mode, { form: "Please use the form." }, {});
   const { fields, files } = form;
+  // Accounts: signed in = the site goes to that account; otherwise sign up here.
+  const acctEmail = normaliseEmail(fields.acct_email ?? "");
+  const acctPassword = fields.acct_password ?? "";
 
   const parsed = parseContent(fields);
   const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
@@ -919,13 +1062,31 @@ async function createSite(request: Request, env: Env): Promise<Response> {
     if (problem) errors.slug = problem;
   }
   if (parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
-  if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, fields);
+  if (!signedIn) {
+    const ep = emailProblem(acctEmail);
+    if (ep) errors.acct_email = ep;
+    else if (await accountByEmail(env.SITES, acctEmail)) errors.acct_email = "This email already has an account. Sign in first (link above), then build your website.";
+    const pp = passwordProblem(acctPassword);
+    if (pp) errors.acct_password = pp;
+  }
+  // Never echo the password back into the form.
+  const { acct_password: _pw, ...safeFields } = fields;
+  if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, safeFields);
 
   if (await rateLimited(request, env)) {
     return rejected(request, env, mode, { form: "Too many websites created from this connection today. Try again tomorrow." }, fields, 429);
   }
 
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested);
+  let owner: Account | null = signedIn;
+  if (!owner) {
+    const made = await createAccount(env.SITES, acctEmail, acctPassword);
+    if (made === "exists") return rejected(request, env, mode, { acct_email: "This email already has an account. Sign in first, then build your website." }, safeFields, 409);
+    owner = made;
+    console.log("account_created", { id: made.id });
+  }
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested, false, owner.id);
+  await addSiteToAccount(env.SITES, owner, slug);
+  const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
   // BILLING on: the site waits for payment; the done page offers Publish.
   const publish = pending ? { slug, key, prices: planPrices("web", festiveOpen(billingConfig(env), new Date())) } : undefined;
   const n = nonce();
@@ -939,15 +1100,17 @@ async function createSite(request: Request, env: Env): Promise<Response> {
     await env.SITES.put(`done:${handoff}`, JSON.stringify({ siteUrl: siteUrl(env, slug), editUrl, ...(publish ? { publish } : {}) }), {
       expirationTtl: 600,
     });
-    return json({ ok: true, next: `/done/${handoff}` });
+    const res = json({ ok: true, next: `/done/${handoff}` });
+    return sessionCookieFor ? withSession(res, sessionCookieFor) : res;
   }
-  return html(page, 201, n);
+  const res = html(page, 201, n);
+  return sessionCookieFor ? withSession(res, sessionCookieFor) : res;
 }
 
 async function updateSite(request: Request, env: Env, slug: string): Promise<Response> {
   const form = await readForm(request);
   if (!form) return json({ ok: false, errors: { form: "Please use the form." } }, 400);
-  const site = await authorize(env, slug, form.fields.key ?? "");
+  const site = await authorize(env, slug, form.fields.key ?? "", request);
   if (!site) {
     return wantsJson(request)
       ? json({ ok: false, errors: { form: "Your edit link isn't valid any more. Reload it and try again." } }, 403)

@@ -62,6 +62,8 @@ export type Site = SiteContent & {
   status: "live" | "removed";
   source: "web" | "advault";
   editKeyHash: string;
+  /** Owner account id (accounts.ts). Absent = made before accounts, or not yet claimed. */
+  ownerId?: string | null;
   /** Paid plans (billing.ts). Absent = made before billing started (early access). */
   billing?: Billing;
   createdAt: string;
