@@ -28,10 +28,10 @@
 
 ## Build next
 
-- [ ] **One-click from AdVault**: "Make me a website" on the campaign page
-      creates the site from the campaign's name, category, phone, area, offer
-      and polished photos (internal token, `source: "advault"`) and fills in
-      the campaign's website link.
+- [x] **One-click from AdVault** (2026-11-15): `POST /api/internal/sites`
+      (bearer `INTERNAL_TOKEN` = advault-api `SITEVAULT_INTERNAL_TOKEN`),
+      `source: "advault"`. AdVault sends name, category, phone, town, offer
+      and the ad's polished photos, then saves the link on the campaign.
 - [ ] **Owner email + lost-link recovery**: collect the owner's email
       (verified) and send the edit link through the shared `mailer` Worker
       (needs a MAILER_TOKEN and quota).
