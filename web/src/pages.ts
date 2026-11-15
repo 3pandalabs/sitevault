@@ -4,6 +4,7 @@
 // arrives as ~300 KB; without JavaScript the form still posts normally.
 
 import { CATEGORIES, MAX_PHOTOS, servicesToText, type FieldErrors, type Site } from "./site.js";
+import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
 
 const CONTACT = "3pandas@3pandalabs.com";
@@ -79,6 +80,12 @@ textarea{min-height:110px;resize:vertical}
 .err{color:var(--err);font-size:.9rem;margin-top:4px}
 .err:empty{display:none}
 .row{display:grid;gap:0 16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.addr{display:flex;align-items:center;border:1px solid var(--line2);border-radius:10px;background:rgba(255,255,255,.05);overflow:hidden}
+.addr span{padding:0 10px;color:var(--muted);font-size:.9rem;white-space:nowrap}
+.addr input{border:0 !important;border-radius:0 !important;background:transparent !important;padding-left:0 !important;padding-right:0 !important;min-width:0;flex:1}
+.addr:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+#slug-status{margin-top:4px}#slug-status .ok{color:#6ee7b7;background:none;border:0}#slug-status .bad{color:var(--err)}
+#slug-status button{background:none;border:1px solid var(--line2);color:var(--fg2);border-radius:999px;padding:2px 10px;margin:4px 6px 0 0;font:inherit;font-size:.85rem;cursor:pointer}
 fieldset{border:1px solid var(--line);border-radius:16px;padding:18px 18px 4px;margin:0 0 20px;background:var(--panel)}
 legend{font-weight:600;padding:0 6px}
 .photos{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
@@ -148,6 +155,7 @@ export type FormMode = { kind: "new" } | { kind: "edit"; site: Site; key: string
 
 const FIELD_ORDER = [
   "businessName",
+  "slug",
   "category",
   "phone",
   "email",
@@ -163,12 +171,30 @@ const FIELD_ORDER = [
   "attest",
 ] as const;
 
-export function builderPage(mode: FormMode, nonce: string, errors: FieldErrors = {}, values: Record<string, string> = {}): string {
+export function builderPage(
+  mode: FormMode,
+  nonce: string,
+  errors: FieldErrors = {},
+  values: Record<string, string> = {},
+  domain: string | null = null,
+): string {
   const site = mode.kind === "edit" ? mode.site : null;
   const v = (k: string, fallback = "") => esc(values[k] ?? fallback);
   const e = (k: string) => `<div class="err" id="err-${k}" role="alert">${esc(errors[k] ?? "")}</div>`;
   const action = mode.kind === "edit" ? `/api/sites/${encodeURIComponent(mode.site.slug)}` : "/api/sites";
   const selectedCat = values.category ?? site?.category ?? "";
+  const renamesLeft = site ? Math.max(0, MAX_RENAMES - (site.renames ?? 0)) : MAX_RENAMES;
+  const addressField = domain
+    ? `<div class="field"><label for="slug">Your web address <span class="hint">${
+        site
+          ? renamesLeft > 0
+            ? `You can change it ${renamesLeft} more time${renamesLeft === 1 ? "" : "s"}. Your old address keeps working and sends visitors here.`
+            : "This address can't be changed again."
+          : "Filled in from your business name. Change it if you like."
+      }</span></label>
+  <div class="addr"><span>https://</span><input type="text" id="slug" name="slug" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" value="${v("slug", site?.slug ?? "")}" data-original="${esc(site?.slug ?? "")}" data-domain="${esc(domain)}"${site && renamesLeft === 0 ? " readonly" : ""}><span>.${esc(domain)}</span></div>
+  <div class="hint" id="slug-status" aria-live="polite"></div>${e("slug")}</div>`
+    : "";
 
   const existing =
     mode.kind === "edit" && mode.site.photos.length
@@ -188,6 +214,7 @@ export function builderPage(mode: FormMode, nonce: string, errors: FieldErrors =
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
 <fieldset><legend>Your business</legend>
   <div class="field"><label for="businessName">Business name</label><input type="text" id="businessName" name="businessName" maxlength="80" required value="${v("businessName", site?.businessName)}" autocomplete="organization">${e("businessName")}</div>
+  ${addressField}
   <div class="row">
     <div class="field"><label for="phone">Phone</label><input type="tel" id="phone" name="phone" maxlength="24" required value="${v("phone", site?.phone)}" autocomplete="tel" placeholder="(201) 555-0100">${e("phone")}</div>
     <div class="field"><label for="city">Town or city</label><input type="text" id="city" name="city" maxlength="60" required value="${v("city", site?.city)}" placeholder="Secaucus, NJ">${e("city")}</div>
@@ -250,6 +277,39 @@ const BUILDER_SCRIPT = `
   var del=document.getElementById('delete');
   if(del) del.form.addEventListener('submit',function(ev){ if(!confirm('Remove your website? This cannot be undone.')) ev.preventDefault(); });
   var FIELDS=${JSON.stringify(FIELD_ORDER)};
+  var slug=document.getElementById('slug'), status=document.getElementById('slug-status');
+  if(slug && !slug.readOnly){
+    var touched=slug.value!=='', timer=null, seq=0;
+    var val=function(id){ var el=document.getElementById(id); return el?el.value:''; };
+    var show=function(res){
+      status.textContent='';
+      var p=document.createElement('span');
+      if(slug.dataset.original && slug.value===slug.dataset.original){ p.textContent='Your current address'; status.appendChild(p); return; }
+      if(res.available){ p.className='ok'; p.textContent='✓ '+res.address+'.'+slug.dataset.domain+' is available'; }
+      else { p.className='bad'; p.textContent=res.problem||'Not available'; }
+      status.appendChild(p);
+      if(!res.available && res.suggestions && res.suggestions.length){
+        var t=document.createElement('div'); t.textContent='Try: ';
+        res.suggestions.forEach(function(s){ var b=document.createElement('button'); b.type='button'; b.textContent=s; b.addEventListener('click',function(){ slug.value=s; touched=true; check(); }); t.appendChild(b); });
+        status.appendChild(t);
+      }
+    };
+    var check=function(){
+      var my=++seq;
+      var q='/api/address?slug='+encodeURIComponent(touched?slug.value:'')+'&name='+encodeURIComponent(val('businessName'))+'&category='+encodeURIComponent(val('category'))+'&city='+encodeURIComponent(val('city'));
+      fetch(q,{headers:{accept:'application/json'}}).then(function(r){return r.json();}).then(function(res){
+        if(my!==seq) return;
+        if(!touched && res.address){ slug.value=res.address; }
+        else if(touched && res.address && res.address!==slug.value && document.activeElement!==slug){ slug.value=res.address; }
+        show(res);
+      }).catch(function(){});
+    };
+    var later=function(){ clearTimeout(timer); timer=setTimeout(check,350); };
+    slug.addEventListener('input',function(){ touched=true; later(); });
+    slug.addEventListener('blur',function(){ touched=slug.value!==''; check(); });
+    ['businessName','category','city'].forEach(function(id){ var el=document.getElementById(id); if(el){ el.addEventListener('input',function(){ if(!touched) later(); }); el.addEventListener('change',function(){ if(!touched) later(); }); } });
+    if(slug.value) check();
+  }
   function shrink(file){
     return new Promise(function(resolve){
       if(!window.createImageBitmap){ resolve(file); return; }

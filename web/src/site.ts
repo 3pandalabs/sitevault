@@ -51,6 +51,10 @@ export type Site = SiteContent & {
   photos: string[];
   /** R2 key of the business's video ad (AdVault sites only). */
   video?: string | null;
+  /** Earlier addresses, each a permanent redirect to this one. */
+  aliases?: string[];
+  /** How many times the address was changed (capped). */
+  renames?: number;
   status: "live" | "removed";
   source: "web" | "advault";
   editKeyHash: string;
