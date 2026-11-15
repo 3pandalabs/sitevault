@@ -58,6 +58,10 @@ INTERNAL_TOKEN, both follow renames (`alias:` keys) like resolve:
 
 The business picks `<slug>.3pandasite.com`; the default is the shortest free one of name, name-type, name-town. Rules: 3-40 chars, a-z0-9 and single hyphens, RESERVED service words, and big-brand names refused (substring for long brands, whole word for short or ambiguous ones like "irs", "chase", "apple", so "first" and "pineapple" still pass). `GET /api/address` checks availability (public, CORS *). Renames: up to `MAX_RENAMES` (3) from the edit page; every old address is an `alias:<old>` KV key pointing at the current slug (no chains), served as a 301, and is never handed to anyone else. Photos keep their original R2 keys; the subdomain serves a file only if it is in that site's `photos`/`video`. `GET /api/internal/resolve?slug=` (INTERNAL_TOKEN) lets AdVault follow a rename.
 
+## Owner accounts (`src/accounts.ts`, 2026-11-15)
+
+Email + password (PBKDF2-SHA256, 100k iterations, the Workers max). KV: `acct:<id>`, `acctemail:<email>` -> id, `sess:<sha256(token)>` -> id (30 days). Cookie `sv_session` (HttpOnly, Secure, SameSite=Lax) on the MAIN site only; customer sites never get a cookie. The build form signs you up (fields `acct_email`/`acct_password`) unless signed in; the site gets `ownerId` and joins `account.sites`. Pages: `/login`, `/signup`, `/account` (My websites), `POST /logout`, `POST /account/claim` (paste an old edit link to adopt a site). `authorize()` accepts the edit key OR the owner session; session-only POSTs need `Origin` = PUBLIC_ORIGIN. 10 auth tries per IP per 15 min. No password-reset email yet (says email us). Next: AdVault single sign-in (AdVault-made sites belong to the AdVault account).
+
 ## One website per business
 
 No accounts, so the business PHONE is the identity: one live site per phone (`phone:<digits>` -> slug, `phoneIdentity` drops formatting and the US 1). Create (public and internal) and phone edits are refused with `PHONE_TAKEN`; removal frees the number; renames re-point it. Same name in the same town (`nt:<name>|<town>`) is only flagged (`possibleDuplicateOf`, in KV metadata and the admin list), never blocked. AdVault adds one site per AdVault account on top. Admin override for a shared number: delete the `phone:` key by hand.
@@ -80,8 +84,8 @@ No accounts, so the business PHONE is the identity: one live site per phone (`ph
 - **Accessibility is required** (US ADA website suits): landmarks, headings,
   alt text, focus outlines, 44px targets, 4.5:1 contrast for every
   `CATEGORIES[*].brand` colour against white.
-- **Privacy**: no cookies, third-party analytics or trackers, on SiteVault or
-  customer sites (our own aggregate visit counts are described on the privacy page). Maps are a link, never an embed. Change the privacy page in the
+- **Privacy**: no third-party analytics or trackers, on SiteVault or
+  customer sites; the ONLY cookie is the sign-in cookie on the main site, set only when someone signs in (our own aggregate visit counts are described on the privacy page). Maps are a link, never an embed. Change the privacy page in the
   same PR as any change to what is stored.
 - Edit access is a **secret edit key** (only its SHA-256 is stored), shown
   once on the done page. **No self-service delete** (2026-11-15): owners email 3pandas@3pandalabs.com; ops confirms by calling the site phone, cancels any Stripe subscription, checks no AdVault campaign links to it, then `POST /api/admin/sites/<slug>/remove` (ADMIN_TOKEN). Removal deletes photos and keeps a `removed` record

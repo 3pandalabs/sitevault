@@ -137,7 +137,7 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
 <div class="backdrop" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><div class="dots"></div></div>
 <header class="top"><div class="wrap">
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
-  <nav class="links"><a class="plain" href="https://advault.3pandalabs.com">Video ads</a><a class="btn small" href="/new">Build my website</a></nav>
+  <nav class="links"><a class="plain" href="https://advault.3pandalabs.com">Video ads</a><a class="plain" href="/account">My websites</a><a class="btn small" href="/new">Build my website</a></nav>
 </div></header>
 <main id="main" class="wrap">
 ${opts.body}
@@ -234,7 +234,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null): s
 }
 
 export type FormMode =
-  | { kind: "new" }
+  | { kind: "new"; account?: { email: string } | null }
   | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView };
 
 /** Everything the edit page's "Plan & billing" section shows. Only built while BILLING is on. */
@@ -378,6 +378,8 @@ const FIELD_ORDER = [
   "hours",
   "about",
   "photos",
+  "acct_email",
+  "acct_password",
   "attest",
 ] as const;
 
@@ -475,6 +477,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   ${existing}
   <div class="field"><label for="photos">Add photos <span class="hint">Up to ${MAX_PHOTOS} in total. JPG, PNG or WebP. Use photos you took or have the right to use.</span></label><input type="file" id="photos" name="photos" accept="image/jpeg,image/png,image/webp" multiple>${e("photos")}</div>
 </fieldset>
+${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
 <button class="btn" type="submit" id="submit">${mode.kind === "edit" ? "Save changes" : "Create my website"}</button>
@@ -607,6 +610,82 @@ ${ready}
   });
 }
 
+/** The build form's account part: sign up as you build, or say which account it goes to. */
+function accountFields(
+  account: { email: string } | null,
+  v: (name: string, fallback?: string) => string,
+  e: (name: string) => string,
+): string {
+  if (account) {
+    return `<p class="hint" style="margin:16px 0">This website will be saved to your account, <strong>${esc(account.email)}</strong>.</p>`;
+  }
+  return `<fieldset><legend>Your account</legend>
+  <p class="hint">Sign in any time to edit your website, pay and see visitors. Already have an account? <a href="/login?next=/new">Sign in first</a>.</p>
+  <div class="field"><label for="acct_email">Email</label><input type="email" id="acct_email" name="acct_email" autocomplete="email" required maxlength="200" value="${v("acct_email", "")}">${e("acct_email")}</div>
+  <div class="field"><label for="acct_password">Password <span class="hint">At least 8 characters</span></label><input type="password" id="acct_password" name="acct_password" autocomplete="new-password" required minlength="8" maxlength="200">${e("acct_password")}</div>
+</fieldset>`;
+}
+
+/** Sign in, or create an account without building a website first. */
+export function authPage(kind: "login" | "signup", opts: { error?: string; email?: string; next?: string } = {}): string {
+  const login = kind === "login";
+  const next = opts.next && /^\/[a-z0-9/_?=&-]*$/i.test(opts.next) ? opts.next : "/account";
+  return layout({
+    title: `${login ? "Sign in" : "Create your account"} | SiteVault`,
+    noindex: true,
+    body: `<section class="narrow" style="max-width:440px">
+<h1>${login ? "Sign in" : "Create your account"}</h1>
+${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""}
+<form method="post" action="/${login ? "login" : "signup"}">
+  <input type="hidden" name="next" value="${esc(next)}">
+  <div class="field"><label for="email">Email</label><input type="email" id="email" name="email" autocomplete="email" required maxlength="200" value="${esc(opts.email ?? "")}"></div>
+  <div class="field"><label for="password">Password${login ? "" : ` <span class="hint">At least 8 characters</span>`}</label><input type="password" id="password" name="password" autocomplete="${login ? "current-password" : "new-password"}" required minlength="${login ? 1 : 8}" maxlength="200"></div>
+  <button class="btn" type="submit">${login ? "Sign in" : "Create account"}</button>
+</form>
+<p class="hint" style="margin-top:20px">${
+      login
+        ? `New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>. Forgot your password? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.`
+        : `Already have an account? <a href="/login">Sign in</a>.`
+    }</p>
+</section>`,
+  });
+}
+
+export type AccountSite = { slug: string; name: string; siteUrl: string; state: string };
+
+/** "My websites": every site on the account, and a way to add one made before accounts. */
+export function accountPage(email: string, sites: AccountSite[], opts: { claimError?: string; claimed?: boolean } = {}): string {
+  const STATE: Record<string, string> = { live: "Live", unpublished: "Not published yet", grace: "Payment overdue", paused: "Paused" };
+  const rows = sites.length
+    ? sites
+        .map(
+          (s) => `<div class="card" style="margin-bottom:12px"><h3 style="margin:0 0 4px">${esc(s.name)}</h3>
+  <p class="hint" style="margin:0 0 10px"><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">${esc(s.siteUrl)}</a> · ${esc(STATE[s.state] ?? s.state)}</p>
+  <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}">Edit, billing and visitors</a><a class="btn ghost" href="${esc(s.siteUrl)}" target="_blank" rel="noopener">View</a></div></div>`,
+        )
+        .join("")
+    : `<p>No websites on this account yet. <a href="/new">Build one</a>, or add one you already made below.</p>`;
+  return layout({
+    title: "My websites | SiteVault",
+    noindex: true,
+    body: `<section>
+<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:center">
+  <h1 style="margin:0">My websites</h1>
+  <form method="post" action="/logout"><button class="btn ghost small" type="submit">Sign out</button></form>
+</div>
+<p class="hint">Signed in as ${esc(email)}</p>
+${opts.claimed ? `<p class="notice ok" role="status">Added to your account.</p>` : ""}
+${rows}
+<form method="post" action="/account/claim" class="notice" style="margin-top:28px">
+  <p><strong>Made a website before accounts existed?</strong> Paste its private edit link to add it here.</p>
+  ${opts.claimError ? `<p class="err" role="alert">${esc(opts.claimError)}</p>` : ""}
+  <div class="field"><label for="editLink">Edit link</label><input id="editLink" name="editLink" type="url" required placeholder="https://sitevault.3pandalabs.com/edit/..."></div>
+  <button class="btn ghost" type="submit">Add to my account</button>
+</form>
+</section>`,
+  });
+}
+
 export function messagePage(title: string, message: string, status = "Not found"): string {
   return layout({
     title: `${title} | SiteVault`,
@@ -626,13 +705,15 @@ export function privacyPage(): string {
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
   <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
+  <li><strong>Your account</strong>: your email address, a scrambled (hashed) copy of your password, which can't be turned back into the password, and which websites are yours. While you're signed in we keep a session record that expires after 30 days or when you sign out.</li>
   <li><strong>A short-lived counter per network address</strong> to limit how many sites can be created in a day. It expires after about a day.</li>
   <li><strong>Visit counts for each website, in total only</strong>: per day, the number of visits and of taps on the call and directions buttons, grouped by rough location (country and city, as worked out by Cloudflare), device type (phone, tablet or computer) and where visitors came from (for example YouTube, Google or a typed-in address). We don't store visitors' IP addresses, the full address of the page they came from, or their browser details, and we keep no record of any individual visitor. The business owner sees these totals on their edit page.</li>
   <li><strong>If you pay for a plan</strong>: payments are handled by Stripe, which processes your card details; we never see or store them. We store the Stripe customer and subscription IDs for your website and the email address Stripe gives us for the payer, plus your plan, paid-until date and offer credits.</li>
 </ul>
 <h2>What we don't do</h2>
 <ul>
-  <li>No cookies, advertising trackers or third-party analytics on SiteVault or on the websites it makes. Visit counts are kept by SiteVault itself, as described above.</li>
+  <li>No advertising trackers or third-party analytics on SiteVault or on the websites it makes. Visit counts are kept by SiteVault itself, as described above.</li>
+  <li>One cookie only, and only when you sign in: a sign-in cookie on sitevault.3pandalabs.com that keeps you signed in. The websites we make (on 3pandasite.com) never set or read cookies.</li>
   <li>We don't sell or share your details. They're shown on your website because you asked us to publish them.</li>
 </ul>
 <h2>Where it's kept</h2>
