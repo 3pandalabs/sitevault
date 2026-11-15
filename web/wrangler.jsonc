@@ -1,5 +1,5 @@
 {
-  // SiteVault: plain Worker (no framework, no server, no database).
+  // SiteVault: plain Worker (no framework, no server). KV + R2; D1 only for visit stats.
   // wrangler creates and maintains the DNS record for a custom_domain route
   // itself; do NOT also add a manual record for this hostname.
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -20,13 +20,32 @@
   // Cloudflare Images: shrinks uploaded photos to web size (free tier covers
   // 5,000 transformations a month). Code falls back to the original if absent.
   "images": { "binding": "IMAGES" },
+  // Visit stats (Pro feature): aggregate counters only, see migrations/.
+  // Apply with: npx wrangler d1 migrations apply sitevault-stats --remote
+  // The code skips stats silently if this binding is missing.
+  "d1_databases": [
+    { "binding": "STATS", "database_name": "sitevault-stats", "database_id": "fc8a4b60-76b2-4350-9cc8-f6ce388e9342", "migrations_dir": "migrations" }
+  ],
   "observability": { "enabled": true },
   "vars": {
     "PUBLIC_ORIGIN": "https://sitevault.3pandalabs.com",
     "DAILY_CREATE_LIMIT": "5",
-    "SITES_DOMAIN": "3pandasite.com"
+    "SITES_DOMAIN": "3pandasite.com",
+    // Paid plans switch. "off" = everything free, exactly as before paid plans.
+    "BILLING": "off",
+    // With BILLING "on": sites made before billing started count as paid until
+    // the end of this day (UTC).
+    "EARLY_ACCESS_UNTIL": "2027-01-31",
+    // Stripe price ids (shared org account). Empty = that checkout answers 503.
+    "STRIPE_PRICE_BUILD": "",
+    "STRIPE_PRICE_BASIC": "",
+    "STRIPE_PRICE_PRO": "",
+    "STRIPE_PRICE_PRO_ADVAULT": "",
+    "STRIPE_PRICE_CREDITS": ""
     // Secrets (wrangler secret put): METRICS_TOKEN (shared org token, for
     // admin.3pandalabs.com), ADMIN_TOKEN (takedowns). Both optional: the
     // endpoints answer 503 while unset, so a missing secret never bricks a deploy.
+    // STRIPE_SECRET_KEY (restricted key) and STRIPE_WEBHOOK_SECRET are optional
+    // too: without them only checkout/portal and the webhook answer 503.
   }
 }

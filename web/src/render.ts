@@ -18,6 +18,12 @@ export type RenderContext = {
   assetOrigin: string;
   /** SiteVault's own home page, for the footer credit. */
   homeUrl: string;
+  /**
+   * Count call/directions taps with the HTML ping attribute (no JavaScript):
+   * the browser POSTs to /t/<kind> on the site's own host. Only on the
+   * customer-site subdomain, where /t/ is routed.
+   */
+  ping?: boolean;
 };
 
 export function photoUrl(ctx: RenderContext, key: string): string {
@@ -34,6 +40,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   const gallery = photos.slice(1);
   const where = [site.address, site.city].filter(Boolean).join(", ");
   const realEstate = site.category === "realestate";
+  const ping = (kind: "call" | "directions") => (ctx.ping ? ` ping="/t/${kind}"` : "");
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -167,7 +174,7 @@ footer a{color:var(--muted)}
 <header class="top">
   <div class="wrap">
     <a class="name" href="${esc(ctx.siteUrl)}">${esc(site.businessName)}</a>
-    <a class="btn primary" href="${esc(telHref(site.phone))}">Call ${esc(site.phone)}</a>
+    <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call ${esc(site.phone)}</a>
   </div>
 </header>
 <main id="main">
@@ -180,10 +187,10 @@ footer a{color:var(--muted)}
 </div>
 ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
 <div class="wrap actions">
-  <a class="btn primary" href="${esc(telHref(site.phone))}">Call now</a>
+  <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call now</a>
   <a class="btn ghost" href="${esc(smsHref(site.phone))}">Send a text</a>
   ${site.email ? `<a class="btn ghost" href="mailto:${esc(site.email)}">Email us</a>` : ""}
-  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener">Get directions</a>` : ""}
+  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>Get directions</a>` : ""}
 </div>
 ${video}
 ${services}
@@ -193,7 +200,7 @@ ${galleryHtml}
   <div class="wrap">
     <h2 id="contact-h">Contact</h2>
     <div class="facts">
-      <div><h3>Phone</h3><p><a href="${esc(telHref(site.phone))}">${esc(site.phone)}</a></p></div>
+      <div><h3>Phone</h3><p><a href="${esc(telHref(site.phone))}"${ping("call")}>${esc(site.phone)}</a></p></div>
       ${site.email ? `<div><h3>Email</h3><p><a href="mailto:${esc(site.email)}">${esc(site.email)}</a></p></div>` : ""}
       ${where ? `<div><h3>Location</h3><p>${esc(where)}</p></div>` : ""}
       ${site.serviceArea ? `<div><h3>Areas we serve</h3><p>${esc(site.serviceArea)}</p></div>` : ""}
@@ -209,9 +216,49 @@ ${galleryHtml}
   </div>
 </footer>
 <nav class="callbar" aria-label="Quick contact">
-  <a class="btn primary" href="${esc(telHref(site.phone))}">Call</a>
+  <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call</a>
   <a class="btn ghost" href="${esc(smsHref(site.phone))}">Text</a>
 </nav>
+</body>
+</html>`;
+}
+
+/**
+ * What a visitor sees instead of the site: "paused" (unpaid past the grace
+ * period: still shows the business name and phone, so a customer can call)
+ * or "unpublished" (made on SiteVault, not paid for yet). Same light look as
+ * customer sites, no JavaScript, not indexed.
+ */
+export function renderHold(site: Site, kind: "paused" | "unpublished"): string {
+  const brand = CATEGORIES[site.category].brand;
+  const title = kind === "paused" ? `${site.businessName}: this site is paused` : "This site isn't published yet";
+  const body =
+    kind === "paused"
+      ? `<h1>${esc(site.businessName)}</h1>
+    <p>This site is paused.</p>
+    <p><a class="btn" href="${esc(telHref(site.phone))}">Call ${esc(site.phone)}</a></p>`
+      : `<h1>This site isn't published yet</h1>
+    <p>Check back soon.</p>`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${esc(title)}</title>
+<style>
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#111827;background:#fff;line-height:1.6;font-size:17px}
+main{max-width:640px;margin:0 auto;padding:64px 16px;text-align:center}
+h1{font-size:clamp(1.6rem,5vw,2.2rem);line-height:1.2;margin:0 0 12px}
+p{color:#4b5563}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 18px;border-radius:10px;font-weight:700;text-decoration:none;background:${brand};color:#fff}
+.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
+</style>
+</head>
+<body>
+<main id="main">
+    ${body}
+</main>
 </body>
 </html>`;
 }

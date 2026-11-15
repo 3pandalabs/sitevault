@@ -7,7 +7,7 @@ businesses that have none. Born from AdVault, where a website became optional
 
 ## Shape
 
-- **One Cloudflare Worker, no server, no database** (`web/`). KV `SITES`
+- **One Cloudflare Worker, no server** (`web/`); D1 only for visit stats (see Billing & stats). KV `SITES`
   holds `site:<slug>` JSON (metadata: status, source, createdAt), short-lived
   `rl:` rate-limit counters and `done:` handoffs. R2 `sitevault-photos` holds
   `sites/<slug>/<random>.<ext>` (random keys, so photos cache forever).
@@ -45,6 +45,13 @@ The business picks `<slug>.3pandasite.com`; the default is the shortest free one
 
 No accounts, so the business PHONE is the identity: one live site per phone (`phone:<digits>` -> slug, `phoneIdentity` drops formatting and the US 1). Create (public and internal) and phone edits are refused with `PHONE_TAKEN`; removal frees the number; renames re-point it. Same name in the same town (`nt:<name>|<town>`) is only flagged (`possibleDuplicateOf`, in KV metadata and the admin list), never blocked. AdVault adds one site per AdVault account on top. Admin override for a shared number: delete the `phone:` key by hand.
 
+## Billing & stats
+
+- **Switch: `BILLING` var** (wrangler.jsonc, default `"off"`). Off = everything free, exactly as before (no billing record is stored on new sites, no paused pages, offers free). On = the plans in `src/billing.ts` (pure rules, unit-tested): SiteVault-made sites start `pending` (unpublished) until $5 + Basic $15/yr or Pro $20/yr is paid; AdVault-made sites are live with 30 days free, then Pro $15/yr; 2 free offer credits per site, 5 more for $10. 14-day grace after `paidUntil`, then a "paused" page (name + phone). Sites with no `billing` field (made before the switch) are paid until `EARLY_ACCESS_UNTIL`.
+- **Stripe via fetch** (`src/stripe.ts`, no SDK), shared org account. Secrets `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`; vars `STRIPE_PRICE_BUILD/BASIC/PRO/PRO_ADVAULT/CREDITS`. Missing ones make only checkout/portal (and the webhook) answer 503.
+- Routes: `POST /api/billing/checkout`, `POST /api/billing/portal` (edit key in the form), **webhook `POST /webhooks/stripe`** (signature-checked). Everything is tagged `metadata.app = "sitevault"`; the webhook acknowledges and **ignores events for any other app**. Processed event ids live in KV `evt:<id>` for 30 days (no double credits). Upgrades = a new Checkout; the webhook cancels the replaced subscription with proration.
+- **D1 `STATS`** (database `sitevault-stats`, `web/migrations/`): aggregate `daily` counters per slug/day/source/country/city/device; views and call/directions taps (HTML `ping`, `POST /t/<kind>` on the customer host, no JS). No IP, UA or full referrer stored. Written via `ctx.waitUntil`; skipped if the binding is absent. Pro (or BILLING off) sees the breakdown on the edit page; Basic sees the 30-day total.
+
 ## Rules that matter
 
 - **Facts only.** A site shows only what the business typed. No generated
@@ -56,8 +63,8 @@ No accounts, so the business PHONE is the identity: one live site per phone (`ph
 - **Accessibility is required** (US ADA website suits): landmarks, headings,
   alt text, focus outlines, 44px targets, 4.5:1 contrast for every
   `CATEGORIES[*].brand` colour against white.
-- **Privacy**: no cookies, analytics or trackers, on SiteVault or customer
-  sites. Maps are a link, never an embed. Change the privacy page in the
+- **Privacy**: no cookies, third-party analytics or trackers, on SiteVault or
+  customer sites (our own aggregate visit counts are described on the privacy page). Maps are a link, never an embed. Change the privacy page in the
   same PR as any change to what is stored.
 - Edit access is a **secret edit key** (only its SHA-256 is stored), shown
   once on the done page. Removal deletes photos and keeps a `removed` record
