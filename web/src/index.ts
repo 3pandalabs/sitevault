@@ -17,10 +17,11 @@
 //   GET  /metrics                  ops envelope for admin.3pandalabs.com (METRICS_TOKEN)
 //   GET  /api/admin/sites          list (ADMIN_TOKEN)
 //   POST /api/admin/sites/<slug>/remove   takedown (ADMIN_TOKEN)
+//   POST /api/internal/sites       one-click create from AdVault (INTERNAL_TOKEN)
 
 import { renderSite, type RenderContext } from "./render.js";
 import { builderPage, donePage, homePage, messagePage, privacyPage, termsPage } from "./pages.js";
-import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, parseContent, type FieldErrors, type Site } from "./site.js";
+import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, parseContent, type FieldErrors, type Site, type SiteContent } from "./site.js";
 import { randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 
 export interface Env {
@@ -32,6 +33,8 @@ export interface Env {
   SITES_DOMAIN?: string;
   METRICS_TOKEN?: string;
   ADMIN_TOKEN?: string;
+  /** Shared with advault-api (SITEVAULT_INTERNAL_TOKEN) for one-click sites. */
+  INTERNAL_TOKEN?: string;
   /** Sites one network address may create per day. */
   DAILY_CREATE_LIMIT?: string;
 }
@@ -81,6 +84,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (method === "POST") {
     if (path === "/api/sites") return createSite(request, env);
+    if (path === "/api/internal/sites") return createInternal(request, env);
     let m = path.match(/^\/api\/sites\/([a-z0-9-]+)$/);
     if (m) return updateSite(request, env, m[1]!);
     m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/delete$/);
@@ -246,13 +250,50 @@ async function readForm(request: Request): Promise<Parsed | null> {
   return { fields, files, keep };
 }
 
-function checkPhotos(files: File[], existing: number): string | null {
+function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES): string | null {
   if (existing + files.length > MAX_PHOTOS) return `Up to ${MAX_PHOTOS} photos in total.`;
   for (const f of files) {
     if (!PHOTO_TYPES.includes(f.type)) return "Photos must be JPG, PNG or WebP.";
-    if (f.size > MAX_PHOTO_BYTES) return "Each photo must be under 4 MB.";
+    if (f.size > maxBytes) return `Each photo must be under ${Math.round(maxBytes / 1024 / 1024)} MB.`;
   }
   return null;
+}
+
+/** Store a validated site and mint its edit key. Shared by both create paths. */
+async function insertSite(env: Env, content: SiteContent, files: File[], source: Site["source"]) {
+  const slug = await uniqueSlug(env, content.businessName, content.city);
+  const key = randomKey();
+  const now = new Date().toISOString();
+  const site: Site = {
+    ...content,
+    slug,
+    photos: await storePhotos(env, slug, files),
+    status: "live",
+    source,
+    editKeyHash: await sha256Hex(key),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await saveSite(env, site);
+  console.log("site_created", { slug, source, photos: site.photos.length, category: site.category });
+  return { slug, siteUrl: siteUrl(env, slug), editUrl: `${env.PUBLIC_ORIGIN}/edit/${slug}?k=${encodeURIComponent(key)}` };
+}
+
+// One-click from AdVault. Server to server, bearer INTERNAL_TOKEN. The
+// advertiser attested ownership inside AdVault, so no attest field; no per-IP
+// limit (every call comes from the AdVault box). Photos are AdVault's own
+// polished ad photos, which can be larger than a phone-shrunk upload.
+async function createInternal(request: Request, env: Env): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const form = await readForm(request);
+  if (!form) return json({ ok: false, error: "bad_request" }, 400);
+  const parsed = parseContent(form.fields);
+  const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
+  const photoErr = checkPhotos(form.files, 0, 8 * 1024 * 1024);
+  if (photoErr) errors.photos = photoErr;
+  if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
+  return json({ ok: true, ...(await insertSite(env, parsed.value, form.files, "advault")) }, 201);
 }
 
 async function storePhotos(env: Env, slug: string, files: File[]): Promise<string[]> {
@@ -303,23 +344,7 @@ async function createSite(request: Request, env: Env): Promise<Response> {
     return rejected(request, env, mode, { form: "Too many websites created from this connection today. Try again tomorrow." }, fields, 429);
   }
 
-  const slug = await uniqueSlug(env, parsed.value.businessName, parsed.value.city);
-  const key = randomKey();
-  const now = new Date().toISOString();
-  const site: Site = {
-    ...parsed.value,
-    slug,
-    photos: await storePhotos(env, slug, files),
-    status: "live",
-    source: "web",
-    editKeyHash: await sha256Hex(key),
-    createdAt: now,
-    updatedAt: now,
-  };
-  await saveSite(env, site);
-  console.log("site_created", { slug, photos: site.photos.length, category: site.category });
-
-  const editUrl = `${env.PUBLIC_ORIGIN}/edit/${slug}?k=${encodeURIComponent(key)}`;
+  const { slug, editUrl } = await insertSite(env, parsed.value, files, "web");
   const n = nonce();
   const page = donePage({ siteUrl: siteUrl(env, slug), editUrl, nonce: n });
   // The done page carries the only copy of the edit key: render it straight

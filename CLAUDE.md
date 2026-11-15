@@ -20,6 +20,22 @@ businesses that have none. Born from AdVault, where a website became optional
   site would hurt the domain every org app uses, and two-label names aren't
   covered by free Universal SSL.
 
+## Look
+
+SiteVault's OWN pages use the org app chrome (same as AdVault): dark zinc,
+blurred blobs + dot grid, `Site**Vault**` wordmark with the "by 3PandaLabs"
+tag, rounded-xl buttons, the canonical footer ("© 3PandaLabs LLC, USA." /
+"All rights reserved.", from 3pandalabs/brand). Register: sky + violet.
+Customer sites are deliberately different: light, the business's own,
+coloured per category.
+
+## One-click from AdVault
+
+`POST /api/internal/sites`, bearer `INTERNAL_TOKEN` (Worker secret; same
+value as advault-api `SITEVAULT_INTERNAL_TOKEN`). Same validation as the
+public form, no attest field (attested in AdVault), no per-IP limit, 8 MB
+photo limit. Replies `{ ok, slug, siteUrl, editUrl }`.
+
 ## Rules that matter
 
 - **Facts only.** A site shows only what the business typed. No generated

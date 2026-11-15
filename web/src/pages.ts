@@ -17,64 +17,98 @@ export function layout(opts: { title: string; body: string; nonce?: string; scri
 <title>${esc(opts.title)}</title>
 <meta name="description" content="A simple website for your local business in about five minutes. Built from your own details and photos.">
 ${opts.noindex ? '<meta name="robots" content="noindex">' : ""}
-<meta name="theme-color" content="#0f172a">
+<meta name="theme-color" content="#09090b">
+<meta name="color-scheme" content="dark">
 <style>
-:root{--ink:#0f172a;--muted:#475569;--line:#e2e8f0;--accent:#b45309;--accent-bg:#fef3c7;--bg:#ffffff;--soft:#f8fafc;--err:#b91c1c}
+/* The org's app chrome (same system as AdVault, RsvpVault, MealMargin):
+   dark zinc, three blurred blobs + dot grid, wordmark with the "by 3PandaLabs"
+   tag, rounded-xl buttons, canonical footer. SiteVault's register is sky +
+   violet, the way AdVault's is amber + violet. Customer sites are NOT styled
+   like this: they are the business's own, light and coloured per category. */
+:root{--bg:#09090b;--fg:#f4f4f5;--fg2:#d4d4d8;--muted:#a1a1aa;--dim:#71717a;--line:rgba(255,255,255,.10);--line2:rgba(255,255,255,.15);--panel:rgba(255,255,255,.03);--accent:#38bdf8;--accent-hi:#7dd3fc;--on-accent:#09090b;--err:#fca5a5;--ok-bg:rgba(52,211,153,.08);--ok-line:rgba(52,211,153,.3)}
 *{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px}
-.wrap{max-width:880px;margin:0 auto;padding:0 16px}
-a{color:var(--accent)}
-a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
-header.top{border-bottom:1px solid var(--line)}
-header.top .wrap{display:flex;justify-content:space-between;align-items:center;padding-top:12px;padding-bottom:12px;gap:12px}
-.logo{font-weight:800;color:var(--ink);text-decoration:none;font-size:1.15rem}
+html,body{max-width:100vw;overflow-x:hidden}
+body{margin:0;font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;color:var(--fg);background:var(--bg);line-height:1.6;font-size:16px;min-height:100vh;display:flex;flex-direction:column}
+.backdrop{pointer-events:none;position:fixed;inset:0;z-index:-1;overflow:hidden;background:var(--bg)}
+.backdrop i{position:absolute;border-radius:9999px;filter:blur(64px)}
+.backdrop .b1{top:-10rem;left:-8rem;width:32rem;height:32rem;background:rgba(14,165,233,.20)}
+.backdrop .b2{top:-6rem;right:-10rem;width:28rem;height:28rem;background:rgba(124,58,237,.20)}
+.backdrop .b3{bottom:-14rem;left:33%;width:34rem;height:34rem;background:rgba(56,189,248,.10)}
+.backdrop .dots{position:absolute;inset:0;opacity:.04;background-image:radial-gradient(circle,#f4f4f5 1px,transparent 1px);background-size:24px 24px}
+.wrap{max-width:64rem;margin:0 auto;padding:0 24px}
+main{flex:1}
+a{color:var(--accent-hi)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header.top .wrap{display:flex;justify-content:space-between;align-items:center;padding-top:24px;padding-bottom:24px;gap:12px}
+.brand{font-size:1.125rem;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.logo{color:var(--fg);text-decoration:none}
 .logo span{color:var(--accent)}
-.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 20px;border-radius:10px;font-weight:700;text-decoration:none;border:2px solid var(--ink);background:var(--ink);color:#fff;font-size:1rem;cursor:pointer}
-.btn.ghost{background:#fff;color:var(--ink)}
+.tag{display:inline-block;margin-left:8px;padding-left:8px;border-left:1px solid rgba(244,244,245,.2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.1em;color:var(--dim);text-decoration:none;vertical-align:middle}
+.tag:hover{color:var(--fg2);text-decoration:underline}
+@media (max-width:640px){.tag{display:none}}
+nav.links{display:flex;gap:8px;align-items:center;font-size:.875rem}
+nav.links a.plain{color:var(--fg2);text-decoration:none;padding:8px 12px;border-radius:8px}
+nav.links a.plain:hover{background:rgba(255,255,255,.10)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 20px;border-radius:12px;font-weight:600;text-decoration:none;border:1px solid transparent;background:var(--accent);color:var(--on-accent);font-size:1rem;cursor:pointer;font-family:inherit}
+.btn:hover{background:var(--accent-hi)}
+.btn.small{min-height:36px;padding:6px 12px;font-size:.875rem;border-radius:8px}
+.btn.ghost{background:transparent;color:var(--fg2);border-color:var(--line2)}
+.btn.ghost:hover{background:rgba(255,255,255,.10)}
 .btn[disabled]{opacity:.6;cursor:progress}
-.hero{padding:56px 0 32px}
-.hero h1{font-size:clamp(2rem,6vw,3rem);line-height:1.1;margin:0 0 12px}
-.lead{font-size:1.2rem;color:var(--muted);margin:0 0 24px}
-.steps{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));padding:16px 0 40px}
-.card{border:1px solid var(--line);border-radius:14px;padding:18px;background:#fff}
-.card h3{margin:0 0 6px;font-size:1.05rem}
-.card p{margin:0;color:var(--muted)}
-.pill{display:inline-block;background:var(--accent-bg);color:#78350f;font-weight:700;border-radius:999px;padding:4px 12px;font-size:.85rem;margin-bottom:14px}
+.hero{padding:40px 0 48px}
+.hero h1{font-size:clamp(2.25rem,6vw,3.75rem);line-height:1.08;letter-spacing:-.025em;font-weight:600;margin:0 0 20px;max-width:48rem;text-wrap:balance}
+h1{font-weight:600;letter-spacing:-.02em}
+h2{font-size:1.5rem;font-weight:600;letter-spacing:-.015em}
+.lead{font-size:1.125rem;color:var(--fg2);margin:0 0 28px;max-width:42rem}
+.price{font-size:1.25rem;font-weight:600;margin:0 0 28px}.price b{color:var(--accent)}
+.steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));padding:8px 0 40px}
+.card{border:1px solid var(--line);border-radius:16px;padding:20px;background:var(--panel)}
+.card h3{margin:0 0 6px;font-size:1rem;font-weight:600}
+.card p{margin:0;color:var(--muted);font-size:.95rem}
+.pill{display:inline-block;border:1px solid rgba(56,189,248,.3);background:rgba(56,189,248,.10);color:#bae6fd;font-weight:500;border-radius:999px;padding:4px 12px;font-size:.75rem;letter-spacing:.05em;text-transform:uppercase;margin-bottom:16px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
+.chips span{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:4px 12px;font-size:.875rem}
 section{padding:24px 0}
 form .field{margin:0 0 18px}
-label{display:block;font-weight:700;margin-bottom:6px}
-.hint{display:block;font-weight:400;color:var(--muted);font-size:.9rem}
-input[type=text],input[type=tel],input[type=email],select,textarea{width:100%;font:inherit;padding:10px 12px;border:1px solid #94a3b8;border-radius:10px;background:#fff;color:var(--ink)}
+label{display:block;font-weight:500;margin-bottom:6px;color:var(--fg)}
+.hint{display:block;font-weight:400;color:var(--muted);font-size:.85rem}
+input[type=text],input[type=tel],input[type=email],select,textarea,input[type=file]{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:rgba(255,255,255,.05);color:var(--fg)}
+select option{background:#18181b}
+input::placeholder,textarea::placeholder{color:var(--dim)}
 textarea{min-height:110px;resize:vertical}
 .err{color:var(--err);font-size:.9rem;margin-top:4px}
 .err:empty{display:none}
 .row{display:grid;gap:0 16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
-fieldset{border:1px solid var(--line);border-radius:14px;padding:16px 16px 4px;margin:0 0 20px}
-legend{font-weight:800;padding:0 6px}
+fieldset{border:1px solid var(--line);border-radius:16px;padding:18px 18px 4px;margin:0 0 20px;background:var(--panel)}
+legend{font-weight:600;padding:0 6px}
 .photos{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
 .photos label{font-weight:400;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.85rem}
 .photos img{width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
-.check{display:flex;gap:10px;align-items:flex-start;font-weight:400}
-.check input{margin-top:5px;width:18px;height:18px}
-.notice{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
-.ok{background:#ecfdf5;border-color:#a7f3d0}
+.check{display:flex;gap:10px;align-items:flex-start;font-weight:400;color:var(--fg2)}
+.check input{margin-top:5px;width:18px;height:18px;accent-color:var(--accent)}
+.notice{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.ok{background:var(--ok-bg);border-color:var(--ok-line)}
 .copybox{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.copybox code{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow-wrap:anywhere;flex:1;min-width:0;font-size:.9rem}
-footer{border-top:1px solid var(--line);margin-top:40px;padding:24px 0 40px;color:var(--muted);font-size:.9rem}
-footer a{color:var(--muted)}
-.prose h2{margin-top:28px}
+.copybox code{background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow-wrap:anywhere;flex:1;min-width:0;font-size:.875rem;color:var(--fg)}
+footer{border-top:1px solid var(--line);margin-top:48px;padding:32px 0;font-size:.875rem}
+footer .links{display:flex;flex-wrap:wrap;gap:8px 20px;padding-bottom:16px}
+footer .links a{color:var(--muted);text-decoration:none}footer .links a:hover{color:var(--fg2)}
+footer .legal{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--dim)}
+.prose{max-width:46rem}.prose h2{margin-top:28px;font-size:1.25rem}.prose li,.prose p{color:var(--fg2)}
 </style>
 </head>
 <body>
+<div class="backdrop" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><div class="dots"></div></div>
 <header class="top"><div class="wrap">
-  <a class="logo" href="/">Site<span>Vault</span></a>
-  <a class="btn ghost" href="/new">Build my website</a>
+  <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
+  <nav class="links"><a class="plain" href="https://advault.3pandalabs.com">Video ads</a><a class="btn small" href="/new">Build my website</a></nav>
 </div></header>
 <main id="main" class="wrap">
 ${opts.body}
 </main>
 <footer><div class="wrap">
-  <p>SiteVault by 3PandaLabs LLC, New Jersey. <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="mailto:${CONTACT}">${CONTACT}</a></p>
+  <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:${CONTACT}">Contact</a></div>
+  <div class="legal"><span>&copy; 3PandaLabs LLC, USA.</span><span>All rights reserved.</span></div>
 </div></footer>
 ${opts.script && opts.nonce ? `<script nonce="${opts.nonce}">${opts.script}</script>` : ""}
 </body>
@@ -85,17 +119,19 @@ export function homePage(): string {
   return layout({
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
-  <span class="pill">Free during early access</span>
-  <h1>A website for your business in about five minutes.</h1>
-  <p class="lead">No design work and no tech skills. Tell us about your business, add a few photos, and get a clean, phone-friendly site customers can call you from.</p>
-  <a class="btn" href="/new">Build my website</a>
+  <span class="pill">Websites for local businesses</span>
+  <h1>Your business online in five minutes.</h1>
+  <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
+  <p class="price"><b>Free</b> during early access.</p>
+  <div style="display:flex;flex-wrap:wrap;gap:12px"><a class="btn" href="/new">Build my website</a><a class="btn ghost" href="#features">What you get</a></div>
+  <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
 <div class="steps">
   <div class="card"><h3>1. Tell us the basics</h3><p>Name, phone, what you offer, where you work, your hours.</p></div>
   <div class="card"><h3>2. Add photos</h3><p>Your shop, your team, your work. Straight from your phone.</p></div>
   <div class="card"><h3>3. Share your link</h3><p>Put it on Google, your ads, your van, your business cards.</p></div>
 </div>
-<section>
+<section id="features">
   <h2>What's on your site</h2>
   <div class="steps">
     <div class="card"><h3>Tap to call and text</h3><p>Big buttons, made for phones, where most customers find you.</p></div>
