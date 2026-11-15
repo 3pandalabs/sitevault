@@ -27,6 +27,8 @@ import { randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 export interface Env {
   SITES: KVNamespace;
   PHOTOS: R2Bucket;
+  /** Cloudflare Images binding: shrinks uploads to web size. Optional at runtime. */
+  IMAGES?: ImagesBinding;
   /** https://sitevault.3pandalabs.com */
   PUBLIC_ORIGIN: string;
   /** Customer-site domain, e.g. "3panda.site". Unset until the domain is bought. */
@@ -77,7 +79,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (m) return serveSite(env, m[1]!);
     m = path.match(/^\/edit\/([a-z0-9-]+)$/);
     if (m) return editPage(env, m[1]!, url.searchParams.get("k") ?? "");
-    if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)));
+    if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
     m = path.match(/^\/done\/([A-Za-z0-9_-]+)$/);
     if (m) return done(env, m[1]!);
   }
@@ -107,6 +109,7 @@ function html(body: string, status = 200, scriptNonce?: string): Response {
   const csp = [
     "default-src 'none'",
     "img-src 'self' data: blob:",
+    "media-src 'self'",
     "style-src 'unsafe-inline'",
     scriptNonce ? `script-src 'nonce-${scriptNonce}'` : "script-src 'none'",
     "connect-src 'self'",
@@ -213,24 +216,47 @@ async function authorize(env: Env, slug: string, key: string): Promise<Site | nu
   return safeEqual(await sha256Hex(key), site.editKeyHash) ? site : null;
 }
 
-async function photo(env: Env, key: string): Promise<Response> {
-  if (!/^sites\/[a-z0-9-]+\/[A-Za-z0-9_-]+\.(jpg|png|webp)$/.test(key)) return new Response("Not found", { status: 404 });
+// Photos and the ad video. Byte ranges are supported because iPhone Safari
+// will not play a <video> whose server ignores Range.
+async function photo(env: Env, key: string, request: Request): Promise<Response> {
+  if (!/^sites\/[a-z0-9-]+\/[A-Za-z0-9_-]+\.(jpg|png|webp|mp4)$/.test(key)) return new Response("Not found", { status: 404 });
+  const headers = new Headers({
+    // Keys are random and never reused, so they can be cached forever.
+    "cache-control": "public, max-age=31536000, immutable",
+    "x-content-type-options": "nosniff",
+    "accept-ranges": "bytes",
+  });
+  const range = parseRange(request.headers.get("range"));
+  if (range) {
+    const obj = await env.PHOTOS.get(key, { range });
+    if (!obj || !("body" in obj)) return new Response("Not found", { status: 404 });
+    const start = "offset" in range ? range.offset : Math.max(0, obj.size - range.suffix);
+    const end = "length" in range && range.length !== undefined ? Math.min(obj.size, start + range.length) - 1 : obj.size - 1;
+    headers.set("content-type", obj.httpMetadata?.contentType ?? "application/octet-stream");
+    headers.set("content-range", `bytes ${start}-${end}/${obj.size}`);
+    headers.set("content-length", String(end - start + 1));
+    return new Response(obj.body, { status: 206, headers });
+  }
   const obj = await env.PHOTOS.get(key);
   if (!obj) return new Response("Not found", { status: 404 });
-  return new Response(obj.body, {
-    headers: {
-      "content-type": obj.httpMetadata?.contentType ?? "image/jpeg",
-      // Keys are random and never reused, so a photo can be cached forever.
-      "cache-control": "public, max-age=31536000, immutable",
-      "x-content-type-options": "nosniff",
-    },
-  });
+  headers.set("content-type", obj.httpMetadata?.contentType ?? "image/jpeg");
+  headers.set("content-length", String(obj.size));
+  return new Response(obj.body, { headers });
+}
+
+/** "bytes=0-" / "bytes=100-199" / "bytes=-500" -> an R2 range, else null. */
+function parseRange(h: string | null): { offset: number; length?: number } | { suffix: number } | null {
+  const m = h?.match(/^bytes=(\d*)-(\d*)$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  if (!m[1]) return { suffix: Number(m[2]) };
+  const offset = Number(m[1]);
+  return m[2] ? { offset, length: Number(m[2]) - offset + 1 } : { offset };
 }
 
 // ---------------------------------------------------------------------------
 // Create / update / delete
 
-type Parsed = { fields: Record<string, string>; files: File[]; keep: string[] };
+type Parsed = { fields: Record<string, string>; files: File[]; keep: string[]; video: File | null };
 
 async function readForm(request: Request): Promise<Parsed | null> {
   const type = request.headers.get("content-type") ?? "";
@@ -239,15 +265,18 @@ async function readForm(request: Request): Promise<Parsed | null> {
   const fields: Record<string, string> = {};
   const files: File[] = [];
   const keep: string[] = [];
+  let video: File | null = null;
   for (const [k, v] of form as unknown as Iterable<[string, string | File]>) {
     if (typeof v === "string") {
       if (k === "keep") keep.push(v);
       else fields[k] = v;
     } else if (k === "photos" && v.size > 0) {
       files.push(v);
+    } else if (k === "video" && v.size > 0) {
+      video = v;
     }
   }
-  return { fields, files, keep };
+  return { fields, files, keep, video };
 }
 
 function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES): string | null {
@@ -260,7 +289,7 @@ function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES
 }
 
 /** Store a validated site and mint its edit key. Shared by both create paths. */
-async function insertSite(env: Env, content: SiteContent, files: File[], source: Site["source"]) {
+async function insertSite(env: Env, content: SiteContent, files: File[], source: Site["source"], videoFile: File | null = null) {
   const slug = await uniqueSlug(env, content.businessName, content.city);
   const key = randomKey();
   const now = new Date().toISOString();
@@ -268,6 +297,7 @@ async function insertSite(env: Env, content: SiteContent, files: File[], source:
     ...content,
     slug,
     photos: await storePhotos(env, slug, files),
+    video: await storeVideo(env, slug, videoFile),
     status: "live",
     source,
     editKeyHash: await sha256Hex(key),
@@ -292,19 +322,53 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
   const photoErr = checkPhotos(form.files, 0, 8 * 1024 * 1024);
   if (photoErr) errors.photos = photoErr;
+  // Only the internal path takes a video (AdVault's finished ad); the public
+  // form doesn't, so a stranger can't host arbitrary video on our domain.
+  if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
+    errors.video = "Video must be an MP4 under 40 MB.";
+  }
   if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
-  return json({ ok: true, ...(await insertSite(env, parsed.value, form.files, "advault")) }, 201);
+  return json({ ok: true, ...(await insertSite(env, parsed.value, form.files, "advault", form.video)) }, 201);
+}
+
+// Web size: at most 1600 px on the long side, JPEG q82 (~150-300 KB). A
+// phone photo or AdVault's polished ad photo is 1 MB+, and a page of them is
+// slow on a phone. If the Images binding is missing or fails, the original is
+// stored rather than losing the photo.
+async function webSize(env: Env, f: File): Promise<{ bytes: ArrayBuffer; type: string }> {
+  if (env.IMAGES) {
+    try {
+      const out = await env.IMAGES.input(f.stream())
+        .transform({ width: 1600, height: 1600, fit: "scale-down" })
+        .output({ format: "image/jpeg", quality: 82 });
+      const bytes = await out.response().arrayBuffer();
+      if (bytes.byteLength > 0 && bytes.byteLength < f.size) return { bytes, type: "image/jpeg" };
+    } catch (err) {
+      console.warn("image resize failed, storing original", String(err));
+    }
+  }
+  return { bytes: await f.arrayBuffer(), type: f.type };
 }
 
 async function storePhotos(env: Env, slug: string, files: File[]): Promise<string[]> {
   const keys: string[] = [];
   for (const f of files) {
-    const ext = f.type === "image/png" ? "png" : f.type === "image/webp" ? "webp" : "jpg";
+    const { bytes, type } = await webSize(env, f);
+    const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
     const key = `sites/${slug}/${randomKey(9)}.${ext}`;
-    await env.PHOTOS.put(key, await f.arrayBuffer(), { httpMetadata: { contentType: f.type } });
+    await env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: type } });
     keys.push(key);
   }
   return keys;
+}
+
+const MAX_VIDEO_BYTES = 40 * 1024 * 1024;
+
+async function storeVideo(env: Env, slug: string, file: File | null): Promise<string | null> {
+  if (!file) return null;
+  const key = `sites/${slug}/${randomKey(9)}.mp4`;
+  await env.PHOTOS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: "video/mp4" } });
+  return key;
 }
 
 async function deletePhotos(env: Env, keys: string[]): Promise<void> {
@@ -378,8 +442,16 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
   const removed = site.photos.filter((k) => !kept.includes(k));
+  const dropVideo = Boolean(site.video) && form.fields.keepVideo !== "yes";
+  if (dropVideo && site.video) removed.push(site.video);
   const added = await storePhotos(env, slug, form.files);
-  const next: Site = { ...site, ...parsed.value, photos: [...kept, ...added], updatedAt: new Date().toISOString() };
+  const next: Site = {
+    ...site,
+    ...parsed.value,
+    photos: [...kept, ...added],
+    video: dropVideo ? null : (site.video ?? null),
+    updatedAt: new Date().toISOString(),
+  };
   await saveSite(env, next);
   await deletePhotos(env, removed);
 
@@ -398,8 +470,8 @@ async function deleteSite(request: Request, env: Env, slug: string): Promise<Res
 async function removeSite(env: Env, site: Site): Promise<void> {
   // Keep the record (status removed) so the slug isn't handed to someone else
   // and an abuse report can still be traced; the content is the photos.
-  await deletePhotos(env, site.photos);
-  await saveSite(env, { ...site, photos: [], status: "removed", updatedAt: new Date().toISOString() });
+  await deletePhotos(env, site.video ? [...site.photos, site.video] : site.photos);
+  await saveSite(env, { ...site, photos: [], video: null, status: "removed", updatedAt: new Date().toISOString() });
 }
 
 // ---------------------------------------------------------------------------

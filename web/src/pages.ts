@@ -214,6 +214,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${e("about")}</div>
 </fieldset>
 <fieldset><legend>Photos</legend>
+  ${mode.kind === "edit" && mode.site.video ? `<label class="check"><input type="checkbox" name="keepVideo" value="yes" checked> <span>Keep the video ad on my website</span></label>` : ""}
   ${existing}
   <div class="field"><label for="photos">Add photos <span class="hint">Up to ${MAX_PHOTOS} in total. JPG, PNG or WebP. Use photos you took or have the right to use.</span></label><input type="file" id="photos" name="photos" accept="image/jpeg,image/png,image/webp" multiple>${e("photos")}</div>
 </fieldset>
@@ -322,7 +323,8 @@ export function privacyPage(): string {
 <p>Last updated 15 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
 <h2>What we store</h2>
 <ul>
-  <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public.</li>
+  <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
+  <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
   <li><strong>A short-lived counter per network address</strong> to limit how many sites can be created in a day. It expires after about a day.</li>
 </ul>

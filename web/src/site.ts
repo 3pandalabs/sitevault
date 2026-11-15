@@ -49,6 +49,8 @@ export type SiteContent = {
 export type Site = SiteContent & {
   slug: string;
   photos: string[];
+  /** R2 key of the business's video ad (AdVault sites only). */
+  video?: string | null;
   status: "live" | "removed";
   source: "web" | "advault";
   editKeyHash: string;
