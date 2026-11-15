@@ -1,0 +1,24 @@
+{
+  // SiteVault: plain Worker (no framework, no server, no database).
+  // wrangler creates and maintains the DNS record for a custom_domain route
+  // itself; do NOT also add a manual record for this hostname.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sitevault-web",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "routes": [
+    { "pattern": "sitevault.3pandalabs.com", "custom_domain": true }
+    // Customer sites, once the separate domain is bought (see TODO.md):
+    // { "pattern": "*.<domain>/*", "zone_name": "<domain>" }  + set SITES_DOMAIN
+  ],
+  "kv_namespaces": [{ "binding": "SITES", "id": "3b04019ee45b408f9e53edd403d14db7" }],
+  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "sitevault-photos" }],
+  "observability": { "enabled": true },
+  "vars": {
+    "PUBLIC_ORIGIN": "https://sitevault.3pandalabs.com",
+    "DAILY_CREATE_LIMIT": "5"
+    // Secrets (wrangler secret put): METRICS_TOKEN (shared org token, for
+    // admin.3pandalabs.com), ADMIN_TOKEN (takedowns). Both optional: the
+    // endpoints answer 503 while unset, so a missing secret never bricks a deploy.
+  }
+}
