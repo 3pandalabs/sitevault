@@ -9,6 +9,8 @@ import {
   countsVisits,
   effectivePaidUntil,
   eventFromStripe,
+  festiveFor,
+  festiveOpen,
   initialBilling,
   offerSpend,
   planPrices,
@@ -48,8 +50,10 @@ describe("billingConfig", () => {
 
 describe("prices", () => {
   it("follow the decided table", () => {
-    expect(planPrices("web")).toEqual({ build: 5, basic: 15, pro: 20 });
-    expect(planPrices("advault")).toEqual({ build: 0, basic: null, pro: 15 });
+    expect(planPrices("web")).toEqual({ basic: 49, pro: 89, festive: false });
+    expect(planPrices("web", true)).toEqual({ basic: 29, pro: 89, festive: true });
+    expect(planPrices("advault")).toEqual({ basic: null, pro: 49, festive: false });
+    expect(planPrices("advault", true)).toEqual({ basic: null, pro: 49, festive: false });
   });
 });
 
@@ -61,13 +65,13 @@ describe("initialBilling", () => {
   it("SiteVault-made sites wait for payment, with 2 credits", () => {
     expect(initialBilling("web", ON, NOW)).toEqual({ status: "pending", plan: "basic", buildPaid: false, paidUntil: null, renewing: false, credits: 2 });
   });
-  it("AdVault-made sites are published with a free first month of Pro", () => {
+  it("AdVault-made sites are published with a first year of Pro (the $10 paid in AdVault)", () => {
     const b = initialBilling("advault", ON, NOW)!;
     expect(b.status).toBe("active");
     expect(b.plan).toBe("pro");
     expect(b.buildPaid).toBe(true);
     expect(b.credits).toBe(2);
-    expect(b.paidUntil).toBe(day(30).toISOString());
+    expect(b.paidUntil).toBe(day(365).toISOString());
   });
 });
 
@@ -144,7 +148,7 @@ describe("offerSpend", () => {
 
 describe("checkout", () => {
   const pending = initialBilling("web", ON, NOW)!;
-  const prices = { BUILD: "price_build", BASIC: "price_basic", PRO: "price_pro", PRO_ADVAULT: "price_pro_av", CREDITS: "price_credits" };
+  const prices = { BASIC: "price_basic", BASIC_FESTIVE: "price_festive", PRO: "price_pro", PRO_ADVAULT: "price_pro_av", CREDITS: "price_credits" };
 
   it("refuses unknown kinds, Basic for AdVault sites, and a duplicate renewing plan", () => {
     expect(checkoutProblem("free_stuff", "web", pending)).not.toBeNull();
@@ -155,12 +159,26 @@ describe("checkout", () => {
     expect(checkoutProblem("credits", "advault", active())).toBeNull();
   });
 
-  it("adds the $5 build fee only for unpaid SiteVault-made sites", () => {
-    expect(checkoutItems("publish_basic", "web", pending)).toEqual({ mode: "subscription", prices: ["BASIC", "BUILD"] });
-    expect(checkoutItems("publish_pro", "web", pending)).toEqual({ mode: "subscription", prices: ["PRO", "BUILD"] });
-    expect(checkoutItems("renew_pro", "web", active())).toEqual({ mode: "subscription", prices: ["PRO"] });
-    expect(checkoutItems("renew_pro", "advault", { ...active(), buildPaid: false })).toEqual({ mode: "subscription", prices: ["PRO_ADVAULT"] });
-    expect(checkoutItems("credits", "web", pending)).toEqual({ mode: "payment", prices: ["CREDITS"] });
+  it("charges one yearly price, no build fee; festive applies to Basic only", () => {
+    expect(checkoutItems("publish_basic", "web")).toEqual({ mode: "subscription", prices: ["BASIC"] });
+    expect(checkoutItems("publish_basic", "web", true)).toEqual({ mode: "subscription", prices: ["BASIC_FESTIVE"] });
+    expect(checkoutItems("renew_basic", "web", true)).toEqual({ mode: "subscription", prices: ["BASIC_FESTIVE"] });
+    expect(checkoutItems("publish_pro", "web", true)).toEqual({ mode: "subscription", prices: ["PRO"] });
+    expect(checkoutItems("renew_pro", "advault", true)).toEqual({ mode: "subscription", prices: ["PRO_ADVAULT"] });
+    expect(checkoutItems("credits", "web", true)).toEqual({ mode: "payment", prices: ["CREDITS"] });
+  });
+
+  it("tags a festive checkout so the webhook can lock the price", () => {
+    const r = checkoutParams({ kind: "publish_basic", slug: "b", source: "web", billing: pending, prices, returnUrl: "https://sv.test/e", festive: true });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const p = new Map(r.params);
+    expect(p.get("line_items[0][price]")).toBe("price_festive");
+    expect(p.has("line_items[1][price]")).toBe(false);
+    expect(p.get("metadata[festive]")).toBe("1");
+    expect(p.get("subscription_data[metadata][festive]")).toBe("1");
+    const pro = checkoutParams({ kind: "publish_pro", slug: "b", source: "web", billing: pending, prices, returnUrl: "https://sv.test/e", festive: true });
+    expect(pro.ok && new Map(pro.params).has("metadata[festive]")).toBe(false);
   });
 
   it("tags everything with metadata.app = sitevault", () => {
@@ -170,7 +188,7 @@ describe("checkout", () => {
     const p = new Map(r.params);
     expect(p.get("mode")).toBe("subscription");
     expect(p.get("line_items[0][price]")).toBe("price_pro");
-    expect(p.get("line_items[1][price]")).toBe("price_build");
+    expect(p.has("line_items[1][price]")).toBe(false);
     expect(p.get("metadata[app]")).toBe("sitevault");
     expect(p.get("metadata[slug]")).toBe("bellas");
     expect(p.get("metadata[kind]")).toBe("publish_pro");
@@ -196,8 +214,8 @@ describe("checkout", () => {
   });
 
   it("reports a missing price id instead of a half-built checkout", () => {
-    const r = checkoutParams({ kind: "publish_basic", slug: "b", source: "web", billing: pending, prices: { BASIC: "price_basic" }, returnUrl: "https://sv.test/e" });
-    expect(r).toEqual({ ok: false, missing: "BUILD" });
+    const r = checkoutParams({ kind: "publish_basic", slug: "b", source: "web", billing: pending, prices: { BASIC: "price_basic" }, returnUrl: "https://sv.test/e", festive: true });
+    expect(r).toEqual({ ok: false, missing: "BASIC_FESTIVE" });
   });
 });
 
@@ -335,6 +353,14 @@ describe("applyEvent", () => {
     expect(applyEvent(b, { type: "subscription_deleted", slug: "b", subscriptionId: "sub_basic" }, NOW).billing.renewing).toBe(true);
   });
 
+  it("a festive checkout locks $29 for life, through plan switches", () => {
+    const { billing } = applyEvent(pending, { ...done("publish_basic"), festive: true }, NOW);
+    expect(billing.festive).toBe(true);
+    const after = applyEvent(billing, done("renew_pro", "sub_2"), NOW).billing;
+    expect(after.festive).toBe(true);
+    expect(applyEvent(pending, done("publish_basic"), NOW).billing.festive).toBeUndefined();
+  });
+
   it("works on sites made before billing (early access record)", () => {
     const { billing } = applyEvent(billingOf({}), done("renew_basic"), NOW);
     expect(billing).toMatchObject({ status: "active", plan: "basic", earlyAccess: true, buildPaid: true });
@@ -348,30 +374,31 @@ describe("billing UI", () => {
     state: siteState({ billing: b }, ON, NOW),
     billing: b,
     source,
-    prices: planPrices(source),
+    prices: planPrices(source, festiveFor(b, ON, NOW)),
     paidUntil: effectivePaidUntil(b, ON),
     justPaid: false,
   });
 
-  it("an unpublished site offers both publish options with the build fee", () => {
+  it("an unpublished site offers both publish options, no build fee", () => {
     const h = billingSection("bellas", "k&y", view(initialBilling("web", ON, NOW)!));
-    expect(h).toContain("Publish: $5 + $15/year");
-    expect(h).toContain("Publish with Pro: $5 + $20/year");
+    expect(h).toContain("Publish: $49/year");
+    expect(h).toContain("Publish with Pro: $89/year");
+    expect(h).not.toContain("Festive");
     expect(h).toContain('value="publish_basic"');
     expect(h).toContain('value="k&amp;y"');
     expect(h).toContain("Buy 5 offer credits for $10");
     expect(h).not.toContain("Manage billing");
   });
 
-  it("an AdVault site is offered Pro at $15 and never Basic", () => {
+  it("an AdVault site is offered Pro at $49 and never Basic", () => {
     const h = billingSection("b", "k", view(initialBilling("advault", ON, NOW)!, "advault"));
-    expect(h).toContain("Pro: Pay $15/year");
+    expect(h).toContain("Pro: Pay $49/year");
     expect(h).not.toContain("renew_basic");
   });
 
   it("a renewing Basic site can upgrade and manage billing", () => {
     const h = billingSection("b", "k", view(active({ customerId: "cus_1" })));
-    expect(h).toContain("Upgrade to Pro: $20/year");
+    expect(h).toContain("Upgrade to Pro: $89/year");
     expect(h).toContain("Manage billing");
     expect(h).not.toContain('value="renew_basic"');
   });
@@ -379,7 +406,10 @@ describe("billing UI", () => {
   it("the done page shows Publish buttons only when the site waits for payment", () => {
     expect(donePage({ siteUrl: "https://a/", editUrl: "https://e/", nonce: "n" })).not.toContain("/api/billing/checkout");
     const d = donePage({ siteUrl: "https://a/", editUrl: "https://e/", nonce: "n", publish: { slug: "a", key: "k", prices: planPrices("web") } });
-    expect(d).toContain("Publish: $5 + $15/year");
+    expect(d).toContain("Publish: $49/year");
+    const f = donePage({ siteUrl: "https://a/", editUrl: "https://e/", nonce: "n", publish: { slug: "a", key: "k", prices: planPrices("web", true) } });
+    expect(f).toContain("Publish: $29/year");
+    expect(f).toContain("Festive season price: $29/year, locked for life");
     expect(d).toContain("https://e/");
   });
 
@@ -404,6 +434,25 @@ describe("billing UI", () => {
 
   it("terms describe the decided prices", () => {
     const t = termsPage();
-    for (const s of ["$5 one-time", "$15 a year", "$20 a year", "$10 for 5", "14 days"]) expect(t).toContain(s);
+    for (const s of ["$49 a year", "$89 a year", "$29 a year", "January 31, 2027", "$10 one-time", "Pro at $49 a year", "$10 for 5", "14 days"]) expect(t).toContain(s);
+    expect(t).not.toContain("$5 one-time");
+  });
+});
+
+describe("festive season price", () => {
+  const F = { on: true, earlyAccessUntil: "2027-01-31", festiveUntil: "2027-01-31" };
+  it("is open through the end of its last day (UTC), then closes", () => {
+    expect(festiveOpen(F, new Date("2027-01-31T23:59:59Z"))).toBe(true);
+    expect(festiveOpen(F, new Date("2027-02-01T00:00:00Z"))).toBe(false);
+    expect(festiveOpen(ON, NOW)).toBe(false);
+  });
+  it("stays on a site that locked it in", () => {
+    const late = new Date("2028-06-01T00:00:00Z");
+    expect(festiveFor(active({ festive: true }), F, late)).toBe(true);
+    expect(festiveFor(active(), F, late)).toBe(false);
+  });
+  it("is read from FESTIVE_UNTIL", () => {
+    expect(billingConfig({ FESTIVE_UNTIL: "2027-01-31" }).festiveUntil).toBe("2027-01-31");
+    expect(billingConfig({ FESTIVE_UNTIL: "nope" }).festiveUntil).toBeNull();
   });
 });

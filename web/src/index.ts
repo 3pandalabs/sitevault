@@ -38,7 +38,10 @@ import {
   checkoutProblem,
   countsVisits,
   effectivePaidUntil,
+  endOf,
   eventFromStripe,
+  festiveFor,
+  festiveOpen,
   initialBilling,
   internalOfferSpend,
   OFFER_REF_TTL_SECONDS,
@@ -77,10 +80,12 @@ export interface Env {
   BILLING?: string;
   /** ISO date: sites made before billing started are paid until then. */
   EARLY_ACCESS_UNTIL?: string;
+  /** ISO date: Basic paid on or before this day is $29/year for life (festive season price). */
+  FESTIVE_UNTIL?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
-  STRIPE_PRICE_BUILD?: string;
   STRIPE_PRICE_BASIC?: string;
+  STRIPE_PRICE_BASIC_FESTIVE?: string;
   STRIPE_PRICE_PRO?: string;
   STRIPE_PRICE_PRO_ADVAULT?: string;
   STRIPE_PRICE_CREDITS?: string;
@@ -138,7 +143,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   if (method === "GET") {
-    if (path === "/") return html(homePage(billingConfig(env).on));
+    if (path === "/") {
+      const cfg = billingConfig(env);
+      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null));
+    }
     if (path === "/new") return builder(env, { kind: "new" });
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
@@ -452,7 +460,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false): Pr
       state: siteState(site, cfg, now),
       billing: b,
       source: site.source,
-      prices: planPrices(site.source),
+      prices: planPrices(site.source, festiveFor(b, cfg, now)),
       paidUntil: effectivePaidUntil(b, cfg),
       justPaid,
     };
@@ -508,8 +516,8 @@ async function countTap(request: Request, env: Env, ctx: ExecutionContext, slug:
 
 function priceIds(env: Env): PriceIds {
   return {
-    BUILD: env.STRIPE_PRICE_BUILD || undefined,
     BASIC: env.STRIPE_PRICE_BASIC || undefined,
+    BASIC_FESTIVE: env.STRIPE_PRICE_BASIC_FESTIVE || undefined,
     PRO: env.STRIPE_PRICE_PRO || undefined,
     PRO_ADVAULT: env.STRIPE_PRICE_PRO_ADVAULT || undefined,
     CREDITS: env.STRIPE_PRICE_CREDITS || undefined,
@@ -537,6 +545,7 @@ async function billingCheckout(request: Request, env: Env): Promise<Response> {
     billing: billingOf(site),
     prices: priceIds(env),
     returnUrl: editUrlFor(env, site.slug, key),
+    festive: festiveFor(billingOf(site), billingConfig(env), new Date()),
   });
   if (!params.ok) {
     console.error("stripe price missing", { price: params.missing });
@@ -882,7 +891,7 @@ async function createSite(request: Request, env: Env): Promise<Response> {
 
   const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested);
   // BILLING on: the site waits for payment; the done page offers Publish.
-  const publish = pending ? { slug, key, prices: planPrices("web") } : undefined;
+  const publish = pending ? { slug, key, prices: planPrices("web", festiveOpen(billingConfig(env), new Date())) } : undefined;
   const n = nonce();
   const page = donePage({ siteUrl: siteUrl(env, slug), editUrl, nonce: n, publish });
   // The done page carries the only copy of the edit key: render it straight
