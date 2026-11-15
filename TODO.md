@@ -2,18 +2,32 @@
 
 ## Decisions pending (owner: Anil + Prachi)
 
-- [x] **Pricing DECIDED (2026-11-15, revised same day: sites are SEPARATE from
-      AdVault once created).** Not built yet; free during early access until
-      payments ship. All plans billed yearly (Stripe's fixed 30¢ makes small
-      monthly charges lose ~18%).
+- [x] **Pricing v2 DECIDED and BUILT (2026-11-15 evening; replaces $5 + $15/$20).**
+      All plans billed yearly. Built free, pay when you publish (no build fee).
 
   | | Made on SiteVault | Made from AdVault |
   |---|---|---|
-  | Build the site | **$5** one-time | **Free** |
-  | Basic (keep it running) | **$15/year** | (they get Pro instead) |
-  | Pro (visit stats) | **$20/year** | **$15/year** (Pro at the Basic price) |
+  | Build the site | **Free** (pay to publish) | **$10** one-time, charged in AdVault, includes year one of Pro |
+  | Basic (keep it running) | **$49/year** | (they get Pro instead) |
+  | Festive season price | **Basic $29/year, locked for life**, if paid on or before 2027-01-31 (`FESTIVE_UNTIL`) | - |
+  | Pro (visit stats) | **$89/year** | **$49/year** from year two |
   | New offer on the site | 1 credit | 1 credit |
   | Offer on the site AND as an AdVault ad | **$12** | **$12** |
+
+  - Pitch: "Your business online in 2 minutes." Festive line on the home page:
+    "Festive season price: $29/year, locked for life. Join before January 31,
+    2027. After that, $49/year." Date-based on purpose: never show customer
+    counts ("first 100") anywhere.
+  - [ ] **AdVault side: charge the $10** with the ad checkout (one Stripe
+    payment, optional line only when "Make me a website" was used). Until
+    then AdVault-made sites get the year free.
+  - [ ] Referral offer ("refer a business, you both get 6 months free"): not
+    built; don't advertise it until it is.
+  - [ ] Edit-page card for SiteVault-made sites: "Get your first customers from
+    YouTube, first ad free" -> AdVault new-ad form prefilled (only on click).
+  - [ ] Pro stats nudge toward ads (only with real comparison numbers).
+  - Old prices ($5/$15/$20/$15) are inactive in Stripe use; no subscription
+    ever used them.
 
   - **Separate products after creation.** A site's billing never depends on
     the owner's AdVault plan; cancelling AdVault changes nothing for the

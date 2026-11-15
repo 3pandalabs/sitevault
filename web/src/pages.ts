@@ -6,7 +6,7 @@
 import { CATEGORIES, MAX_PHOTOS, servicesToText, type FieldErrors, type Site } from "./site.js";
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
-import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type SiteState, type Source } from "./billing.js";
+import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
 import type { SiteStats } from "./stats.js";
 
 const CONTACT = "3pandas@3pandalabs.com";
@@ -138,14 +138,23 @@ ${opts.script && opts.nonce ? `<script nonce="${opts.nonce}">${opts.script}</scr
 </html>`;
 }
 
-export function homePage(billingOn = false): string {
+/** The home page's price line. `festiveUntil`: the festive offer's last day, while it's open. */
+function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
+  if (!billingOn) return "<b>Free</b> during early access.";
+  if (festiveUntil) {
+    return `<b>Festive season price: $${DOLLARS.festive}/year, locked for life.</b> Join before ${esc(fmtDate(festiveUntil))}. After that, $${DOLLARS.basic}/year.<br>Build it free. Pay only when you publish.`;
+  }
+  return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
+}
+
+export function homePage(billingOn = false, festiveUntil: Date | null = null): string {
   return layout({
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>
   <h1>Your business online in five minutes.</h1>
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
-  <p class="price">${billingOn ? `<b>$${DOLLARS.build}</b> to build, then $${DOLLARS.basic} a year.` : "<b>Free</b> during early access."}</p>
+  <p class="price">${priceLine(billingOn, festiveUntil)}</p>
   <div style="display:flex;flex-wrap:wrap;gap:12px"><a class="btn" href="/new">Build my website</a><a class="btn ghost" href="#features">What you get</a></div>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
@@ -176,7 +185,7 @@ export type BillingView = {
   state: SiteState;
   billing: Billing;
   source: Source;
-  prices: { build: number; basic: number | null; pro: number };
+  prices: PlanPrices;
   /** End of the paid period, counting early access (null = no end date). */
   paidUntil: Date | null;
   /** Back from Stripe Checkout (the webhook may still be on its way). */
@@ -194,10 +203,10 @@ function payButton(slug: string, key: string, kind: CheckoutKind, label: string,
 
 /** Buttons to publish a SiteVault-made site (done page and edit page). */
 function publishButtons(slug: string, key: string, prices: BillingView["prices"]): string {
-  const build = prices.build ? `$${prices.build} + ` : "";
-  return `<div class="buttons">${
-    prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: ${build}$${prices.basic}/year`) : ""
-  }${payButton(slug, key, "publish_pro", `Publish with Pro: ${build}$${prices.pro}/year`, prices.basic !== null)}</div>`;
+  const festive = prices.festive ? `<p class="hint">Festive season price: $${prices.basic}/year, locked for life (normally $${DOLLARS.basic}).</p>` : "";
+  return `${festive}<div class="buttons">${
+    prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: $${prices.basic}/year`) : ""
+  }${payButton(slug, key, "publish_pro", `Publish with Pro: $${prices.pro}/year`, prices.basic !== null)}</div>`;
 }
 
 export function billingSection(slug: string, key: string, v: BillingView): string {
@@ -592,13 +601,14 @@ export function termsPage(): string {
 <h2>Real estate</h2>
 <p>Housing-related sites must follow US fair-housing law, including not stating preferences based on protected characteristics.</p>
 <h2>Price</h2>
-<p>SiteVault is free during early access. When paid plans start, prices in US dollars are:</p>
+<p>Prices are in US dollars:</p>
 <ul>
-  <li><strong>Websites made on SiteVault</strong>: $5 one-time to build and publish, then Basic at $15 a year to keep the site running, or Pro at $20 a year, which adds visitor stats.</li>
-  <li><strong>Websites made from AdVault</strong>: free to build, with the first month free; then Pro at $15 a year.</li>
+  <li><strong>Websites made on SiteVault</strong>: free to build; you pay when you publish. Basic is $49 a year to keep the site running; Pro is $89 a year and adds visitor stats.</li>
+  <li><strong>Festive season price</strong>: Basic paid on or before January 31, 2027 is $29 a year, and stays $29 a year for as long as the site keeps a Basic plan, including if it pays again after a lapse.</li>
+  <li><strong>Websites made from AdVault</strong>: $10 one-time, paid in AdVault, which includes the first year of Pro; then Pro at $49 a year.</li>
   <li><strong>Offer credits</strong>: every site starts with 2. Changing your current special uses 1 credit; clearing it is free. Extra credits are $10 for 5.</li>
 </ul>
-<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until the early-access end date we announce. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Sites are billed separately from any AdVault plan. You can remove your site at any time.</p>
+<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until January 31, 2027. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Sites are billed separately from any AdVault plan. You can remove your site at any time.</p>
 <h2>No guarantee</h2>
 <p>SiteVault is provided as is. We work to keep sites online but don't guarantee uninterrupted service. To the extent the law allows, our liability is limited to the amount you've paid us in the last 12 months.</p>
 <h2>Law</h2>

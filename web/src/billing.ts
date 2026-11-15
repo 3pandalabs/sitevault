@@ -1,13 +1,17 @@
 // Paid plans: the pure decisions. No fetch, no KV, no Stripe calls here (see
 // stripe.ts and index.ts), so every rule below is unit-tested.
 //
-// Pricing (owner's decision, 2026-11-15):
-//                    Made on SiteVault     Made from AdVault
-//   Build            $5 one-time           free
-//   Basic            $15/year              not offered
-//   Pro (stats)      $20/year              $15/year
-//   Offer change     1 credit              1 credit
+// Pricing (owner's decision, revised 2026-11-15):
+//                    Made on SiteVault           Made from AdVault
+//   Build            free (pay when you publish) $10 in AdVault, first year of Pro included
+//   Basic            $49/year                    not offered
+//   Festive Basic    $29/year, locked for life,  -
+//                    if paid before FESTIVE_UNTIL
+//   Pro (stats)      $89/year                    $49/year from year two
+//   Offer change     1 credit                    1 credit
 // Every new site starts with 2 credits; a pack is 5 credits for $10.
+// "Locked for life": the Stripe subscription keeps the $29 price, and
+// billing.festive keeps a lapsed site on $29 when it pays again.
 // Unpaid: 14 days' grace after paidUntil, then a "paused" page. Never delete.
 //
 // Everything is behind BILLING ("off" by default). Off = everything free,
@@ -20,7 +24,7 @@ export type Billing = {
   /** pending = made on SiteVault and not yet paid for (unpublished). */
   status: "pending" | "active";
   plan: Plan;
-  /** The $5 build fee (SiteVault-made sites only). */
+  /** Published at least once (the old $5 build fee is gone; kept for stored records). */
   buildPaid: boolean;
   /** ISO time the paid period ends; null while pending. */
   paidUntil: string | null;
@@ -29,50 +33,71 @@ export type Billing = {
   credits: number;
   /** Created before billing started: paid until EARLY_ACCESS_UNTIL. */
   earlyAccess?: boolean;
+  /** Paid Basic at the festive price: $29/year for life. */
+  festive?: boolean;
   customerId?: string | null;
   subscriptionId?: string | null;
   ownerEmail?: string | null;
 };
 
-export type BillingConfig = { on: boolean; earlyAccessUntil: string | null };
+export type BillingConfig = { on: boolean; earlyAccessUntil: string | null; festiveUntil?: string | null };
 
 export type CheckoutKind = "publish_basic" | "publish_pro" | "renew_basic" | "renew_pro" | "credits";
 export const CHECKOUT_KINDS: CheckoutKind[] = ["publish_basic", "publish_pro", "renew_basic", "renew_pro", "credits"];
 
-export type PriceKey = "BUILD" | "BASIC" | "PRO" | "PRO_ADVAULT" | "CREDITS";
+export type PriceKey = "BASIC" | "BASIC_FESTIVE" | "PRO" | "PRO_ADVAULT" | "CREDITS";
 export type PriceIds = Partial<Record<PriceKey, string>>;
 
 export const START_CREDITS = 2;
 export const PACK_CREDITS = 5;
 export const GRACE_DAYS = 14;
-export const ADVAULT_FREE_DAYS = 30;
+/** The first year of an AdVault-made site is covered by the $10 paid in AdVault. */
+export const ADVAULT_INCLUDED_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Dollar amounts for display. Stripe prices hold the real amounts. */
-export const DOLLARS = { build: 5, basic: 15, pro: 20, proAdvault: 15, pack: 10 } as const;
+export const DOLLARS = { basic: 49, festive: 29, pro: 89, proAdvault: 49, advaultSetup: 10, pack: 10 } as const;
 
-export function billingConfig(env: { BILLING?: string; EARLY_ACCESS_UNTIL?: string }): BillingConfig {
-  const until = env.EARLY_ACCESS_UNTIL && !Number.isNaN(Date.parse(env.EARLY_ACCESS_UNTIL)) ? env.EARLY_ACCESS_UNTIL : null;
-  return { on: env.BILLING === "on", earlyAccessUntil: until };
+const validDate = (v?: string) => (v && !Number.isNaN(Date.parse(v)) ? v : null);
+
+/** End of a YYYY-MM-DD day (UTC), or the exact time for a full timestamp. */
+export function endOf(date: string): Date {
+  return new Date(new Date(date).getTime() + (date.length <= 10 ? DAY_MS - 1 : 0));
 }
 
-/** What a site pays, by where it was made. Basic is null when not offered. */
-export function planPrices(source: Source): { build: number; basic: number | null; pro: number } {
+/** The festive offer is open (Basic at $29/year, locked for life). */
+export function festiveOpen(cfg: BillingConfig, now: Date): boolean {
+  return Boolean(cfg.festiveUntil) && now.getTime() <= endOf(cfg.festiveUntil!).getTime();
+}
+
+/** This site's Basic price is the festive one: the offer is open, or it locked it in. */
+export function festiveFor(b: Billing | undefined, cfg: BillingConfig, now: Date): boolean {
+  return Boolean(b?.festive) || festiveOpen(cfg, now);
+}
+
+export function billingConfig(env: { BILLING?: string; EARLY_ACCESS_UNTIL?: string; FESTIVE_UNTIL?: string }): BillingConfig {
+  return { on: env.BILLING === "on", earlyAccessUntil: validDate(env.EARLY_ACCESS_UNTIL), festiveUntil: validDate(env.FESTIVE_UNTIL) };
+}
+
+export type PlanPrices = { basic: number | null; pro: number; festive: boolean };
+
+/** What a site pays per year, by where it was made. Basic is null when not offered. */
+export function planPrices(source: Source, festive = false): PlanPrices {
   return source === "advault"
-    ? { build: 0, basic: null, pro: DOLLARS.proAdvault }
-    : { build: DOLLARS.build, basic: DOLLARS.basic, pro: DOLLARS.pro };
+    ? { basic: null, pro: DOLLARS.proAdvault, festive: false }
+    : { basic: festive ? DOLLARS.festive : DOLLARS.basic, pro: DOLLARS.pro, festive };
 }
 
 /** Billing for a brand-new site, or undefined while BILLING is off (so the site counts as early access later). */
 export function initialBilling(source: Source, cfg: BillingConfig, now: Date): Billing | undefined {
   if (!cfg.on) return undefined;
   if (source === "advault") {
-    // Published at once; first month free, then Pro at the AdVault price.
+    // Published at once with a year of Pro (the $10 paid in AdVault), then Pro at the AdVault price.
     return {
       status: "active",
       plan: "pro",
       buildPaid: true,
-      paidUntil: new Date(now.getTime() + ADVAULT_FREE_DAYS * DAY_MS).toISOString(),
+      paidUntil: new Date(now.getTime() + ADVAULT_INCLUDED_DAYS * DAY_MS).toISOString(),
       renewing: false,
       credits: START_CREDITS,
     };
@@ -101,7 +126,7 @@ export function effectivePaidUntil(b: Billing, cfg: BillingConfig): Date | null 
   if (!b.earlyAccess) return paid;
   // EARLY_ACCESS_UNTIL is a date: early access lasts to the end of that day (UTC).
   if (!cfg.earlyAccessUntil) return null;
-  const early = new Date(new Date(cfg.earlyAccessUntil).getTime() + (cfg.earlyAccessUntil.length <= 10 ? DAY_MS - 1 : 0));
+  const early = endOf(cfg.earlyAccessUntil);
   return paid && paid > early ? paid : early;
 }
 
@@ -185,12 +210,11 @@ export function checkoutProblem(kind: string, source: Source, b: Billing): strin
   return null;
 }
 
-/** Stripe prices and mode for a checkout. The build fee rides along with the first plan payment. */
-export function checkoutItems(kind: CheckoutKind, source: Source, b: Billing): { mode: "subscription" | "payment"; prices: PriceKey[] } {
+/** Stripe price and mode for a checkout. `festive`: Basic at the festive price (see festiveFor). */
+export function checkoutItems(kind: CheckoutKind, source: Source, festive = false): { mode: "subscription" | "payment"; prices: PriceKey[] } {
   if (kind === "credits") return { mode: "payment", prices: ["CREDITS"] };
-  const plan: PriceKey = kind.endsWith("_pro") ? (source === "advault" ? "PRO_ADVAULT" : "PRO") : "BASIC";
-  const build = source !== "advault" && !b.buildPaid;
-  return { mode: "subscription", prices: build ? [plan, "BUILD"] : [plan] };
+  if (kind.endsWith("_pro")) return { mode: "subscription", prices: [source === "advault" ? "PRO_ADVAULT" : "PRO"] };
+  return { mode: "subscription", prices: [festive ? "BASIC_FESTIVE" : "BASIC"] };
 }
 
 /**
@@ -209,9 +233,12 @@ export function checkoutParams(opts: {
   billing: Billing;
   prices: PriceIds;
   returnUrl: string;
+  /** Basic at the festive price (see festiveFor). */
+  festive?: boolean;
 }): { ok: true; params: [string, string][] } | { ok: false; missing: PriceKey } {
   const { kind, slug, billing, returnUrl } = opts;
-  const items = checkoutItems(kind, opts.source, billing);
+  const items = checkoutItems(kind, opts.source, opts.festive);
+  const festive = items.prices[0] === "BASIC_FESTIVE";
   const p: [string, string][] = [["mode", items.mode]];
   for (const [i, key] of items.prices.entries()) {
     const id = opts.prices[key];
@@ -227,12 +254,14 @@ export function checkoutParams(opts: {
     ["metadata[slug]", slug],
     ["metadata[kind]", kind],
   );
+  if (festive) p.push(["metadata[festive]", "1"]);
   if (items.mode === "subscription") {
     p.push(
       ["subscription_data[metadata][app]", "sitevault"],
       ["subscription_data[metadata][slug]", slug],
       ["subscription_data[metadata][plan]", kind.endsWith("_pro") ? "pro" : "basic"],
     );
+    if (festive) p.push(["subscription_data[metadata][festive]", "1"]);
   } else {
     p.push(["payment_intent_data[metadata][app]", "sitevault"], ["payment_intent_data[metadata][slug]", slug]);
   }
@@ -245,7 +274,7 @@ export function checkoutParams(opts: {
 // Webhook events -> state changes
 
 export type BillingEvent =
-  | { type: "checkout_completed"; slug: string; kind: CheckoutKind; customerId: string | null; subscriptionId: string | null; email: string | null }
+  | { type: "checkout_completed"; slug: string; kind: CheckoutKind; customerId: string | null; subscriptionId: string | null; email: string | null; festive?: boolean }
   | { type: "invoice_paid"; slug: string; subscriptionId: string | null; periodEnd: number | null; plan: Plan | null }
   | { type: "subscription_deleted"; slug: string; subscriptionId: string };
 
@@ -285,6 +314,7 @@ export function eventFromStripe(evt: unknown): BillingEvent | null {
       customerId: idOf(o.customer),
       subscriptionId: idOf(o.subscription),
       email: str(obj(o.customer_details).email),
+      ...(m.festive === "1" ? { festive: true } : {}),
     };
   }
   if (e.type === "invoice.paid") {
@@ -327,6 +357,8 @@ export function applyEvent(current: Billing, ev: BillingEvent, now: Date): { bil
     b.plan = plan;
     b.buildPaid = true;
     b.renewing = true;
+    // Locked for life, even if they switch plans or lapse and come back.
+    if (ev.festive) b.festive = true;
     if (ev.subscriptionId) b.subscriptionId = ev.subscriptionId;
     // Provisional year from today; invoice.paid sets the exact period end.
     // Never shortens time already paid for.
