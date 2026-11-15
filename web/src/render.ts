@@ -77,6 +77,17 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  const video = site.video
+    ? `<section aria-labelledby="video-h">
+  <div class="wrap">
+    <h2 id="video-h">See us in action</h2>
+    <video class="ad" controls playsinline preload="metadata"${hero ? ` poster="${esc(hero)}"` : ""} aria-label="${esc(`${site.businessName} video`)}">
+      <source src="${esc(photoUrl(ctx, site.video))}" type="video/mp4">
+    </video>
+  </div>
+</section>`
+    : "";
+
   const galleryHtml = gallery.length
     ? `<section aria-labelledby="gallery-h" class="band">
   <div class="wrap">
@@ -140,6 +151,7 @@ h2{font-size:1.5rem;margin:0 0 16px}
 .svc{font-weight:600}.price{color:var(--muted);white-space:nowrap}
 .gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .gallery img{width:100%;height:200px;object-fit:cover;border-radius:10px;display:block}
+video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:#000}
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .facts h3{margin:0 0 4px;font-size:1rem}
 .facts p{margin:0;white-space:pre-line;color:var(--muted)}
@@ -173,6 +185,7 @@ ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
   ${site.email ? `<a class="btn ghost" href="mailto:${esc(site.email)}">Email us</a>` : ""}
   ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener">Get directions</a>` : ""}
 </div>
+${video}
 ${services}
 ${about}
 ${galleryHtml}

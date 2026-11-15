@@ -99,6 +99,16 @@ describe("renderSite", () => {
     expect(html).toContain("/p/sites/ekmoliya-landscaping-secaucus/abc.jpg");
     expect(html).toContain('"@type":"LocalBusiness"');
   });
+  it("shows the video ad only when the site has one", () => {
+    expect(html).not.toContain("<video");
+    const v = renderSite({ ...site, video: "sites/ekmoliya-landscaping-secaucus/ad.mp4" }, {
+      siteUrl: "https://x/s/a",
+      assetOrigin: "https://x",
+      homeUrl: "https://x",
+    });
+    expect(v).toContain('<source src="https://x/p/sites/ekmoliya-landscaping-secaucus/ad.mp4" type="video/mp4">');
+    expect(v).toContain("playsinline");
+  });
   it("adds the fair-housing line only for real estate", () => {
     expect(html).not.toContain("Equal Housing Opportunity");
     const re = renderSite({ ...site, category: "realestate" }, {
