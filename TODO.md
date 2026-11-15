@@ -2,12 +2,24 @@
 
 ## Decisions pending (owner: Anil + Prachi)
 
-- [ ] **Pricing.** Free during early access for now. Decide later:
-      free with an AdVault ad (as its landing page)? standalone around
-      $5–9/month? around $12/month with the customer's own domain? Check the
-      AI site builders (Durable, Wix AI, Squarespace Blueprint, GoDaddy Airo,
-      Hostinger AI) before deciding. Update the terms page "Price" section and
-      the home-page pill when decided.
+- [x] **Pricing DECIDED (2026-11-15, keep it simple)**. Not built yet; free
+      during early access until payments ship.
+  - **$5 one-time to create a site.** Waived when the site is made from
+    AdVault ("Make me a website").
+  - **$2/month upkeep, billed yearly as $24.** Stripe's fixed 30¢ would take
+    about 18% of a $2 monthly charge but only about 4% of $24 a year.
+    Standalone signup = $29 at checkout ($5 + first year), then $24/year.
+  - **AdVault customers on an active plan** (Keep it running and up) pay no
+    upkeep. A $10-ad-only customer (no plan) pays the $2/month (billed yearly)
+    after the first month.
+  - **Unpaid:** 14-day grace, then a simple "This site is paused" page that
+    still shows the business name and phone. Never delete: an AdVault ad may
+    point at the site, and paying again restores it instantly with all data.
+  - Sites stay on `<slug>.3pandasite.com`. Customer-owned domains are a later
+    upgrade (see Build next); we never register domains in our name for them.
+  - When building: Stripe via the shared org account (`metadata.app =
+    sitevault`), update the terms page "Price" section and the home-page pill
+    in the same PR.
 - [x] **Customer-site domain: 3pandasite.com** (bought 2026-11-15, Cloudflare Registrar, $11.17/yr, paid personally: reimbursable). Sites live at `<slug>.3pandasite.com`; `/s/<slug>` 301s there. Optional: buy `threepandasite.com` as a redirect.
 - [ ] ~~Customer-site domain: pick a name and buy it~~ (done, kept for the record) (Cloudflare Registrar,
       about $10–15/year). Customer sites will move from
@@ -24,8 +36,35 @@
   Once bought: add the zone to the 3PandaLabs Cloudflare account, add the
   `*.<domain>/*` route in `web/wrangler.jsonc`, set `SITES_DOMAIN`, and deploy.
   Keep old `/s/<slug>` links working (redirect to the new host).
-- [ ] **When an AdVault customer stops paying**: does their site stay live
-      (free tier with the footer credit) or come down?
+- [x] **When an AdVault customer stops paying**: covered by the pricing
+      decision above (falls to $2/month upkeep; unpaid = paused page, never
+      deleted).
+
+## Before taking paying customers (shared-domain risks)
+
+All customer sites share 3pandasite.com, so one bad site or one domain
+problem hits every customer (and every AdVault ad pointing at them).
+
+- [ ] **Register a DMCA designated agent** at copyright.gov ($6, valid 3
+      years) and add a copyright-complaint line to the terms. Use the
+      Northwest Registered Agent address, never the home address (the
+      directory is public). Do it after the Northwest switch.
+- [ ] **Move 3pandasite.com billing to Mercury** (currently Anil's personal
+      card ••3861, reimbursable). Keep auto-renew on; consider renewing
+      several years ahead. If the domain lapses, every site goes down.
+- [ ] **"Report this site" link** in every customer site's footer, wired to
+      the admin takedown route. Answer abuse reports fast: an unanswered
+      complaint can get the whole domain suspended.
+- [ ] **Submit 3pandasite.com to the Public Suffix List**
+      (github.com/publicsuffix/list, private section). Browsers and Google
+      Safe Browsing then treat each `<slug>.3pandasite.com` as its own site,
+      so one flagged site doesn't red-flag all of them. Needs a `_psl` TXT
+      record; review takes weeks, so start early.
+- [ ] Keep the abuse guardrails (facts only, no links in text, strict CSP,
+      per-IP create limit); the $5 fee itself deters spam. Turn on Turnstile
+      at the first sign of spam.
+- [ ] Switch the domain's registrant address to the Northwest address with
+      the rest of the privacy work.
 
 ## Build next
 
