@@ -20,6 +20,7 @@
 //   POST /api/internal/sites       one-click create from AdVault (INTERNAL_TOKEN)
 //   GET  /api/internal/sites/<slug>/offer-status   offer, credits, billing (INTERNAL_TOKEN)
 //   POST /api/internal/sites/<slug>/offer          set the offer from AdVault's combo (INTERNAL_TOKEN)
+//   POST /api/internal/sites/<slug>/paid           AdVault took the $10: publish with a year of Pro (INTERNAL_TOKEN)
 //   POST /api/billing/checkout     Stripe Checkout (edit key in the form; BILLING on)
 //   POST /api/billing/portal       Stripe billing portal (edit key in the form)
 //   POST /webhooks/stripe          Stripe events (signature-checked; metadata.app = sitevault only)
@@ -31,6 +32,7 @@
 import { renderHold, renderSite, type RenderContext } from "./render.js";
 import { builderPage, donePage, homePage, messagePage, privacyPage, termsPage, type BillingView, type FormMode } from "./pages.js";
 import {
+  applyAdvaultPaid,
   applyEvent,
   billingConfig,
   billingOf,
@@ -186,6 +188,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (m) return updateSite(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer$/);
     if (m) return setOfferInternal(request, env, m[1]!);
+    m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/paid$/);
+    if (m) return paidInternal(request, env, m[1]!);
     m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/delete$/);
     if (m) return deleteSite(request, env, m[1]!);
     m = path.match(/^\/api\/admin\/sites\/([a-z0-9-]+)\/remove$/);
@@ -381,6 +385,36 @@ async function setOfferInternal(request: Request, env: Env, slug: string): Promi
   };
   await env.SITES.put(offerRefKey(ref), JSON.stringify(result), { expirationTtl: OFFER_REF_TTL_SECONDS });
   return json(result);
+}
+
+const paidRefKey = (ref: string) => `paidref:${ref}`;
+
+// POST /api/internal/sites/<slug>/paid  { ref }
+// AdVault charged its $10 website fee for a site made with awaitingPayment:
+// publish it with a year of Pro. Idempotent on ref (AdVault's purchase id).
+async function paidInternal(request: Request, env: Env, slug: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  let body: { ref?: unknown };
+  try {
+    body = (await request.json()) as { ref?: unknown };
+  } catch {
+    return json({ ok: false, error: "bad_json" }, 400);
+  }
+  const ref = typeof body.ref === "string" && /^[A-Za-z0-9_-]{6,80}$/.test(body.ref) ? body.ref : null;
+  if (!ref) return json({ ok: false, error: "invalid", detail: "ref required" }, 400);
+  const site = await liveSiteFollowingAliases(env, slug);
+  if (!site) return json({ ok: false, error: "not_found" }, 404);
+  const done = { ok: true, slug: site.slug, siteUrl: siteUrl(env, site.slug) };
+  if (await env.SITES.get(paidRefKey(ref))) return json(done);
+  // BILLING off: nothing to unlock (the site is already live).
+  if (site.billing) {
+    const fresh = (await loadSite(env, site.slug)) ?? site;
+    await saveSite(env, { ...fresh, billing: applyAdvaultPaid(billingOf(fresh), new Date()), updatedAt: new Date().toISOString() });
+  }
+  await env.SITES.put(paidRefKey(ref), "1", { expirationTtl: 400 * 24 * 60 * 60 });
+  console.log("advault_paid", { slug: site.slug, ref });
+  return json(done);
 }
 
 function renderCtx(env: Env, slug: string): RenderContext {
@@ -752,13 +786,14 @@ async function insertSite(
   source: Site["source"],
   videoFile: File | null = null,
   requested: string | null = null,
+  awaitingPayment = false,
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
   const nowDate = new Date();
   const now = nowDate.toISOString();
   // BILLING off: no billing record, so the site counts as early access later.
-  const billing = initialBilling(source, billingConfig(env), nowDate);
+  const billing = initialBilling(source, billingConfig(env), nowDate, awaitingPayment);
   const site: Site = {
     ...(billing ? { billing } : {}),
     ...content,
@@ -804,7 +839,9 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   }
   if (parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
   if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
-  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested);
+  // "1": AdVault charges $10 first; the site waits unpublished until /paid.
+  const awaiting = form.fields.awaitingPayment === "1";
+  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting);
   return json({ ok: true, slug: made.slug, siteUrl: made.siteUrl, editUrl: made.editUrl }, 201);
 }
 

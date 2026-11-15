@@ -50,6 +50,7 @@ INTERNAL_TOKEN, both follow renames (`alias:` keys) like resolve:
   returned. Idempotent on `ref` (AdVault's purchase id): KV `offerref:<ref>`, 30
   days, a repeat replays the first result. Re-reads the site right before saving
   so a webhook write isn't clobbered.
+- **$10 website fee (2026-11-15):** AdVault creates with form field `awaitingPayment=1` when it charges; the site is then `pending` (unpublished, plan pro) until `POST /api/internal/sites/<slug>/paid` `{ ref }` (AdVault's purchase id, idempotent via KV `paidref:<ref>`) applies `applyAdvaultPaid` (active, a year of Pro). The edit page sends an unpaid AdVault site back to AdVault ("Finish in AdVault"). Without the field (admins, at_cost) the site is live at once as before.
 - The edit page's offer field links to AdVault: `advault.3pandalabs.com/dashboard?siteOffer=<slug>`
   for AdVault-made sites, AdVault's home ("Turn this offer into a video ad") otherwise.
 

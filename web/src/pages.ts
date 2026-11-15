@@ -272,7 +272,9 @@ export function billingSection(slug: string, key: string, v: BillingView): strin
   const planName = b.plan === "pro" ? "Pro (keeps your site running, with visitor stats)" : "Basic (keeps your site running)";
   const rows: string[] = [];
   let status = "";
-  if (v.state === "unpublished") {
+  if (v.state === "unpublished" && v.source === "advault") {
+    status = `<p>Your website isn't published yet. Finish in AdVault: pay ${DOLLARS.advaultSetup} (the first year of Pro included) on your campaign's website card, and it goes live at once.</p>`;
+  } else if (v.state === "unpublished") {
     status = `<p>Your website isn't published yet. Visitors see "This site isn't published yet" until you pay.</p>`;
   } else {
     rows.push(`<dt>Plan</dt><dd>${b.earlyAccess && !b.subscriptionId ? "Early access (free)" : esc(planName)}</dd>`);
@@ -286,7 +288,9 @@ export function billingSection(slug: string, key: string, v: BillingView): strin
   rows.push(`<dt>Offer credits</dt><dd>${b.credits} left</dd>`);
 
   const buttons: string[] = [];
-  if (v.state === "unpublished") {
+  if (v.state === "unpublished" && v.source === "advault") {
+    buttons.push(`<div class="buttons"><a class="btn" href="https://advault.3pandalabs.com/dashboard">Finish in AdVault</a></div>`);
+  } else if (v.state === "unpublished") {
     buttons.push(publishButtons(slug, key, v.prices));
   } else {
     const renewLabel = (p: number) => (b.renewing ? `$${p}/year` : `Pay $${p}/year`);
