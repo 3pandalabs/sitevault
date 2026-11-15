@@ -149,6 +149,32 @@ export function offerSpend(
   return credits >= 1 ? { ok: true, spend: 1 } : { ok: false };
 }
 
+/**
+ * An offer set from AdVault's offer combo (POST /api/internal/sites/<slug>/offer).
+ * "advault": paid for in AdVault, no credit spent. "credit": the offer-change
+ * rule above, except that with no credit left the offer is STILL set (the
+ * customer chose it in good faith in AdVault) and flagged creditShort.
+ */
+export function internalOfferSpend(
+  payment: "advault" | "credit",
+  current: string | null,
+  next: string,
+  credits: number,
+  billingOn: boolean,
+): { spend: 0 | 1; creditShort: boolean } {
+  if (payment === "advault") return { spend: 0, creditShort: false };
+  const r = offerSpend(current, next, credits, billingOn);
+  return r.ok ? { spend: r.spend, creditShort: false } : { spend: 0, creditShort: true };
+}
+
+/** How long an AdVault offer `ref` is remembered (~30 days). */
+export const OFFER_REF_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+/** Idempotency: a ref already applied replays its stored result and never spends again. */
+export function offerRefDecision<T>(stored: T | null): { replay: true; result: T } | { replay: false } {
+  return stored ? { replay: true, result: stored } : { replay: false };
+}
+
 /** Why this checkout can't start, or null. */
 export function checkoutProblem(kind: string, source: Source, b: Billing): string | null {
   if (!CHECKOUT_KINDS.includes(kind as CheckoutKind)) return "Unknown option.";

@@ -93,6 +93,34 @@ const LINK_PATTERN = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|info|b
 
 export type FieldErrors = Record<string, string>;
 
+/** Length and no-links rule for one free-text field; null when fine. */
+function fieldProblem(k: keyof typeof LIMITS, v: string): string | null {
+  if (v.length > LIMITS[k]) return `Keep it under ${LIMITS[k]} characters.`;
+  if (v && LINK_PATTERN.test(v) && k !== "email") return "Links aren't allowed here.";
+  return null;
+}
+
+export type OfferPayment = "advault" | "credit";
+export type InternalOffer = { offer: string; payment: OfferPayment; ref: string };
+
+/**
+ * Body of POST /api/internal/sites/<slug>/offer (AdVault's offer combo). The
+ * offer gets exactly the edit form's rules (length, no links); it must be
+ * non-empty, since the combo puts an offer ON the site. `ref` is AdVault's
+ * purchase id, the idempotency key.
+ */
+export function parseInternalOffer(body: unknown): { ok: true; value: InternalOffer } | { ok: false; error: string } {
+  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const offer = text(b.offer);
+  if (!offer) return { ok: false, error: "offer: Required." };
+  const problem = fieldProblem("offer", offer);
+  if (problem) return { ok: false, error: `offer: ${problem}` };
+  if (b.payment !== "advault" && b.payment !== "credit") return { ok: false, error: "payment: Must be advault or credit." };
+  const ref = typeof b.ref === "string" ? b.ref.trim() : "";
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(ref)) return { ok: false, error: "ref: 1-100 letters, digits, - or _." };
+  return { ok: true, value: { offer, payment: b.payment, ref } };
+}
+
 function text(raw: unknown): string {
   return typeof raw === "string" ? raw.replace(/\r\n/g, "\n").trim() : "";
 }
@@ -158,8 +186,8 @@ export function parseContent(
     ["offer", offer],
   ];
   for (const [k, v] of lengths) {
-    if (v.length > LIMITS[k]) errors[k] = `Keep it under ${LIMITS[k]} characters.`;
-    else if (v && LINK_PATTERN.test(v) && k !== "email") errors[k] = "Links aren't allowed here.";
+    const problem = fieldProblem(k, v);
+    if (problem) errors[k] = problem;
   }
   for (const s of services) {
     if (s.name.length > LIMITS.serviceName || (s.price?.length ?? 0) > LIMITS.servicePrice) {
