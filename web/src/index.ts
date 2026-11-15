@@ -18,6 +18,8 @@
 //   GET  /api/admin/sites          list (ADMIN_TOKEN)
 //   POST /api/admin/sites/<slug>/remove   takedown (ADMIN_TOKEN)
 //   POST /api/internal/sites       one-click create from AdVault (INTERNAL_TOKEN)
+//   GET  /api/internal/sites/<slug>/offer-status   offer, credits, billing (INTERNAL_TOKEN)
+//   POST /api/internal/sites/<slug>/offer          set the offer from AdVault's combo (INTERNAL_TOKEN)
 //   POST /api/billing/checkout     Stripe Checkout (edit key in the form; BILLING on)
 //   POST /api/billing/portal       Stripe billing portal (edit key in the form)
 //   POST /webhooks/stripe          Stripe events (signature-checked; metadata.app = sitevault only)
@@ -38,6 +40,9 @@ import {
   effectivePaidUntil,
   eventFromStripe,
   initialBilling,
+  internalOfferSpend,
+  OFFER_REF_TTL_SECONDS,
+  offerRefDecision,
   offerSpend,
   planPrices,
   siteState,
@@ -47,7 +52,7 @@ import {
 } from "./billing.js";
 import { cancelSubscription, createCheckoutSession, createPortalSession, verifyStripeSignature } from "./stripe.js";
 import { TAP_KINDS, classifySource, hitFor, isBot, isPrefetch, readStats, recordHit, tapSource, type TapKind } from "./stats.js";
-import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, parseContent, type FieldErrors, type Site, type SiteContent } from "./site.js";
+import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, parseContent, parseInternalOffer, type FieldErrors, type Site, type SiteContent } from "./site.js";
 import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
@@ -142,7 +147,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (path === "/api/admin/sites") return adminList(request, env);
     if (path === "/api/address") return addressCheck(env, url);
     if (path === "/api/internal/resolve") return resolveInternal(request, env, url);
-    let m = path.match(/^\/s\/([a-z0-9-]+)\/?$/);
+    let m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer-status$/);
+    if (m) return offerStatusInternal(request, env, m[1]!);
+    m = path.match(/^\/s\/([a-z0-9-]+)\/?$/);
     // Old path links (before the customer-site domain) move to the subdomain.
     if (m) {
       const current = (await aliasTarget(env, m[1]!)) ?? m[1]!;
@@ -168,6 +175,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (path === "/webhooks/stripe") return stripeWebhook(request, env);
     let m = path.match(/^\/api\/sites\/([a-z0-9-]+)$/);
     if (m) return updateSite(request, env, m[1]!);
+    m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer$/);
+    if (m) return setOfferInternal(request, env, m[1]!);
     m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/delete$/);
     if (m) return deleteSite(request, env, m[1]!);
     m = path.match(/^\/api\/admin\/sites\/([a-z0-9-]+)\/remove$/);
@@ -292,6 +301,77 @@ async function resolveInternal(request: Request, env: Env, url: URL): Promise<Re
   const site = current ? await loadSite(env, current) : null;
   if (!site || site.status !== "live") return json({ ok: false, error: "not_found" }, 404);
   return json({ ok: true, slug: site.slug, siteUrl: siteUrl(env, site.slug) });
+}
+
+/** A live site by its current or an old address (renames are followed). */
+async function liveSiteFollowingAliases(env: Env, slug: string): Promise<Site | null> {
+  const current = (await env.SITES.get(siteKey(slug))) ? slug : await aliasTarget(env, slug);
+  const site = current ? await loadSite(env, current) : null;
+  return site && site.status === "live" ? site : null;
+}
+
+// GET /api/internal/sites/<slug>/offer-status -> what AdVault needs to quote
+// its offer combo: the current offer, credits left, and whether billing is on.
+async function offerStatusInternal(request: Request, env: Env, slug: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const site = await liveSiteFollowingAliases(env, slug);
+  if (!site) return json({ ok: false, error: "not_found" }, 404);
+  const cfg = billingConfig(env);
+  return json({
+    ok: true,
+    slug: site.slug,
+    offer: site.offer,
+    credits: billingOf(site).credits,
+    billing: cfg.on ? "on" : "off",
+    siteState: siteState(site, cfg, new Date()),
+  });
+}
+
+type OfferResult = { ok: true; slug: string; offer: string; credits: number; creditShort?: true };
+const offerRefKey = (ref: string) => `offerref:${ref}`;
+
+// POST /api/internal/sites/<slug>/offer  { offer, payment: "advault"|"credit", ref }
+// AdVault's $12 offer combo (or $10 + 1 SiteVault credit). Idempotent on ref:
+// a repeat replays the first result and never spends a second credit.
+async function setOfferInternal(request: Request, env: Env, slug: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: "bad_json" }, 400);
+  }
+  const parsed = parseInternalOffer(body);
+  if (!parsed.ok) return json({ ok: false, error: "invalid", detail: parsed.error }, 400);
+  const { offer, payment, ref } = parsed.value;
+
+  const prior = offerRefDecision(await env.SITES.get<OfferResult>(offerRefKey(ref), "json"));
+  if (prior.replay) return json(prior.result);
+
+  const site = await liveSiteFollowingAliases(env, slug);
+  if (!site) return json({ ok: false, error: "not_found" }, 404);
+  const cfg = billingConfig(env);
+  // Billing may have changed a moment ago (a webhook landed): decide on the
+  // freshest copy so this save never undoes a payment or a credit pack.
+  const fresh = (await loadSite(env, site.slug)) ?? site;
+  const b = billingOf(fresh);
+  const charge = internalOfferSpend(payment, fresh.offer, offer, b.credits, cfg.on);
+  const billing = charge.spend === 1 ? { ...b, credits: b.credits - 1 } : fresh.billing;
+  await saveSite(env, { ...fresh, offer, ...(billing ? { billing } : {}), updatedAt: new Date().toISOString() });
+  if (charge.creditShort) console.warn("offer_credit_short", { slug: fresh.slug, ref });
+  console.log("offer_set_internal", { slug: fresh.slug, payment, spend: charge.spend, ref });
+
+  const result: OfferResult = {
+    ok: true,
+    slug: fresh.slug,
+    offer,
+    credits: billingOf({ billing }).credits,
+    ...(charge.creditShort ? { creditShort: true as const } : {}),
+  };
+  await env.SITES.put(offerRefKey(ref), JSON.stringify(result), { expirationTtl: OFFER_REF_TTL_SECONDS });
+  return json(result);
 }
 
 function renderCtx(env: Env, slug: string): RenderContext {

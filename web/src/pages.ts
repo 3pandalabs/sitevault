@@ -311,6 +311,20 @@ const FIELD_ORDER = [
   "attest",
 ] as const;
 
+export const ADVAULT_ORIGIN = "https://advault.3pandalabs.com";
+
+/**
+ * Below the offer on the owner's edit page (never on the customer site): the
+ * same offer as an AdVault video ad. AdVault-made sites have an AdVault
+ * account, so they deep-link to the combo; everyone else gets AdVault's home.
+ */
+export function advaultOfferLink(site: Pick<Site, "slug" | "source">): string {
+  const style = ` style="display:inline-block;padding:12px 0;min-height:44px"`;
+  return site.source === "advault"
+    ? `<a${style} href="${esc(`${ADVAULT_ORIGIN}/dashboard?siteOffer=${encodeURIComponent(site.slug)}`)}">Also run this offer as a YouTube ad with AdVault →</a>`
+    : `<a${style} href="${esc(ADVAULT_ORIGIN)}">Turn this offer into a video ad</a>`;
+}
+
 export function builderPage(
   mode: FormMode,
   nonce: string,
@@ -381,7 +395,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
     mode.kind === "edit" && mode.billing
       ? ` Changing it uses 1 credit (${mode.billing.billing.credits} left). Clearing it is free.`
       : ""
-  }</span></label><input type="text" id="offer" name="offer" maxlength="160" value="${v("offer", site?.offer ?? "")}" placeholder="Spring cleanup from $149, this month only">${e("offer")}</div>
+  }</span></label><input type="text" id="offer" name="offer" maxlength="160" value="${v("offer", site?.offer ?? "")}" placeholder="Spring cleanup from $149, this month only">${e("offer")}${mode.kind === "edit" ? advaultOfferLink(mode.site) : ""}</div>
   <div class="field"><label for="services">Services and prices <span class="hint">Optional. One per line, price after a dash.</span></label><textarea id="services" name="services" placeholder="Lawn mowing - from $35&#10;Spring cleanup - $149&#10;Hedge trimming">${v("services", site ? servicesToText(site.services) : "")}</textarea>${e("services")}</div>
   <div class="field"><label for="hours">Opening hours <span class="hint">Optional</span></label><textarea id="hours" name="hours" placeholder="Mon-Fri 8am-6pm&#10;Sat 9am-2pm&#10;Sun closed">${v("hours", site?.hours ?? "")}</textarea>${e("hours")}</div>
   <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${e("about")}</div>
