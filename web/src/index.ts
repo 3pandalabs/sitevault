@@ -80,12 +80,13 @@ export interface Env {
   BILLING?: string;
   /** ISO date: sites made before billing started are paid until then. */
   EARLY_ACCESS_UNTIL?: string;
-  /** ISO date: Basic paid on or before this day is $29/year for life (festive season price). */
+  /** ISO date: plans paid on or before this day keep festive prices for life (Basic $29, Pro $59). */
   FESTIVE_UNTIL?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_BASIC?: string;
   STRIPE_PRICE_BASIC_FESTIVE?: string;
+  STRIPE_PRICE_PRO_FESTIVE?: string;
   STRIPE_PRICE_PRO?: string;
   STRIPE_PRICE_PRO_ADVAULT?: string;
   STRIPE_PRICE_CREDITS?: string;
@@ -518,6 +519,7 @@ function priceIds(env: Env): PriceIds {
   return {
     BASIC: env.STRIPE_PRICE_BASIC || undefined,
     BASIC_FESTIVE: env.STRIPE_PRICE_BASIC_FESTIVE || undefined,
+    PRO_FESTIVE: env.STRIPE_PRICE_PRO_FESTIVE || undefined,
     PRO: env.STRIPE_PRICE_PRO || undefined,
     PRO_ADVAULT: env.STRIPE_PRICE_PRO_ADVAULT || undefined,
     CREDITS: env.STRIPE_PRICE_CREDITS || undefined,

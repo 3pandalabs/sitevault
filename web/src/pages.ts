@@ -72,6 +72,9 @@ h2{font-size:1.5rem;font-weight:600;letter-spacing:-.015em}
 .plan-price s{color:var(--muted);font-weight:400;font-size:1rem}
 .plan-price .tag{font-size:.8rem;font-weight:500;color:var(--muted)}
 .plan-sub{margin:0 0 8px;font-size:.9rem}
+.included{display:flex;flex-direction:column}
+.plan-btn{margin-top:16px;align-self:flex-start}
+.plan-note{margin:0 0 8px;font-size:.95rem}
 .included ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
 .included li{color:var(--muted);font-size:.95rem;padding-left:22px;position:relative}
 .included li::before{content:"✓";position:absolute;left:0;color:var(--accent);font-weight:700}
@@ -179,11 +182,16 @@ function plansBlock(billingOn: boolean, festive: boolean): string {
     : festive
       ? `$${DOLLARS.festive}/year <s>$${DOLLARS.basic}</s> <span class="tag">price locked for life</span>`
       : `$${DOLLARS.basic}/year`;
-  const proPrice = billingOn ? `$${DOLLARS.pro}/year` : "Free during early access";
+  const proPrice = !billingOn
+    ? "Free during early access"
+    : festive
+      ? `$${DOLLARS.festivePro}/year <s>$${DOLLARS.pro}</s> <span class="tag">price locked for life</span>`
+      : `$${DOLLARS.pro}/year`;
   return `<div class="plans">
-  <div class="included"><h2>Basic</h2><p class="plan-price">${basicPrice}</p><p class="plan-sub">Everything included:</p>${list(INCLUDED)}</div>
-  <div class="included pro"><h2>Pro</h2><p class="plan-price">${proPrice}</p><p class="plan-sub">Everything in Basic, plus visitor stats:</p>${list(PRO_EXTRAS)}</div>
+  <div class="included"><h2>Basic</h2><p class="plan-price">${basicPrice}</p><p class="plan-sub">Everything included:</p>${list(INCLUDED)}<a class="btn ghost plan-btn" href="/new">Build my website</a></div>
+  <div class="included pro"><h2>Pro</h2><p class="plan-price">${proPrice}</p><p class="plan-sub">Everything in Basic, plus visitor stats:</p>${list(PRO_EXTRAS)}<a class="btn plan-btn" href="/new">Build my website</a></div>
 </div>
+<p class="plan-note">Build it free first. You choose Basic or Pro when you publish, and can upgrade to Pro anytime.</p>
 <p class="hint" style="margin:0 0 24px">Making video ads with <a href="https://advault.3pandalabs.com">AdVault</a>? Your website is $${DOLLARS.advaultSetup} with the first year of Pro included, then Pro is $${DOLLARS.proAdvault}/year.</p>`;
 }
 
@@ -191,7 +199,7 @@ function plansBlock(billingOn: boolean, festive: boolean): string {
 function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   if (!billingOn) return "<b>Free</b> during early access.";
   if (festiveUntil) {
-    return `<b>Festive season price: $${DOLLARS.festive}/year</b> (price locked for life). Join before ${esc(fmtDate(festiveUntil))}. After that, $${DOLLARS.basic}/year.<br>Build it free. Pay only when you publish.`;
+    return `<b>Festive season price: $${DOLLARS.festive}/year</b> (price locked for life). Pro: $${DOLLARS.festivePro}/year. Join before ${esc(fmtDate(festiveUntil))}. After that, $${DOLLARS.basic}/year (Pro $${DOLLARS.pro}).<br>Build it free. Pay only when you publish.`;
   }
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
@@ -253,7 +261,7 @@ function payButton(slug: string, key: string, kind: CheckoutKind, label: string,
 
 /** Buttons to publish a SiteVault-made site (done page and edit page). */
 function publishButtons(slug: string, key: string, prices: BillingView["prices"]): string {
-  const festive = prices.festive ? `<p class="hint">Festive season price: $${prices.basic}/year (price locked for life; normally $${DOLLARS.basic}).</p>` : "";
+  const festive = prices.festive ? `<p class="hint">Festive season prices (price locked for life): Basic $${prices.basic}/year (normally $${DOLLARS.basic}), Pro $${prices.pro}/year (normally $${DOLLARS.pro}).</p>` : "";
   return `${festive}<div class="buttons">${
     prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: $${prices.basic}/year`) : ""
   }${payButton(slug, key, "publish_pro", `Publish with Pro: $${prices.pro}/year`, prices.basic !== null)}</div>`;
@@ -654,7 +662,7 @@ export function termsPage(): string {
 <p>Prices are in US dollars:</p>
 <ul>
   <li><strong>Websites made on SiteVault</strong>: free to build; you pay when you publish. Basic is $49 a year to keep the site running; Pro is $89 a year and adds visitor stats.</li>
-  <li><strong>Festive season price</strong>: Basic paid on or before January 31, 2027 is $29 a year, and stays $29 a year for as long as the site keeps a Basic plan, including if it pays again after a lapse.</li>
+  <li><strong>Festive season prices</strong>: a plan paid on or before January 31, 2027 is $29 a year for Basic or $59 a year for Pro, and the site keeps these prices for life, including if it switches between Basic and Pro or pays again after a lapse.</li>
   <li><strong>Websites made from AdVault</strong>: $10 one-time, paid in AdVault, which includes the first year of Pro; then Pro at $49 a year.</li>
   <li><strong>Offer credits</strong>: every site starts with 2. Changing your current special uses 1 credit; clearing it is free. Extra credits are $10 for 5.</li>
 </ul>

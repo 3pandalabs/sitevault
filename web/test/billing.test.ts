@@ -51,7 +51,7 @@ describe("billingConfig", () => {
 describe("prices", () => {
   it("follow the decided table", () => {
     expect(planPrices("web")).toEqual({ basic: 49, pro: 89, festive: false });
-    expect(planPrices("web", true)).toEqual({ basic: 29, pro: 89, festive: true });
+    expect(planPrices("web", true)).toEqual({ basic: 29, pro: 59, festive: true });
     expect(planPrices("advault")).toEqual({ basic: null, pro: 49, festive: false });
     expect(planPrices("advault", true)).toEqual({ basic: null, pro: 49, festive: false });
   });
@@ -148,7 +148,7 @@ describe("offerSpend", () => {
 
 describe("checkout", () => {
   const pending = initialBilling("web", ON, NOW)!;
-  const prices = { BASIC: "price_basic", BASIC_FESTIVE: "price_festive", PRO: "price_pro", PRO_ADVAULT: "price_pro_av", CREDITS: "price_credits" };
+  const prices = { BASIC: "price_basic", BASIC_FESTIVE: "price_festive", PRO: "price_pro", PRO_FESTIVE: "price_pro_festive", PRO_ADVAULT: "price_pro_av", CREDITS: "price_credits" };
 
   it("refuses unknown kinds, Basic for AdVault sites, and a duplicate renewing plan", () => {
     expect(checkoutProblem("free_stuff", "web", pending)).not.toBeNull();
@@ -159,11 +159,12 @@ describe("checkout", () => {
     expect(checkoutProblem("credits", "advault", active())).toBeNull();
   });
 
-  it("charges one yearly price, no build fee; festive applies to Basic only", () => {
+  it("charges one yearly price, no build fee; festive for both plans, never AdVault", () => {
     expect(checkoutItems("publish_basic", "web")).toEqual({ mode: "subscription", prices: ["BASIC"] });
     expect(checkoutItems("publish_basic", "web", true)).toEqual({ mode: "subscription", prices: ["BASIC_FESTIVE"] });
     expect(checkoutItems("renew_basic", "web", true)).toEqual({ mode: "subscription", prices: ["BASIC_FESTIVE"] });
-    expect(checkoutItems("publish_pro", "web", true)).toEqual({ mode: "subscription", prices: ["PRO"] });
+    expect(checkoutItems("publish_pro", "web", true)).toEqual({ mode: "subscription", prices: ["PRO_FESTIVE"] });
+    expect(checkoutItems("publish_pro", "web")).toEqual({ mode: "subscription", prices: ["PRO"] });
     expect(checkoutItems("renew_pro", "advault", true)).toEqual({ mode: "subscription", prices: ["PRO_ADVAULT"] });
     expect(checkoutItems("credits", "web", true)).toEqual({ mode: "payment", prices: ["CREDITS"] });
   });
@@ -178,7 +179,10 @@ describe("checkout", () => {
     expect(p.get("metadata[festive]")).toBe("1");
     expect(p.get("subscription_data[metadata][festive]")).toBe("1");
     const pro = checkoutParams({ kind: "publish_pro", slug: "b", source: "web", billing: pending, prices, returnUrl: "https://sv.test/e", festive: true });
-    expect(pro.ok && new Map(pro.params).has("metadata[festive]")).toBe(false);
+    expect(pro.ok && new Map(pro.params).get("line_items[0][price]")).toBe("price_pro_festive");
+    expect(pro.ok && new Map(pro.params).get("metadata[festive]")).toBe("1");
+    const av = checkoutParams({ kind: "renew_pro", slug: "b", source: "advault", billing: pending, prices, returnUrl: "https://sv.test/e", festive: true });
+    expect(av.ok && new Map(av.params).has("metadata[festive]")).toBe(false);
   });
 
   it("tags everything with metadata.app = sitevault", () => {
@@ -409,7 +413,8 @@ describe("billing UI", () => {
     expect(d).toContain("Publish: $49/year");
     const f = donePage({ siteUrl: "https://a/", editUrl: "https://e/", nonce: "n", publish: { slug: "a", key: "k", prices: planPrices("web", true) } });
     expect(f).toContain("Publish: $29/year");
-    expect(f).toContain("Festive season price: $29/year (price locked for life");
+    expect(f).toContain("Publish with Pro: $59/year");
+    expect(f).toContain("Festive season prices (price locked for life)");
     expect(d).toContain("https://e/");
   });
 
@@ -434,7 +439,7 @@ describe("billing UI", () => {
 
   it("terms describe the decided prices", () => {
     const t = termsPage();
-    for (const s of ["$49 a year", "$89 a year", "$29 a year", "January 31, 2027", "$10 one-time", "Pro at $49 a year", "$10 for 5", "14 days"]) expect(t).toContain(s);
+    for (const s of ["$49 a year", "$89 a year", "$29 a year", "$59 a year", "January 31, 2027", "$10 one-time", "Pro at $49 a year", "$10 for 5", "14 days"]) expect(t).toContain(s);
     expect(t).not.toContain("$5 one-time");
   });
 });
