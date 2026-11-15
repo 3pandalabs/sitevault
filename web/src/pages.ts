@@ -73,7 +73,6 @@ h2{font-size:1.5rem;font-weight:600;letter-spacing:-.015em}
 .plan-price .tag{font-size:.8rem;font-weight:500;color:var(--muted)}
 .plan-sub{margin:0 0 8px;font-size:.9rem}
 .included{display:flex;flex-direction:column}
-.plan-btn{margin-top:16px;align-self:flex-start}
 .plan-note{margin:0 0 8px;font-size:.95rem}
 .included ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
 .included li{color:var(--muted);font-size:.95rem;padding-left:22px;position:relative}
@@ -188,8 +187,8 @@ function plansBlock(billingOn: boolean, festive: boolean): string {
       ? `$${DOLLARS.festivePro}/year <s>$${DOLLARS.pro}</s> <span class="tag">price locked for life</span>`
       : `$${DOLLARS.pro}/year`;
   return `<div class="plans">
-  <div class="included"><h2>Basic</h2><p class="plan-price">${basicPrice}</p><p class="plan-sub">Everything included:</p>${list(INCLUDED)}<a class="btn ghost plan-btn" href="/new">Build my website</a></div>
-  <div class="included pro"><h2>Pro</h2><p class="plan-price">${proPrice}</p><p class="plan-sub">Everything in Basic, plus visitor stats:</p>${list(PRO_EXTRAS)}<a class="btn plan-btn" href="/new">Build my website</a></div>
+  <div class="included"><h2>Basic</h2><p class="plan-price">${basicPrice}</p><p class="plan-sub">Everything included:</p>${list(INCLUDED)}</div>
+  <div class="included pro"><h2>Pro</h2><p class="plan-price">${proPrice}</p><p class="plan-sub">Everything in Basic, plus visitor stats:</p>${list(PRO_EXTRAS)}</div>
 </div>
 <p class="plan-note">Build it free first. You choose Basic or Pro when you publish, and can upgrade to Pro anytime.</p>
 <p class="hint" style="margin:0 0 24px">Making video ads with <a href="https://advault.3pandalabs.com">AdVault</a>? Your website is $${DOLLARS.advaultSetup} with the first year of Pro included, then Pro is $${DOLLARS.proAdvault}/year.</p>`;
