@@ -36,13 +36,14 @@
     // With BILLING "on": sites made before billing started count as paid until
     // the end of this day (UTC).
     "EARLY_ACCESS_UNTIL": "2027-01-31",
-    // Festive season price: Basic paid on or before this day (UTC) is $29/year
-    // for life. Remove (or empty) to end the offer; locked sites keep $29.
+    // Festive season prices: plans paid on or before this day (UTC) keep Basic
+    // $29 / Pro $59 a year for life. Remove (or empty) to end the offer; locked sites keep them.
     "FESTIVE_UNTIL": "2027-01-31",
     // Stripe price ids (shared org account). Empty = that checkout answers 503.
     "STRIPE_PRICE_BASIC": "price_1UcBuTCrSBBxBBeWqKauA3yi",
     "STRIPE_PRICE_BASIC_FESTIVE": "price_1UcBuUCrSBBxBBeWuMsYwYt2",
     "STRIPE_PRICE_PRO": "price_1UcBuUCrSBBxBBeWP4kYz7zF",
+    "STRIPE_PRICE_PRO_FESTIVE": "price_1UcCECCrSBBxBBeWQAUKiaW0",
     "STRIPE_PRICE_PRO_ADVAULT": "price_1UcBuVCrSBBxBBeWwu6DgSZT",
     "STRIPE_PRICE_CREDITS": "price_1Uc8ecCrSBBxBBeWb1OpSjo6"
     // Secrets (wrangler secret put): METRICS_TOKEN (shared org token, for

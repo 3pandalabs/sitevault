@@ -9,7 +9,7 @@
   |---|---|---|
   | Build the site | **Free** (pay to publish) | **$10** one-time, charged in AdVault, includes year one of Pro |
   | Basic (keep it running) | **$49/year** | (they get Pro instead) |
-  | Festive season price | **Basic $29/year, locked for life**, if paid on or before 2027-01-31 (`FESTIVE_UNTIL`) | - |
+  | Festive season prices | **Basic $29/year, Pro $59/year, locked for life**, if paid on or before 2027-01-31 (`FESTIVE_UNTIL`) | - |
   | Pro (visit stats) | **$89/year** | **$49/year** from year two |
   | New offer on the site | 1 credit | 1 credit |
   | Offer on the site AND as an AdVault ad | **$12** | **$12** |

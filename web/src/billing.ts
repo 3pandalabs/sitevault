@@ -5,13 +5,13 @@
 //                    Made on SiteVault           Made from AdVault
 //   Build            free (pay when you publish) $10 in AdVault, first year of Pro included
 //   Basic            $49/year                    not offered
-//   Festive Basic    $29/year, locked for life,  -
-//                    if paid before FESTIVE_UNTIL
+//   Festive prices   Basic $29/year, Pro $59/year, -
+//                    locked for life, if paid before FESTIVE_UNTIL
 //   Pro (stats)      $89/year                    $49/year from year two
 //   Offer change     1 credit                    1 credit
 // Every new site starts with 2 credits; a pack is 5 credits for $10.
 // "Locked for life": the Stripe subscription keeps the $29 price, and
-// billing.festive keeps a lapsed site on $29 when it pays again.
+// billing.festive keeps a lapsed or switching site on festive prices.
 // Unpaid: 14 days' grace after paidUntil, then a "paused" page. Never delete.
 //
 // Everything is behind BILLING ("off" by default). Off = everything free,
@@ -33,7 +33,7 @@ export type Billing = {
   credits: number;
   /** Created before billing started: paid until EARLY_ACCESS_UNTIL. */
   earlyAccess?: boolean;
-  /** Paid Basic at the festive price: $29/year for life. */
+  /** Paid at a festive price: Basic $29 / Pro $59 a year for life. */
   festive?: boolean;
   customerId?: string | null;
   subscriptionId?: string | null;
@@ -45,7 +45,7 @@ export type BillingConfig = { on: boolean; earlyAccessUntil: string | null; fest
 export type CheckoutKind = "publish_basic" | "publish_pro" | "renew_basic" | "renew_pro" | "credits";
 export const CHECKOUT_KINDS: CheckoutKind[] = ["publish_basic", "publish_pro", "renew_basic", "renew_pro", "credits"];
 
-export type PriceKey = "BASIC" | "BASIC_FESTIVE" | "PRO" | "PRO_ADVAULT" | "CREDITS";
+export type PriceKey = "BASIC" | "BASIC_FESTIVE" | "PRO" | "PRO_FESTIVE" | "PRO_ADVAULT" | "CREDITS";
 export type PriceIds = Partial<Record<PriceKey, string>>;
 
 export const START_CREDITS = 2;
@@ -56,7 +56,7 @@ export const ADVAULT_INCLUDED_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Dollar amounts for display. Stripe prices hold the real amounts. */
-export const DOLLARS = { basic: 49, festive: 29, pro: 89, proAdvault: 49, advaultSetup: 10, pack: 10 } as const;
+export const DOLLARS = { basic: 49, festive: 29, pro: 89, festivePro: 59, proAdvault: 49, advaultSetup: 10, pack: 10 } as const;
 
 const validDate = (v?: string) => (v && !Number.isNaN(Date.parse(v)) ? v : null);
 
@@ -65,12 +65,12 @@ export function endOf(date: string): Date {
   return new Date(new Date(date).getTime() + (date.length <= 10 ? DAY_MS - 1 : 0));
 }
 
-/** The festive offer is open (Basic at $29/year, locked for life). */
+/** The festive offer is open (Basic $29 / Pro $59 a year, locked for life). */
 export function festiveOpen(cfg: BillingConfig, now: Date): boolean {
   return Boolean(cfg.festiveUntil) && now.getTime() <= endOf(cfg.festiveUntil!).getTime();
 }
 
-/** This site's Basic price is the festive one: the offer is open, or it locked it in. */
+/** This site pays festive prices: the offer is open, or it locked them in. */
 export function festiveFor(b: Billing | undefined, cfg: BillingConfig, now: Date): boolean {
   return Boolean(b?.festive) || festiveOpen(cfg, now);
 }
@@ -85,7 +85,7 @@ export type PlanPrices = { basic: number | null; pro: number; festive: boolean }
 export function planPrices(source: Source, festive = false): PlanPrices {
   return source === "advault"
     ? { basic: null, pro: DOLLARS.proAdvault, festive: false }
-    : { basic: festive ? DOLLARS.festive : DOLLARS.basic, pro: DOLLARS.pro, festive };
+    : { basic: festive ? DOLLARS.festive : DOLLARS.basic, pro: festive ? DOLLARS.festivePro : DOLLARS.pro, festive };
 }
 
 /** Billing for a brand-new site, or undefined while BILLING is off (so the site counts as early access later). */
@@ -210,10 +210,10 @@ export function checkoutProblem(kind: string, source: Source, b: Billing): strin
   return null;
 }
 
-/** Stripe price and mode for a checkout. `festive`: Basic at the festive price (see festiveFor). */
+/** Stripe price and mode for a checkout. `festive`: festive prices (see festiveFor); never for AdVault-made sites. */
 export function checkoutItems(kind: CheckoutKind, source: Source, festive = false): { mode: "subscription" | "payment"; prices: PriceKey[] } {
   if (kind === "credits") return { mode: "payment", prices: ["CREDITS"] };
-  if (kind.endsWith("_pro")) return { mode: "subscription", prices: [source === "advault" ? "PRO_ADVAULT" : "PRO"] };
+  if (kind.endsWith("_pro")) return { mode: "subscription", prices: [source === "advault" ? "PRO_ADVAULT" : festive ? "PRO_FESTIVE" : "PRO"] };
   return { mode: "subscription", prices: [festive ? "BASIC_FESTIVE" : "BASIC"] };
 }
 
@@ -233,12 +233,12 @@ export function checkoutParams(opts: {
   billing: Billing;
   prices: PriceIds;
   returnUrl: string;
-  /** Basic at the festive price (see festiveFor). */
+  /** Festive prices (see festiveFor). */
   festive?: boolean;
 }): { ok: true; params: [string, string][] } | { ok: false; missing: PriceKey } {
   const { kind, slug, billing, returnUrl } = opts;
   const items = checkoutItems(kind, opts.source, opts.festive);
-  const festive = items.prices[0] === "BASIC_FESTIVE";
+  const festive = items.prices[0] === "BASIC_FESTIVE" || items.prices[0] === "PRO_FESTIVE";
   const p: [string, string][] = [["mode", items.mode]];
   for (const [i, key] of items.prices.entries()) {
     const id = opts.prices[key];
