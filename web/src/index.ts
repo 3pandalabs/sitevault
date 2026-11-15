@@ -11,7 +11,6 @@
 //                                  once that domain exists (SITES_DOMAIN unset = off)
 //   GET  /edit/<slug>?k=<key>      builder, prefilled
 //   POST /api/sites/<slug>         update (key in the form)
-//   POST /api/sites/<slug>/delete  remove (key in the form)
 //   GET  /p/<key>                  photo from R2
 //   GET  /privacy, /terms
 //   GET  /metrics                  ops envelope for admin.3pandalabs.com (METRICS_TOKEN)
@@ -190,8 +189,6 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (m) return setOfferInternal(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/paid$/);
     if (m) return paidInternal(request, env, m[1]!);
-    m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/delete$/);
-    if (m) return deleteSite(request, env, m[1]!);
     m = path.match(/^\/api\/admin\/sites\/([a-z0-9-]+)\/remove$/);
     if (m) return adminRemove(request, env, m[1]!);
   }
@@ -1028,14 +1025,9 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   return wantsJson(request) ? json({ ok: true, next: target }) : Response.redirect(target, 303);
 }
 
-async function deleteSite(request: Request, env: Env, slug: string): Promise<Response> {
-  const form = await readForm(request);
-  const site = form ? await authorize(env, slug, form.fields.key ?? "") : null;
-  if (!site) return html(messagePage("Edit link not valid", "Reload your edit link and try again.", "Can't remove"), 403);
-  await removeSite(env, site);
-  return html(messagePage("Your website has been removed", "It's offline and its photos are deleted.", "Removed"));
-}
-
+// No self-service delete (2026-11-15, owner's decision): owners email
+// 3pandas@3pandalabs.com; ops confirms by phone, cancels any Stripe renewal,
+// checks for an AdVault ad linking here, then uses the admin takedown route.
 async function removeSite(env: Env, site: Site): Promise<void> {
   // Keep the record (status removed) so the slug isn't handed to someone else
   // and an abuse report can still be traced; the content is the photos.

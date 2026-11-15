@@ -481,11 +481,9 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
 </form>
 ${
   mode.kind === "edit"
-    ? `<form method="post" action="/api/sites/${encodeURIComponent(mode.site.slug)}/delete" style="margin-top:28px" class="notice">
-  <input type="hidden" name="key" value="${esc(mode.key)}">
-  <p><strong>Remove your website.</strong> Takes it offline and deletes its photos. This can't be undone.</p>
-  <button class="btn ghost" type="submit" id="delete">Remove my website</button>
-</form>`
+    ? `<div style="margin-top:28px" class="notice">
+  <p><strong>Want your website taken down?</strong> Email <a href="mailto:3pandas@3pandalabs.com?subject=${encodeURIComponent(`Remove my website: ${mode.site.slug}`)}">3pandas@3pandalabs.com</a> with your web address. We'll confirm with you at the phone number on your site, cancel any renewal, and remove it.</p>
+</div>`
     : ""
 }
 </section>`;
@@ -504,8 +502,6 @@ ${
 const BUILDER_SCRIPT = `
 (function(){
   var form=document.getElementById('builder'); if(!form||!window.fetch||!window.FormData) return;
-  var del=document.getElementById('delete');
-  if(del) del.form.addEventListener('submit',function(ev){ if(!confirm('Remove your website? This cannot be undone.')) ev.preventDefault(); });
   var FIELDS=${JSON.stringify(FIELD_ORDER)};
   var slug=document.getElementById('slug'), status=document.getElementById('slug-status');
   if(slug && !slug.readOnly){
@@ -642,7 +638,7 @@ export function privacyPage(): string {
 <h2>Where it's kept</h2>
 <p>Sites, photos and visit counts are stored and served by Cloudflare, our hosting provider, in its global network. Visitors' browsers connect to Cloudflare to load your site, as with any website. Payment records are kept by Stripe.</p>
 <h2>Your choices</h2>
-<p>Change or remove anything at any time with your edit link. Removing your website deletes its photos and takes it offline. If you've lost your edit link, email us from the address on your site and we'll help.</p>
+<p>Change anything at any time with your edit link. To have your website removed, email 3pandas@3pandalabs.com with your web address: we confirm with you at the phone number on the site, then take it offline and delete its photos. If you've lost your edit link, email us too and we'll help.</p>
 <h2>Children</h2>
 <p>SiteVault is for businesses and is not directed at children under 13.</p>
 </section>`,
@@ -669,7 +665,7 @@ export function termsPage(): string {
   <li><strong>Websites made from AdVault</strong>: $10 one-time, paid in AdVault, which includes the first year of Pro; then Pro at $49 a year.</li>
   <li><strong>Offer credits</strong>: every site starts with 2. Changing your current special uses 1 credit; clearing it is free. Extra credits are $10 for 5.</li>
 </ul>
-<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until January 31, 2027. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Sites are billed separately from any AdVault plan. You can remove your site at any time.</p>
+<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until January 31, 2027. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Sites are billed separately from any AdVault plan. You can have your site removed at any time by emailing 3pandas@3pandalabs.com; we cancel its renewal at the same time.</p>
 <h2>No guarantee</h2>
 <p>SiteVault is provided as is. We work to keep sites online but don't guarantee uninterrupted service. To the extent the law allows, our liability is limited to the amount you've paid us in the last 12 months.</p>
 <h2>Law</h2>
