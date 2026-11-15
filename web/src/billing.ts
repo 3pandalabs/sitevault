@@ -88,9 +88,16 @@ export function planPrices(source: Source, festive = false): PlanPrices {
     : { basic: festive ? DOLLARS.festive : DOLLARS.basic, pro: festive ? DOLLARS.festivePro : DOLLARS.pro, festive };
 }
 
-/** Billing for a brand-new site, or undefined while BILLING is off (so the site counts as early access later). */
-export function initialBilling(source: Source, cfg: BillingConfig, now: Date): Billing | undefined {
+/**
+ * Billing for a brand-new site, or undefined while BILLING is off (so the site counts as early access later).
+ * `awaitingPayment` (AdVault-made only): the site waits unpublished until AdVault reports its $10 paid
+ * (POST /api/internal/sites/<slug>/paid, applyAdvaultPaid).
+ */
+export function initialBilling(source: Source, cfg: BillingConfig, now: Date, awaitingPayment = false): Billing | undefined {
   if (!cfg.on) return undefined;
+  if (source === "advault" && awaitingPayment) {
+    return { status: "pending", plan: "pro", buildPaid: false, paidUntil: null, renewing: false, credits: START_CREDITS };
+  }
   if (source === "advault") {
     // Published at once with a year of Pro (the $10 paid in AdVault), then Pro at the AdVault price.
     return {
@@ -103,6 +110,17 @@ export function initialBilling(source: Source, cfg: BillingConfig, now: Date): B
     };
   }
   return { status: "pending", plan: "basic", buildPaid: false, paidUntil: null, renewing: false, credits: START_CREDITS };
+}
+
+/** AdVault took the $10: publish with a year of Pro. Never shortens time already paid for. */
+export function applyAdvaultPaid(b: Billing, now: Date): Billing {
+  return {
+    ...b,
+    status: "active",
+    plan: "pro",
+    buildPaid: true,
+    paidUntil: later(b.paidUntil, new Date(now.getTime() + ADVAULT_INCLUDED_DAYS * DAY_MS).toISOString()),
+  };
 }
 
 /** A site's billing record, defaulting sites made before billing started to early access. */

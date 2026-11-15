@@ -461,3 +461,27 @@ describe("festive season price", () => {
     expect(billingConfig({ FESTIVE_UNTIL: "nope" }).festiveUntil).toBeNull();
   });
 });
+
+import { applyAdvaultPaid } from "../src/billing.js";
+
+describe("AdVault-paid websites", () => {
+  it("wait unpublished until AdVault reports the $10", () => {
+    const b = initialBilling("advault", ON, NOW, true)!;
+    expect(b).toMatchObject({ status: "pending", plan: "pro", paidUntil: null });
+    expect(siteState({ billing: b }, ON, NOW)).toBe("unpublished");
+    expect(initialBilling("advault", OFF, NOW, true)).toBeUndefined();
+  });
+  it("publish with a year of Pro once paid, never shortening paid time", () => {
+    const paid = applyAdvaultPaid(initialBilling("advault", ON, NOW, true)!, NOW);
+    expect(paid).toMatchObject({ status: "active", plan: "pro", buildPaid: true, paidUntil: day(365).toISOString() });
+    expect(siteState({ billing: paid }, ON, NOW)).toBe("live");
+    const far = day(900).toISOString();
+    expect(applyAdvaultPaid({ ...paid, paidUntil: far }, NOW).paidUntil).toBe(far);
+  });
+  it("the edit page sends an unpaid AdVault site back to AdVault", () => {
+    const b = initialBilling("advault", ON, NOW, true)!;
+    const h = billingSection("b", "k", { state: "unpublished", billing: b, source: "advault", prices: planPrices("advault"), paidUntil: null, justPaid: false });
+    expect(h).toContain("Finish in AdVault");
+    expect(h).not.toContain("publish_pro");
+  });
+});
