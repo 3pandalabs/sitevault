@@ -64,9 +64,15 @@ h1{font-weight:600;letter-spacing:-.02em}
 h2{font-size:1.5rem;font-weight:600;letter-spacing:-.015em}
 .lead{font-size:1.125rem;color:var(--fg2);margin:0 0 28px;max-width:42rem}
 .price{font-size:1.25rem;font-weight:600;margin:0 0 20px}.price b{color:var(--accent)}
-.included{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:16px 20px;margin:0 0 28px;max-width:640px}
-.included h2{font-size:1rem;margin:0 0 10px}
-.included ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px 20px}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:0 0 12px;max-width:860px}
+.included{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:16px 20px}
+.included.pro{border-color:var(--accent)}
+.included h2{font-size:1.1rem;margin:0 0 4px}
+.plan-price{font-size:1.25rem;font-weight:700;margin:0 0 10px;color:var(--accent)}
+.plan-price s{color:var(--muted);font-weight:400;font-size:1rem}
+.plan-price .tag{font-size:.8rem;font-weight:500;color:var(--muted)}
+.plan-sub{margin:0 0 8px;font-size:.9rem}
+.included ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
 .included li{color:var(--muted);font-size:.95rem;padding-left:22px;position:relative}
 .included li::before{content:"✓";position:absolute;left:0;color:var(--accent);font-weight:700}
 .steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));padding:8px 0 40px}
@@ -155,6 +161,32 @@ const INCLUDED = [
   "No ads, no cookies, no trackers",
 ];
 
+/** What Pro adds (home page). Matches what stats.ts actually counts. */
+const PRO_EXTRAS = [
+  "How many people visit your site, day by day",
+  "Where they found you: Google, YouTube, Facebook, Instagram, WhatsApp, your AdVault ad",
+  "Which towns and countries they're in, and phone or computer",
+  "How many tapped Call or Directions",
+  "Still private: counted on our side, no cookies or trackers",
+];
+
+const list = (items: string[]) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
+
+/** Basic and Pro side by side (home page). */
+function plansBlock(billingOn: boolean, festive: boolean): string {
+  const basicPrice = !billingOn
+    ? "Free during early access"
+    : festive
+      ? `$${DOLLARS.festive}/year <s>$${DOLLARS.basic}</s> <span class="tag">price locked for life</span>`
+      : `$${DOLLARS.basic}/year`;
+  const proPrice = billingOn ? `$${DOLLARS.pro}/year` : "Free during early access";
+  return `<div class="plans">
+  <div class="included"><h2>Basic</h2><p class="plan-price">${basicPrice}</p><p class="plan-sub">Everything included:</p>${list(INCLUDED)}</div>
+  <div class="included pro"><h2>Pro</h2><p class="plan-price">${proPrice}</p><p class="plan-sub">Everything in Basic, plus visitor stats:</p>${list(PRO_EXTRAS)}</div>
+</div>
+<p class="hint" style="margin:0 0 24px">Making video ads with <a href="https://advault.3pandalabs.com">AdVault</a>? Your website is $${DOLLARS.advaultSetup} with the first year of Pro included, then Pro is $${DOLLARS.proAdvault}/year.</p>`;
+}
+
 /** The home page's price line. `festiveUntil`: the festive offer's last day, while it's open. */
 function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   if (!billingOn) return "<b>Free</b> during early access.";
@@ -172,7 +204,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null): s
   <h1>Your business online in five minutes.</h1>
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
-  <div class="included"><h2>Everything included in the price</h2><ul>${INCLUDED.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>
+  ${plansBlock(billingOn, festiveUntil !== null)}
   <div style="display:flex;flex-wrap:wrap;gap:12px"><a class="btn" href="/new">Build my website</a><a class="btn ghost" href="#features">What you get</a></div>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
