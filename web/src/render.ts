@@ -84,6 +84,49 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // "Our Location" + "Hours of Operation", styled like a schedule card. Hours
+  // are free text, one line per day ("Monday: 10am-7pm" or "Mon-Fri 8am-6pm");
+  // each line becomes a brand-coloured day label plus its time. No map embed
+  // (CSP forbids it on customer sites): location is the address + a link.
+  const locationBlock = where
+    ? `<div class="visit-col">
+        <h2>Our Location</h2>
+        <p class="visit-sub">Find us on the map</p>
+        <address class="visit-addr">${esc(where)}</address>
+        <a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>Get directions</a>
+      </div>`
+    : "";
+  const hoursBlock = site.hours
+    ? `<div class="visit-col">
+        <h2>Hours of Operation</h2>
+        <p class="visit-sub">Our regular schedule</p>
+        <table class="schedule"><tbody>
+          ${site.hours
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .map((line) => {
+              const i = line.indexOf(":") > -1 ? line.indexOf(":") : line.search(/\s/);
+              const day = i > -1 ? line.slice(0, i).trim() : line;
+              const time = i > -1 ? line.slice(i + 1).trim() : "";
+              return time
+                ? `<tr><th scope="row">${esc(day)}</th><td>${esc(time)}</td></tr>`
+                : `<tr><td colspan="2" class="visit-note">${esc(day)}</td></tr>`;
+            })
+            .join("\n          ")}
+        </tbody></table>
+      </div>`
+    : "";
+  const visit =
+    locationBlock || hoursBlock
+      ? `<section aria-label="Location and hours" class="band">
+  <div class="wrap visit">
+    ${locationBlock}
+    ${hoursBlock}
+  </div>
+</section>`
+      : "";
+
   const video = site.video
     ? `<section aria-labelledby="video-h">
   <div class="wrap">
@@ -162,6 +205,15 @@ video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .facts h3{margin:0 0 4px;font-size:1rem}
 .facts p{margin:0;white-space:pre-line;color:var(--muted)}
+.visit{display:grid;gap:32px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start}
+.visit-col h2{margin:0 0 4px}
+.visit-sub{margin:0 0 16px;color:var(--muted)}
+.visit-addr{font-style:normal;margin:0 0 16px;color:var(--ink);font-size:1.05rem}
+.schedule{width:100%;border-collapse:separate;border-spacing:0 4px}
+.schedule th,.schedule td{padding:12px 16px;font-size:1rem}
+.schedule th{background:var(--brand);color:#fff;text-align:left;font-weight:700;width:42%;white-space:nowrap;border-radius:6px}
+.schedule td{text-align:center;color:var(--ink);background:#fff;border:1px solid var(--line);border-left:0;border-radius:0 6px 6px 0}
+.visit-note{text-align:center;color:var(--muted);font-weight:600;background:var(--band);border-radius:6px}
 footer{padding:28px 0 40px;color:var(--muted);font-size:.9rem;border-top:1px solid var(--line)}
 footer a{color:var(--muted)}
 .callbar{position:fixed;left:0;right:0;bottom:0;display:none;gap:8px;padding:10px 16px;background:#fff;border-top:1px solid var(--line)}
@@ -196,15 +248,14 @@ ${video}
 ${services}
 ${about}
 ${galleryHtml}
+${visit}
 <section aria-labelledby="contact-h">
   <div class="wrap">
     <h2 id="contact-h">Contact</h2>
     <div class="facts">
       <div><h3>Phone</h3><p><a href="${esc(telHref(site.phone))}"${ping("call")}>${esc(site.phone)}</a></p></div>
       ${site.email ? `<div><h3>Email</h3><p><a href="mailto:${esc(site.email)}">${esc(site.email)}</a></p></div>` : ""}
-      ${where ? `<div><h3>Location</h3><p>${esc(where)}</p></div>` : ""}
       ${site.serviceArea ? `<div><h3>Areas we serve</h3><p>${esc(site.serviceArea)}</p></div>` : ""}
-      ${site.hours ? `<div><h3>Hours</h3><p>${esc(site.hours)}</p></div>` : ""}
     </div>
   </div>
 </section>
