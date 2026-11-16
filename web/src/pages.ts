@@ -151,9 +151,11 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
 <div class="backdrop" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><div class="dots"></div></div>
 <header class="top"><div class="wrap">
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
-  <nav class="links"><a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${
-    opts.owner ? `<a class="btn small" href="/account">My website</a>` : `<a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a>`
-  }${opts.signedIn ? `<form method="post" action="/logout"><button class="plain" type="submit">Sign out</button></form>` : ""}</nav>
+  <nav class="links">${
+    opts.signedIn
+      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a><a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a><form method="post" action="/logout"><button class="plain" type="submit">Sign out</button></form>`
+      : `<a class="btn small" href="/login">Sign in</a>`
+  }</nav>
 </div></header>
 <main id="main" class="wrap">
 ${opts.body}
@@ -229,7 +231,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
   ${plansBlock(billingOn, festiveUntil !== null)}
-  <div style="display:flex;flex-wrap:wrap;gap:12px">${owner ? `<a class="btn" href="/account">Go to my website</a>` : `<a class="btn" href="/new">Build my website</a>`}<a class="btn ghost" href="#features">What you get</a></div>
+  <div style="display:flex;flex-wrap:wrap;gap:12px">${signedIn ? `<a class="btn" href="/account">${owner ? "Go to my website" : "Go to my account"}</a>` : `<a class="btn" href="/login">Sign in to get started</a>`}<a class="btn ghost" href="#features">What you get</a></div>
   <div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
     <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included.</span></p>
     <a class="btn" href="https://advault.3pandalabs.com">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
