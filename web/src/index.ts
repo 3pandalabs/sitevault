@@ -221,7 +221,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
     if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
     m = path.match(/^\/done\/([A-Za-z0-9_-]+)$/);
-    if (m) return done(env, m[1]!);
+    if (m) return done(request, env, m[1]!);
   }
 
   if (method === "POST") {
@@ -538,14 +538,15 @@ async function serveSite(
 }
 
 /** The "your site is live" page after a script-driven create (10-minute handoff). */
-async function done(env: Env, handoff: string): Promise<Response> {
+async function done(request: Request, env: Env, handoff: string): Promise<Response> {
   const data = await env.SITES.get<{ siteUrl: string; editUrl: string; publish?: Parameters<typeof donePage>[0]["publish"] }>(
     `done:${handoff}`,
     "json",
   );
   if (!data) return html(messagePage("This page has expired", "Open your website or your edit link directly.", "Expired"), 404);
+  const account = await currentAccount(env.SITES, request);
   const n = nonce();
-  const res = html(donePage({ ...data, nonce: n }), 200, n);
+  const res = html(donePage({ ...data, nonce: n, signedIn: Boolean(account), admin: isAdminEmail(env, account?.email) }), 200, n);
   res.headers.set("referrer-policy", "no-referrer");
   return res;
 }
@@ -1237,7 +1238,7 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
   // BILLING on: the site waits for payment; the done page offers Publish.
   const publish = pending ? { slug, key, prices: planPrices("web", festiveOpen(billingConfig(env), new Date())) } : undefined;
   const n = nonce();
-  const page = donePage({ siteUrl: siteUrl(env, slug), editUrl, nonce: n, publish });
+  const page = donePage({ siteUrl: siteUrl(env, slug), editUrl, nonce: n, publish, signedIn: true, admin: isAdminEmail(env, owner.email) });
   // The done page carries the only copy of the edit key: render it straight
   // into this response rather than redirecting with the key in a URL that
   // ends up in history. The script path gets the same page via a one-time

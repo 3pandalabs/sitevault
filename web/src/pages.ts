@@ -690,6 +690,8 @@ export function donePage(opts: {
   nonce: string;
   /** BILLING on and made on SiteVault: the site waits for payment. */
   publish?: { slug: string; key: string; prices: BillingView["prices"] };
+  signedIn?: boolean;
+  admin?: boolean;
 }): string {
   const pub = opts.publish;
   const ready = pub
@@ -701,6 +703,8 @@ export function donePage(opts: {
   return layout({
     title: pub ? "Your website is ready | SiteVault" : "Your website is live | SiteVault",
     noindex: true,
+    signedIn: opts.signedIn,
+    admin: opts.admin,
     nonce: opts.nonce,
     script: `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='Copied';});});});`,
     body: `<section>
