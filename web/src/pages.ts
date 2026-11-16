@@ -251,6 +251,8 @@ export type BillingView = {
   paidUntil: Date | null;
   /** Back from Stripe Checkout (the webhook may still be on its way). */
   justPaid: boolean;
+  /** For tests; defaults to now. */
+  now?: Date;
 };
 
 /** The edit page's "Visitors" section. `stats` null = stats not available. */
@@ -269,6 +271,9 @@ function publishButtons(slug: string, key: string, prices: BillingView["prices"]
     prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: $${prices.basic}/year`) : ""
   }${payButton(slug, key, "publish_pro", `Publish with Pro: $${prices.pro}/year`, prices.basic !== null)}</div>`;
 }
+
+/** Days before the paid time ends when renewing opens. */
+export const RENEW_WINDOW_DAYS = 45;
 
 export function billingSection(slug: string, key: string, v: BillingView): string {
   const b = v.billing;
@@ -296,16 +301,28 @@ export function billingSection(slug: string, key: string, v: BillingView): strin
   } else if (v.state === "unpublished") {
     buttons.push(publishButtons(slug, key, v.prices));
   } else {
-    const renewLabel = (p: number) => (b.renewing ? `$${p}/year` : `Pay $${p}/year`);
+    // Paying again only makes sense near the end of the paid time (or after it):
+    // a site paid until next year must not be asked to pay now.
+    const now = v.now ?? new Date();
+    const renewOpen =
+      v.state === "grace" || v.state === "paused" || !v.paidUntil || v.paidUntil.getTime() - now.getTime() <= RENEW_WINDOW_DAYS * 86_400_000;
     const plans: string[] = [];
-    if (!b.renewing && v.prices.basic !== null) {
-      plans.push(payButton(slug, key, "renew_basic", `Basic: ${renewLabel(v.prices.basic)}`, true));
+    if (!b.renewing && renewOpen && v.prices.basic !== null) {
+      plans.push(payButton(slug, key, "renew_basic", `Basic: Pay $${v.prices.basic}/year`, true));
     }
-    if (!(b.renewing && b.plan === "pro")) {
-      const upgrade = b.renewing && b.plan === "basic";
-      plans.push(payButton(slug, key, "renew_pro", upgrade ? `Upgrade to Pro: $${v.prices.pro}/year` : `Pro: ${renewLabel(v.prices.pro)}`));
+    if (b.plan === "basic") {
+      // Upgrading is always offered: Pro adds visitor stats.
+      plans.push(payButton(slug, key, "renew_pro", `Upgrade to Pro: $${v.prices.pro}/year`));
+    } else if (b.plan === "pro" && !b.renewing && renewOpen) {
+      plans.push(payButton(slug, key, "renew_pro", `Pro: Pay $${v.prices.pro}/year`));
     }
     if (plans.length) buttons.push(`<div class="buttons">${plans.join("")}</div>`);
+    if (!b.renewing && !renewOpen && v.paidUntil) {
+      const price = b.plan === "pro" ? v.prices.pro : (v.prices.basic ?? v.prices.pro);
+      buttons.push(
+        `<p class="hint">${v.source === "advault" && b.plan === "pro" ? "Your first year of Pro is included with your AdVault website" : "Your plan is paid"} until ${esc(fmtDate(v.paidUntil))}. Nothing to pay now. Renewal ($${price} a year) opens ${RENEW_WINDOW_DAYS} days before then.</p>`,
+      );
+    }
   }
   const extra = [
     payButton(slug, key, "credits", `Buy ${PACK_CREDITS} offer credits for $${DOLLARS.pack}`, true),

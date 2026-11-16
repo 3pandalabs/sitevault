@@ -381,6 +381,7 @@ describe("billing UI", () => {
     prices: planPrices(source, festiveFor(b, ON, NOW)),
     paidUntil: effectivePaidUntil(b, ON),
     justPaid: false,
+    now: NOW,
   });
 
   it("an unpublished site offers both publish options, no build fee", () => {
@@ -396,7 +397,12 @@ describe("billing UI", () => {
 
   it("an AdVault site is offered Pro at $49 and never Basic", () => {
     const h = billingSection("b", "k", view(initialBilling("advault", ON, NOW)!, "advault"));
-    expect(h).toContain("Pro: Pay $49/year");
+    // Paid a year ahead: nothing to pay now.
+    expect(h).toContain("first year of Pro is included");
+    expect(h).not.toContain("renew_pro");
+    // In the last 45 days (or after), renewing opens, at the AdVault price.
+    const soon = billingSection("b", "k", view({ ...initialBilling("advault", ON, NOW)!, paidUntil: day(10).toISOString() }, "advault"));
+    expect(soon).toContain("Pro: Pay $49/year");
     expect(h).not.toContain("renew_basic");
   });
 
