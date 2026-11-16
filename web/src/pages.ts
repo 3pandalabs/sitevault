@@ -220,7 +220,10 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
   ${plansBlock(billingOn, festiveUntil !== null)}
   <div style="display:flex;flex-wrap:wrap;gap:12px">${owner ? `<a class="btn" href="/account">Go to my website</a>` : `<a class="btn" href="/new">Build my website</a>`}<a class="btn ghost" href="#features">What you get</a></div>
-  <p class="hint" style="margin-top:16px;font-size:.95rem">Want more customers? Turn your photos into a YouTube video ad, shown to people nearby, with <a href="https://advault.3pandalabs.com">AdVault</a>: $10 makes your ad, and if you make your website there it's ${DOLLARS.advaultSetup} with the first year of Pro included.</p>
+  <div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+    <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span class="hint" style="display:block;font-weight:400">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included.</span></p>
+    <a class="btn" href="https://advault.3pandalabs.com">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
+  </div>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
 <div class="steps">
@@ -284,7 +287,7 @@ export function billingSection(slug: string, key: string, v: BillingView): strin
   const rows: string[] = [];
   let status = "";
   if (v.state === "unpublished" && v.source === "advault") {
-    status = `<p>Your website isn't published yet. Finish in AdVault: pay ${DOLLARS.advaultSetup} (the first year of Pro included) on your campaign's website card, and it goes live at once.</p>`;
+    status = `<p>Your website isn't published yet. Finish in AdVault: pay $${DOLLARS.advaultSetup} (the first year of Pro included) on your campaign's website card, and it goes live at once.</p>`;
   } else if (v.state === "unpublished") {
     status = `<p>Your website isn't published yet. Visitors see "This site isn't published yet" until you pay.</p>`;
   } else {

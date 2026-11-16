@@ -56,7 +56,7 @@ export const ADVAULT_INCLUDED_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Dollar amounts for display. Stripe prices hold the real amounts. */
-export const DOLLARS = { basic: 49, festive: 29, pro: 89, festivePro: 59, proAdvault: 49, advaultSetup: 10, pack: 10 } as const;
+export const DOLLARS = { basic: 49, festive: 29, pro: 89, festivePro: 59, proAdvault: 49, advaultSetup: 10, advaultAd: 10, pack: 10 } as const;
 
 const validDate = (v?: string) => (v && !Number.isNaN(Date.parse(v)) ? v : null);
 
