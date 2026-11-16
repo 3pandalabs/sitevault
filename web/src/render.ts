@@ -10,7 +10,7 @@
 // enough for white text), and nothing that only works with a mouse.
 
 import { CATEGORIES, headline, type Site } from "./site.js";
-import { asTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
+import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
 
 export type RenderContext = {
@@ -26,6 +26,8 @@ export type RenderContext = {
    * customer-site subdomain, where /t/ is routed.
    */
   ping?: boolean;
+  /** Preview a style without saving (from `?style=`): overrides site.template for this view only. */
+  previewTemplate?: string;
 };
 
 export function photoUrl(ctx: RenderContext, key: string): string {
@@ -172,7 +174,7 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 export function renderSite(site: Site, ctx: RenderContext): string {
   const cat = CATEGORIES[site.category];
   const brand = cat.brand;
-  const template = asTemplate(site.template);
+  const template = isTemplate(ctx.previewTemplate) ? ctx.previewTemplate : asTemplate(site.template);
   const theme = themeFor(site.category, brand);
   const title = `${site.businessName} | ${cat.label}${site.city ? ` in ${site.city}` : ""}`;
   const description = (site.about || headline(site)).slice(0, 160);
