@@ -33,6 +33,8 @@ export type Billing = {
   credits: number;
   /** Created before billing started: paid until EARLY_ACCESS_UNTIL. */
   earlyAccess?: boolean;
+  /** Comped by a 3PandaLabs admin: publishes free, never pending or paused, no expiry. */
+  comp?: boolean;
   /** Paid at a festive price: Basic $29 / Pro $59 a year for life. */
   festive?: boolean;
   customerId?: string | null;
@@ -112,6 +114,11 @@ export function initialBilling(source: Source, cfg: BillingConfig, now: Date, aw
   return { status: "pending", plan: "basic", buildPaid: false, paidUntil: null, renewing: false, credits: START_CREDITS };
 }
 
+/** A comped site (owner is a 3PandaLabs admin): active, free, never expires. */
+export function compBilling(): Billing {
+  return { status: "active", plan: "pro", buildPaid: true, paidUntil: null, renewing: false, credits: START_CREDITS, comp: true };
+}
+
 /** AdVault took the $10: publish with a year of Pro. Never shortens time already paid for. */
 export function applyAdvaultPaid(b: Billing, now: Date): Billing {
   return {
@@ -154,6 +161,7 @@ export type SiteState = "live" | "unpublished" | "grace" | "paused";
 export function siteState(site: { billing?: Billing }, cfg: BillingConfig, now: Date): SiteState {
   if (!cfg.on) return "live";
   const b = billingOf(site);
+  if (b.comp) return "live";
   if (b.status === "pending") return "unpublished";
   const until = effectivePaidUntil(b, cfg);
   if (until === null) return b.earlyAccess ? "live" : "paused";

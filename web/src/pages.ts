@@ -153,7 +153,7 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
   <nav class="links">${
     opts.signedIn
-      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a><a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a><form method="post" action="/logout"><button class="plain" type="submit">Sign out</button></form>`
+      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a><a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a><form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
       : `<a class="btn small" href="/login">Sign in</a>`
   }</nav>
 </div></header>
@@ -295,6 +295,15 @@ export const RENEW_WINDOW_DAYS = 45;
 
 export function billingSection(slug: string, key: string, v: BillingView): string {
   const b = v.billing;
+  if (b.comp) {
+    return `<details class="section" id="billing">
+  <summary>Plan &amp; billing <span class="sum">— Comped (free)</span></summary>
+  <div class="section-body">
+  <p>This website is comped by 3PandaLabs: it's published free and never expires. Nothing to pay.</p>
+  <dl class="facts"><dt>Offer credits</dt><dd>${b.credits} left</dd></dl>
+  </div>
+</details>`;
+  }
   const planName = b.plan === "pro" ? "Pro (keeps your site running, with visitor stats)" : "Basic (keeps your site running)";
   const rows: string[] = [];
   let status = "";
@@ -763,10 +772,7 @@ export function accountPage(email: string, sites: AccountSite[], opts: { claimEr
     owner: sites.length > 0,
     signedIn: true,
     body: `<section>
-<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:center">
-  <h1 style="margin:0">My website</h1>
-  <form method="post" action="/logout"><button class="btn ghost small" type="submit">Sign out</button></form>
-</div>
+<h1>My website</h1>
 <p class="hint">Signed in as ${esc(email)}</p>
 ${opts.claimed ? `<p class="notice ok" role="status">Added to your account.</p>` : ""}
 ${rows}
