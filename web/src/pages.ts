@@ -149,9 +149,14 @@ details.section .section-body{padding:14px 18px 4px}
 .atable .n{text-align:right}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.8rem;font-weight:600}
 .badge.live{background:rgba(52,211,153,.15);color:#6ee7b7}.badge.unpublished{background:rgba(255,255,255,.1);color:#d4d4d8}.badge.grace{background:rgba(251,191,36,.15);color:#fcd34d}.badge.paused{background:rgba(248,113,113,.15);color:#fca5a5}
-.templates{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:8px}
-.tpl{position:relative;display:block;border:1px solid var(--line2);border-radius:14px;padding:12px;cursor:pointer;background:var(--panel)}
-.tpl.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.templates{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:8px}
+.tpl-item{display:flex;flex-direction:column;gap:8px}
+.tpl-preview{font-size:.85rem;font-weight:600;text-align:center;text-decoration:none}
+.tpl-preview:hover{text-decoration:underline}
+.tpl{position:relative;display:block;border:1px solid var(--line2);border-radius:14px;padding:12px;cursor:pointer;background:var(--panel);transition:border-color .12s,box-shadow .12s,background .12s}
+.tpl:hover{border-color:var(--fg2)}
+.tpl.sel,.tpl:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 2px var(--accent);background:rgba(56,189,248,.07)}
+.tpl:has(input:checked) .tpl-name::after{content:" ✓";color:var(--accent);font-weight:800}
 .tpl input{position:absolute;opacity:0;width:0;height:0}
 .tpl:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .tpl-thumb{position:relative;display:block;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px}
@@ -284,7 +289,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
 
 export type FormMode =
   | { kind: "new"; account?: { email: string } | null }
-  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; signedIn?: boolean };
+  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; signedIn?: boolean; siteUrl?: string };
 
 /** Everything the edit page's "Plan & billing" section shows. Only built while BILLING is on. */
 export type BillingView = {
@@ -548,13 +553,14 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   </div>
 </fieldset>
 <fieldset><legend>Website style</legend>
-  <p class="hint">Pick a look for your website. You can change it anytime.</p>
+  <p class="hint">Your website's look. Pick a style, then <strong>Save changes</strong> — it changes how your published website appears (open it in a new tab to see). You can switch anytime.</p>
   <div class="templates">
     ${(() => {
       const selTpl = values.template ?? site?.template ?? DEFAULT_TEMPLATE;
+      const previewBase = mode.kind === "edit" ? mode.siteUrl : undefined;
       return TEMPLATES.map(
         (t) =>
-          `<label class="tpl${selTpl === t.key ? " sel" : ""}"><input type="radio" name="template" value="${t.key}"${selTpl === t.key ? " checked" : ""}><span class="tpl-thumb tpl-${t.key}"></span><span class="tpl-name">${esc(t.label)}</span><span class="tpl-blurb">${esc(t.blurb)}</span></label>`,
+          `<div class="tpl-item"><label class="tpl${selTpl === t.key ? " sel" : ""}"><input type="radio" name="template" value="${t.key}"${selTpl === t.key ? " checked" : ""}><span class="tpl-thumb tpl-${t.key}"></span><span class="tpl-name">${esc(t.label)}</span><span class="tpl-blurb">${esc(t.blurb)}</span></label>${previewBase ? `<a class="tpl-preview" href="${esc(previewBase)}?style=${t.key}" target="_blank" rel="noopener">Preview this style ↗</a>` : ""}</div>`,
       ).join("");
     })()}
   </div>

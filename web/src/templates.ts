@@ -14,9 +14,13 @@ export const TEMPLATES: { key: TemplateKey; label: string; blurb: string }[] = [
 
 export const DEFAULT_TEMPLATE: TemplateKey = "spotlight";
 
+export function isTemplate(x: string | undefined | null): x is TemplateKey {
+  return TEMPLATES.some((t) => t.key === x);
+}
+
 /** A stored or submitted template value, coerced to a known key (default otherwise). */
 export function asTemplate(x: string | undefined | null): TemplateKey {
-  return TEMPLATES.some((t) => t.key === x) ? (x as TemplateKey) : DEFAULT_TEMPLATE;
+  return isTemplate(x) ? x : DEFAULT_TEMPLATE;
 }
 
 export type Theme = {

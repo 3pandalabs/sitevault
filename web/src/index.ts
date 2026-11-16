@@ -529,11 +529,18 @@ async function serveSite(
     res.headers.set("x-robots-tag", "noindex");
     return res;
   }
-  if (countsVisits(site, cfg, now)) countView(env, visit.ctx, visit.request, site);
-  const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) }));
-  // Short edge cache: edits show within a minute, traffic spikes from an ad
-  // don't hit KV for every visitor.
-  res.headers.set("cache-control", "public, max-age=60");
+  // Preview a style without saving (owner clicks "Preview" on the edit page).
+  const style = new URL(visit.request.url).searchParams.get("style") ?? undefined;
+  if (countsVisits(site, cfg, now) && !style) countView(env, visit.ctx, visit.request, site);
+  const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) && !style, previewTemplate: style }));
+  if (style) {
+    res.headers.set("x-robots-tag", "noindex");
+    res.headers.set("cache-control", "no-store");
+  } else {
+    // Short edge cache: edits show within a minute, traffic spikes from an ad
+    // don't hit KV for every visitor.
+    res.headers.set("cache-control", "public, max-age=60");
+  }
   return res;
 }
 
@@ -598,6 +605,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false): Pr
     photoUrl: (k) => `${env.PUBLIC_ORIGIN}/p/${k}`,
     billing,
     visitors: stats ? { stats, full: statsVisible(site, cfg, now) } : undefined,
+    siteUrl: siteUrl(env, site.slug),
   };
 }
 
