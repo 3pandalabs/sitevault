@@ -43,3 +43,21 @@ describe("accounts", () => {
     expect(page).toContain("Sign out");
   });
 });
+
+import { homePage } from "../src/pages.js";
+
+describe("one website per account", () => {
+  it("an owner with a website sees no Build button", () => {
+    const h = homePage(true, null, true);
+    expect(h).toContain("Go to my website");
+    expect(h).not.toContain('href="/new"');
+    expect(homePage(true, null, false)).toContain('href="/new"');
+  });
+  it("My website hides the add-a-site form once the account has one", () => {
+    const one = accountPage("o@x.test", [{ slug: "b", name: "B", siteUrl: "https://b.3pandasite.com/", state: "live" }]);
+    expect(one).toContain("One website per account");
+    expect(one).not.toContain("/account/claim");
+    expect(one).not.toContain('href="/new"');
+    expect(accountPage("o@x.test", [])).toContain("/account/claim");
+  });
+});
