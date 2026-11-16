@@ -58,6 +58,22 @@ export const SERVICE_TEMPLATES: Record<CategoryKey, string> = {
   other: "",
 };
 
+/**
+ * A weekly opening-hours skeleton prefilled into the builder's hours box when
+ * it's empty, so the owner edits times rather than typing the whole week. Day
+ * labels match what the customer site's schedule renders; the owner adjusts or
+ * clears it, and it's kept once touched.
+ */
+export const HOURS_TEMPLATE = [
+  "Monday: 9:00 am - 5:00 pm",
+  "Tuesday: 9:00 am - 5:00 pm",
+  "Wednesday: 9:00 am - 5:00 pm",
+  "Thursday: 9:00 am - 5:00 pm",
+  "Friday: 9:00 am - 5:00 pm",
+  "Saturday: Closed",
+  "Sunday: Closed",
+].join("\n");
+
 export type Service = { name: string; price: string | null };
 
 export type SiteContent = {

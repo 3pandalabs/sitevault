@@ -3,7 +3,7 @@
 // that shrinks photos in the browser before upload, so a 12 MB phone photo
 // arrives as ~300 KB; without JavaScript the form still posts normally.
 
-import { CATEGORIES, MAX_PHOTOS, SERVICE_TEMPLATES, servicesToText, type FieldErrors, type Site } from "./site.js";
+import { CATEGORIES, HOURS_TEMPLATE, MAX_PHOTOS, SERVICE_TEMPLATES, servicesToText, type FieldErrors, type Site } from "./site.js";
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
 import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
@@ -574,6 +574,15 @@ const BUILDER_SCRIPT = `
     };
     catSel.addEventListener('change',fillServices);
     if(svc.value.trim()==='') fillServices();
+  }
+  // Opening hours: offer a weekly template to edit; it stays once touched, and
+  // an existing site's hours are never overwritten.
+  var HOURS_TEMPLATE=${JSON.stringify(HOURS_TEMPLATE)};
+  var hrs=document.getElementById('hours');
+  if(hrs){
+    var fillHours=function(){ if(hrs.value.trim()==='') hrs.value=HOURS_TEMPLATE; };
+    if(catSel) catSel.addEventListener('change',fillHours);
+    fillHours();
   }
   // Inline check for phone and email on blur, mirroring the server's rules.
   var setErr=function(id,msg){ var el=document.getElementById('err-'+id); if(el) el.textContent=msg||''; };
