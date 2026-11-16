@@ -30,6 +30,20 @@ tag, rounded-xl buttons, the canonical footer ("© 3PandaLabs LLC, USA." /
 Customer sites are deliberately different: light, the business's own,
 coloured per category.
 
+**Customer-site templates (`src/templates.ts`, 2026-11-16):** the owner picks
+one of 3 static layouts at build time (`site.template`, default `spotlight`):
+`spotlight` (full-bleed photo hero), `split` (text panel + image), `editorial`
+(centred, serif headings, image band). Still no JS, no web fonts, facts only —
+the template only changes the hero layout, typography (`--head-font`) and
+spacing; every section is shared. `themeFor(category, brand)` returns the
+palette: `landscaping` is hand-tuned from the local-business blueprints, the
+other 17 fall back to a light palette derived from the category's brand colour
+(Phase 2 tunes each). `renderSite` dispatches on `asTemplate(site.template)`;
+the builder shows a radio-card picker ("Website style"). The interactive parts
+of the blueprints (calculators, sliders, booking drawers, live tickers) are
+intentionally NOT built — they'd need JS and often fabricated data, both
+against SiteVault's rules.
+
 ## One-click from AdVault
 
 `POST /api/internal/sites`, bearer `INTERNAL_TOKEN` (Worker secret; same
