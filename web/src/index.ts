@@ -1029,7 +1029,7 @@ const PHONE_TAKEN =
   "A website already exists for this phone number. Use its edit link to change it, or email 3pandas@3pandalabs.com if you didn't make it.";
 
 async function indexSite(env: Env, site: Site): Promise<void> {
-  await env.SITES.put(phoneKey(site.phone), site.slug);
+  if (!site.adminTest) await env.SITES.put(phoneKey(site.phone), site.slug);
   await env.SITES.put(nameTownKey(site.businessName, site.city), site.slug);
 }
 
@@ -1068,6 +1068,7 @@ async function insertSite(
   awaitingPayment = false,
   ownerId: string | null = null,
   comp = false,
+  adminTest = false,
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
@@ -1080,6 +1081,7 @@ async function insertSite(
   const site: Site = {
     ...(billing ? { billing } : {}),
     ...(ownerId ? { ownerId } : {}),
+    ...(adminTest ? { adminTest: true } : {}),
     ...content,
     slug,
     photos: await storePhotos(env, slug, files),
@@ -1121,7 +1123,9 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
     const problem = await requestedAddressProblem(env, requested);
     if (problem) errors.slug = problem;
   }
-  if (parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
+  // AdVault admins (ownerAdmin=1, sent by AdVault for role 'admin') make test sites: any number of them, phone reuse allowed.
+  const adminTest = form.fields.ownerAdmin === "1" || isAdminEmail(env, form.fields.ownerEmail);
+  if (!adminTest && parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
   if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
   // "1": AdVault charges $10 first; the site waits unpublished until /paid.
   const awaiting = form.fields.awaitingPayment === "1";
@@ -1129,7 +1133,7 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   const advId = form.fields.ownerAdvaultUserId ?? "";
   const advEmail = normaliseEmail(form.fields.ownerEmail ?? "");
   const owner = /^[A-Za-z0-9-]{8,64}$/.test(advId) && !emailProblem(advEmail) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
-  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting, owner?.id ?? null);
+  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting, owner?.id ?? null, false, adminTest);
   if (owner) await addSiteToAccount(env.SITES, owner, made.slug);
   return json({ ok: true, slug: made.slug, siteUrl: made.siteUrl, editUrl: made.editUrl }, 201);
 }
@@ -1214,7 +1218,8 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     const problem = await requestedAddressProblem(env, requested);
     if (problem) errors.slug = problem;
   }
-  if (parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
+  const adminMaker = !!signedIn && isAdminEmail(env, signedIn.email);
+  if (!adminMaker && parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
   if (signedIn && !isAdminEmail(env, signedIn.email) && (await accountSites(env, signedIn)).length > 0) {
     errors.form = "Your account already has a website (one per account). Open My website to edit it.";
   }
@@ -1240,7 +1245,7 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     owner = made;
     console.log("account_created", { id: made.id });
   }
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested, false, owner.id, isAdminEmail(env, owner.email));
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email));
   await addSiteToAccount(env.SITES, owner, slug);
   reportSitevaultUse(env, ctx, owner);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
@@ -1299,7 +1304,7 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     // Going back to one of its own old addresses is allowed.
     if (errors.slug === "") delete errors.slug;
   }
-  if (parsed.ok && (await phoneOwner(env, parsed.value.phone, site.slug))) errors.phone = PHONE_TAKEN;
+  if (!site.adminTest && parsed.ok && (await phoneOwner(env, parsed.value.phone, site.slug))) errors.phone = PHONE_TAKEN;
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
   const removed = site.photos.filter((k) => !kept.includes(k));

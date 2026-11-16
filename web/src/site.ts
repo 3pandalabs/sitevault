@@ -97,6 +97,11 @@ export type SiteContent = {
 export type Site = SiteContent & {
   slug: string;
   photos: string[];
+  /**
+   * Made by a 3PandaLabs admin for testing: may share a phone number with
+   * other sites, and never claims its number (so it can't block a customer).
+   */
+  adminTest?: boolean;
   /** R2 key of the business's video ad (AdVault sites only). */
   video?: string | null;
   /** Earlier addresses, each a permanent redirect to this one. */
