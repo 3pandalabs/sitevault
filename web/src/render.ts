@@ -61,23 +61,28 @@ function parseHours(raw: string): { day: string; time: string }[] {
 
 const heroImg = (src: string, alt: string) => `<img src="${esc(src)}" alt="${esc(alt)}" fetchpriority="high">`;
 
-/** The hero, per template. `headline` may be empty. */
-function buildHero(template: TemplateKey, o: { name: string; headline: string; hero?: string }): string {
+/** The hero, per template. `headline` may be empty; `eyebrow` is the category. */
+function buildHero(
+  template: TemplateKey,
+  o: { eyebrow: string; name: string; headline: string; hero?: string; phone: string; pingCall: string },
+): string {
+  const eyebrow = `<p class="eyebrow">${esc(o.eyebrow)}</p>`;
   const h1 = `<h1>${esc(o.name)}</h1>`;
-  const p = o.headline ? `<p>${esc(o.headline)}</p>` : "";
+  const p = o.headline ? `<p class="lede">${esc(o.headline)}</p>` : "";
   if (template === "split") {
+    const cta = `<a class="btn primary hero-cta" href="${esc(telHref(o.phone))}"${o.pingCall}>Call ${esc(o.phone)}</a>`;
     return `<div class="hero split${o.hero ? "" : " noimg"}">
-  <div class="hero-text">${h1}${p}</div>
+  <div class="hero-text">${eyebrow}${h1}${p}${cta}</div>
   ${o.hero ? `<div class="hero-img">${heroImg(o.hero, o.name)}</div>` : ""}
 </div>`;
   }
   if (template === "editorial") {
-    return `<div class="hero editorial"><div class="wrap">${h1}${p}</div></div>
+    return `<div class="hero editorial"><div class="wrap">${eyebrow}${h1}${p}</div></div>
 ${o.hero ? `<div class="hero-band">${heroImg(o.hero, o.name)}</div>` : ""}`;
   }
   return `<div class="hero spotlight${o.hero ? "" : " noimg"}">
   ${o.hero ? `${heroImg(o.hero, o.name)}\n  <div class="shade"></div>` : ""}
-  <div class="copy"><div class="wrap">${h1}${p}</div></div>
+  <div class="copy"><div class="wrap">${eyebrow}${h1}${p}</div></div>
 </div>`;
 }
 
@@ -90,22 +95,27 @@ body{margin:0;font-family:var(--body-font,system-ui,-apple-system,"Segoe UI",Rob
 a{color:var(--primary)}
 a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
 .skip{position:absolute;left:-9999px}.skip:focus{left:16px;top:8px;background:#fff;padding:8px;z-index:9}
-header.top{border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
-header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;padding-bottom:10px}
+.eyebrow{margin:0 0 10px;font-size:.78rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;padding-bottom:12px}
 .name{font-weight:800;font-size:1.1rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:10px 18px;border-radius:10px;font-weight:700;text-decoration:none;border:2px solid var(--primary)}
-.btn.primary{background:var(--primary);color:#fff}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:11px 20px;border-radius:12px;font-weight:700;text-decoration:none;border:2px solid var(--primary);transition:transform .12s ease,box-shadow .12s ease,background .12s ease}
+.btn.primary{background:var(--primary);color:#fff;box-shadow:0 2px 6px rgba(15,23,42,.18)}
+.btn.primary:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(15,23,42,.24)}
 .btn.ghost{background:var(--card);color:var(--primary)}
-.offer{background:#fef3c7;color:#78350f;font-weight:700;text-align:center;padding:12px 16px}
-.actions{display:flex;flex-wrap:wrap;gap:10px;padding:20px 0}
-section{padding:36px 0}
+.btn.ghost:hover{background:var(--band)}
+.offer{background:#fef3c7;color:#78350f;font-weight:700;text-align:center;padding:14px 16px;border-bottom:3px solid var(--accent)}
+.actions{display:flex;flex-wrap:wrap;gap:12px;padding:24px 0}
+section{padding:48px 0}
 section.band{background:var(--band);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-h2{font-family:var(--head-font,inherit);font-size:1.5rem;margin:0 0 16px}
-.services{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.services li{display:flex;justify-content:space-between;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-.svc{font-weight:600}.price{color:var(--muted);white-space:nowrap}
-.gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
-.gallery img{width:100%;height:200px;object-fit:cover;border-radius:10px;display:block}
+h2{font-family:var(--head-font,inherit);font-size:1.6rem;margin:0 0 20px;position:relative;padding-bottom:14px}
+h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;background:var(--accent);border-radius:2px}
+.services{list-style:none;margin:0;padding:0;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.services li{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(15,23,42,.05);transition:transform .12s ease,box-shadow .12s ease}
+.services li:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(15,23,42,.09)}
+.svc{font-weight:600}.price{color:var(--primary);font-weight:700;white-space:nowrap}
+.gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.gallery img{width:100%;height:220px;object-fit:cover;border-radius:14px;display:block}
 video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:#000}
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .facts h3{margin:0 0 4px;font-size:1rem}
@@ -127,24 +137,36 @@ footer a{color:var(--muted)}
 
 const TEMPLATE_CSS: Record<TemplateKey, string> = {
   spotlight: `.hero.spotlight{position:relative;background:var(--primary);color:#fff}
-.hero.spotlight img{display:block;width:100%;height:min(56vh,460px);object-fit:cover}
-.hero.spotlight .shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.65))}
-.hero.spotlight .copy{position:absolute;left:0;right:0;bottom:0;padding:24px 0}
-.hero.spotlight.noimg .copy{position:static;padding:56px 0}
-.hero.spotlight h1{font-family:var(--head-font);margin:0 0 6px;font-size:clamp(1.7rem,5vw,2.6rem);line-height:1.15}
-.hero.spotlight p{margin:0;font-size:1.1rem;opacity:.95}`,
-  split: `.hero.split{display:grid;grid-template-columns:1.05fr .95fr;background:var(--primary);color:#fff;align-items:stretch}
-.hero.split .hero-text{padding:44px clamp(16px,5vw,56px);align-self:center}
-.hero.split h1{font-family:var(--head-font);margin:0 0 10px;font-size:clamp(1.7rem,4.2vw,2.5rem);line-height:1.15}
-.hero.split p{margin:0;font-size:1.1rem;opacity:.95}
-.hero.split .hero-img img{display:block;width:100%;height:100%;min-height:260px;object-fit:cover}
+.hero.spotlight img{display:block;width:100%;height:min(66vh,540px);object-fit:cover}
+.hero.spotlight .shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.34) 45%,rgba(0,0,0,.80) 100%)}
+.hero.spotlight .copy{position:absolute;left:0;right:0;bottom:0;padding:40px 0}
+.hero.spotlight.noimg{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 68%,#000))}
+.hero.spotlight.noimg .copy{position:static;padding:72px 0}
+.hero.spotlight .eyebrow{color:rgba(255,255,255,.82)}
+.hero.spotlight h1{font-family:var(--head-font);margin:0 0 10px;font-size:clamp(2rem,6vw,3.2rem);line-height:1.1;letter-spacing:-.01em;text-shadow:0 2px 14px rgba(0,0,0,.35)}
+.hero.spotlight .lede{margin:0;font-size:1.2rem;max-width:46ch;opacity:.96}`,
+  split: `.hero.split{display:grid;grid-template-columns:1.05fr .95fr;background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 78%,#000));color:#fff;align-items:stretch}
+.hero.split .hero-text{padding:52px clamp(18px,5vw,60px);align-self:center}
+.hero.split .eyebrow{color:rgba(255,255,255,.82)}
+.hero.split h1{font-family:var(--head-font);margin:0 0 12px;font-size:clamp(1.9rem,4.4vw,2.8rem);line-height:1.12;letter-spacing:-.01em}
+.hero.split .lede{margin:0 0 24px;font-size:1.15rem;opacity:.95;max-width:40ch}
+.hero.split .hero-cta{background:#fff;color:var(--primary);border-color:#fff}
+.hero.split .hero-cta:hover{background:var(--band)}
+.hero.split .hero-img img{display:block;width:100%;height:100%;min-height:300px;object-fit:cover}
 .hero.split.noimg{display:block}
-@media(max-width:720px){.hero.split{grid-template-columns:1fr}.hero.split .hero-img img{min-height:220px}}`,
+@media(max-width:720px){.hero.split{grid-template-columns:1fr}.hero.split .hero-img img{min-height:240px}}`,
   editorial: `:root{--head-font:Georgia,Cambria,"Times New Roman",serif}
-.hero.editorial{background:var(--band);color:var(--ink);text-align:center;padding:64px 0 48px;border-bottom:1px solid var(--line)}
-.hero.editorial h1{font-family:var(--head-font);margin:0 0 12px;font-size:clamp(2rem,6vw,3rem);line-height:1.1;letter-spacing:-.01em}
-.hero.editorial p{margin:0 auto;max-width:42ch;color:var(--muted);font-size:1.15rem}
-.hero-band img{display:block;width:100%;height:min(50vh,420px);object-fit:cover}`,
+.hero.editorial{background:var(--band);color:var(--ink);text-align:center;padding:72px 0 56px;border-bottom:1px solid var(--line)}
+.hero.editorial .eyebrow{color:var(--primary)}
+.hero.editorial h1{font-family:var(--head-font);margin:0 0 14px;font-size:clamp(2.2rem,6.4vw,3.4rem);line-height:1.08;letter-spacing:-.015em}
+.hero.editorial .lede{margin:0 auto;max-width:44ch;color:var(--muted);font-size:1.2rem}
+.hero-band img{display:block;width:100%;height:min(54vh,460px);object-fit:cover}
+.t-editorial h2{text-align:center;padding-bottom:16px}
+.t-editorial h2::after{left:50%;transform:translateX(-50%);width:56px}
+.t-editorial .services{max-width:720px;margin:0 auto}
+.t-editorial .services li{background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;padding:16px 4px}
+.t-editorial .services li:hover{transform:none;box-shadow:none}
+.t-editorial .facts{text-align:center}`,
 };
 
 export function renderSite(site: Site, ctx: RenderContext): string {
@@ -297,7 +319,7 @@ ${TEMPLATE_CSS[template]}
   </div>
 </header>
 <main id="main">
-${buildHero(template, { name: site.businessName, headline: headline(site), hero })}
+${buildHero(template, { eyebrow: cat.label, name: site.businessName, headline: headline(site), hero, phone: site.phone, pingCall: ping("call") })}
 ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
 <div class="wrap actions">
   <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call now</a>
