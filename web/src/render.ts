@@ -30,6 +30,33 @@ export function photoUrl(ctx: RenderContext, key: string): string {
   return `${ctx.assetOrigin}/p/${key.split("/").map(encodeURIComponent).join("/")}`;
 }
 
+// A weekday at the START of a line, including ranges: "Mon", "Monday",
+// "Mon-Fri", "Monday - Friday", "Mon, Wed, Fri".
+const DAYWORD = "(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*";
+const DAY_HEADING = new RegExp(`^${DAYWORD}(?:\\s*(?:-|–|—|to|&|,|and)\\s*${DAYWORD})*`, "i");
+
+/**
+ * Pair each day with its hours, however the owner typed the free-text field:
+ * "Monday: 10am-7pm", "Mon 10am-7pm", or the day and the time on two separate
+ * lines. A line with no recognisable day is treated as the previous day's time
+ * (so a day on its own line picks up the time below it), or shown full width.
+ */
+function parseHours(raw: string): { day: string; time: string }[] {
+  const rows: { day: string; time: string }[] = [];
+  for (const line of raw.split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const m = line.match(DAY_HEADING);
+    // A real heading: the match isn't run into more letters ("Sunflower" is not "Sun").
+    if (m && !/^[a-z]/i.test(line.slice(m[0].length))) {
+      rows.push({ day: m[0], time: line.slice(m[0].length).replace(/^[\s:–—-]+/, "").trim() });
+    } else if (rows.length && !rows[rows.length - 1]!.time) {
+      rows[rows.length - 1]!.time = line;
+    } else {
+      rows.push({ day: "", time: line });
+    }
+  }
+  return rows;
+}
+
 export function renderSite(site: Site, ctx: RenderContext): string {
   const cat = CATEGORIES[site.category];
   const brand = cat.brand;
@@ -99,20 +126,14 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   const hoursBlock = site.hours
     ? `<div class="visit-col">
         <h2>Hours of Operation</h2>
-        <p class="visit-sub">Our regular schedule</p>
+        <p class="visit-sub">Our Regular Schedule</p>
         <table class="schedule"><tbody>
-          ${site.hours
-            .split("\n")
-            .map((l) => l.trim())
-            .filter(Boolean)
-            .map((line) => {
-              const i = line.indexOf(":") > -1 ? line.indexOf(":") : line.search(/\s/);
-              const day = i > -1 ? line.slice(0, i).trim() : line;
-              const time = i > -1 ? line.slice(i + 1).trim() : "";
-              return time
-                ? `<tr><th scope="row">${esc(day)}</th><td>${esc(time)}</td></tr>`
-                : `<tr><td colspan="2" class="visit-note">${esc(day)}</td></tr>`;
-            })
+          ${parseHours(site.hours)
+            .map((r) =>
+              r.day
+                ? `<tr><th scope="row">${esc(r.day)}:</th><td>${esc(r.time || "—")}</td></tr>`
+                : `<tr><td colspan="2" class="visit-note">${esc(r.time)}</td></tr>`,
+            )
             .join("\n          ")}
         </tbody></table>
       </div>`
