@@ -108,6 +108,7 @@ textarea{min-height:110px;resize:vertical}
 #slug-status button{background:none;border:1px solid var(--line2);color:var(--fg2);border-radius:999px;padding:2px 10px;margin:4px 6px 0 0;font:inherit;font-size:.85rem;cursor:pointer}
 fieldset{border:1px solid var(--line);border-radius:16px;padding:18px 18px 4px;margin:0 0 20px;background:var(--panel)}
 legend{font-weight:600;padding:0 6px}
+#builder{margin-bottom:32px}
 .photos{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
 .photos label{font-weight:400;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.85rem}
 .photos img{width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
