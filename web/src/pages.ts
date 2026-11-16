@@ -4,6 +4,7 @@
 // arrives as ~300 KB; without JavaScript the form still posts normally.
 
 import { CATEGORIES, HOURS_TEMPLATE, MAX_PHOTOS, SERVICE_TEMPLATES, servicesToText, type FieldErrors, type Site } from "./site.js";
+import { DEFAULT_TEMPLATE, TEMPLATES } from "./templates.js";
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
 import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
@@ -148,6 +149,18 @@ details.section .section-body{padding:14px 18px 4px}
 .atable .n{text-align:right}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.8rem;font-weight:600}
 .badge.live{background:rgba(52,211,153,.15);color:#6ee7b7}.badge.unpublished{background:rgba(255,255,255,.1);color:#d4d4d8}.badge.grace{background:rgba(251,191,36,.15);color:#fcd34d}.badge.paused{background:rgba(248,113,113,.15);color:#fca5a5}
+.templates{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:8px}
+.tpl{position:relative;display:block;border:1px solid var(--line2);border-radius:14px;padding:12px;cursor:pointer;background:var(--panel)}
+.tpl.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.tpl input{position:absolute;opacity:0;width:0;height:0}
+.tpl:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.tpl-thumb{position:relative;display:block;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px}
+.tpl-spotlight{background:linear-gradient(180deg,#8ea3b8 62%,#273442 62%)}
+.tpl-split{background:linear-gradient(90deg,#273442 46%,#8ea3b8 46%)}
+.tpl-editorial{background:linear-gradient(180deg,#f4f4f5 66%,#8ea3b8 66%)}
+.tpl-editorial::before{content:"";position:absolute;top:20px;left:50%;transform:translateX(-50%);width:58%;height:6px;background:#3f3f46;border-radius:3px;box-shadow:0 12px 0 #a1a1aa}
+.tpl-name{display:block;font-weight:700}
+.tpl-blurb{display:block;color:var(--fg2);font-size:.85rem;margin-top:2px;line-height:1.35}
 .buttons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}
 .buttons form{margin:0}
 dl.facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0 0 8px}
@@ -534,6 +547,18 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
     <div class="field"><label for="serviceArea">Areas you serve <span class="hint">Optional</span></label><input type="text" id="serviceArea" name="serviceArea" maxlength="160" value="${v("serviceArea", site?.serviceArea ?? "")}" placeholder="Secaucus, Hoboken, Jersey City">${e("serviceArea")}</div>
   </div>
 </fieldset>
+<fieldset><legend>Website style</legend>
+  <p class="hint">Pick a look for your website. You can change it anytime.</p>
+  <div class="templates">
+    ${(() => {
+      const selTpl = values.template ?? site?.template ?? DEFAULT_TEMPLATE;
+      return TEMPLATES.map(
+        (t) =>
+          `<label class="tpl${selTpl === t.key ? " sel" : ""}"><input type="radio" name="template" value="${t.key}"${selTpl === t.key ? " checked" : ""}><span class="tpl-thumb tpl-${t.key}"></span><span class="tpl-name">${esc(t.label)}</span><span class="tpl-blurb">${esc(t.blurb)}</span></label>`,
+      ).join("");
+    })()}
+  </div>
+</fieldset>
 <fieldset><legend>What you offer</legend>
   <div class="field"><label for="tagline">One line about you <span class="hint">Optional. Shown under your name.</span></label><input type="text" id="tagline" name="tagline" maxlength="120" value="${v("tagline", site?.tagline)}" placeholder="Family-owned lawn care since 2009">${e("tagline")}</div>
   <div class="field"><label for="offer">Current special <span class="hint">Optional. Shown in a banner.${
@@ -605,6 +630,13 @@ const BUILDER_SCRIPT = `
   var HOURS_TEMPLATE=${JSON.stringify(HOURS_TEMPLATE)};
   var hrs=document.getElementById('hours');
   if(hrs){
+    // Highlight the chosen website-style card.
+    [].slice.call(document.querySelectorAll('.tpl input[type=radio]')).forEach(function(r){
+      r.addEventListener('change',function(){
+        [].slice.call(document.querySelectorAll('.tpl')).forEach(function(l){ l.classList.remove('sel'); });
+        var lab=r.closest&&r.closest('.tpl'); if(r.checked&&lab) lab.classList.add('sel');
+      });
+    });
     var fillHours=function(){ if(hrs.value.trim()==='') hrs.value=HOURS_TEMPLATE; };
     if(catSel) catSel.addEventListener('change',fillHours);
     fillHours();

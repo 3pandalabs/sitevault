@@ -7,6 +7,7 @@
 // builder becomes a phishing host).
 
 import type { Billing } from "./billing.js";
+import { asTemplate, type TemplateKey } from "./templates.js";
 
 export const CATEGORIES = {
   landscaping: { label: "Landscaping & lawn care", brand: "#166534" },
@@ -89,6 +90,8 @@ export type SiteContent = {
   hours: string | null;
   services: Service[];
   offer: string | null;
+  /** Which customer-site template (layout/style) to render. */
+  template: TemplateKey;
 };
 
 export type Site = SiteContent & {
@@ -266,6 +269,7 @@ export function parseContent(
       hours: hours || null,
       services,
       offer: offer || null,
+      template: asTemplate(get("template")),
     },
   };
 }
