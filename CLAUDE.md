@@ -62,6 +62,42 @@ The business picks `<slug>.3pandasite.com`; the default is the shortest free one
 
 Email + password (PBKDF2-SHA256, 100k iterations, the Workers max). KV: `acct:<id>`, `acctemail:<email>` -> id, `sess:<sha256(token)>` -> id (30 days). Cookie `sv_session` (HttpOnly, Secure, SameSite=Lax) on the MAIN site only; customer sites never get a cookie. The build form signs you up (fields `acct_email`/`acct_password`) unless signed in; the site gets `ownerId` and joins `account.sites`. Pages: `/login`, `/signup`, `/account` (My websites), `POST /logout`, `POST /account/claim` (paste an old edit link to adopt a site). `authorize()` accepts the edit key OR the owner session; session-only POSTs need `Origin` = PUBLIC_ORIGIN. 10 auth tries per IP per 15 min. **One website per account:** `/new` redirects an owner who has a site to `/account`, create and claim refuse a second one, and the nav/home show "My website" instead of "Build my website" (`layout({ owner })`). No password-reset email yet (says email us). **Same login as AdVault:** when the SiteVault password doesn't match, `/login` asks AdVault `POST {ADVAULT_API_URL}/internal/sitevault/verify-login` (bearer INTERNAL_TOKEN; ADVAULT_API_URL is the DNS-only api-internal host) and signs them in to the account linked to that AdVault user (`accountForAdvault`: KV `acctadv:<advaultUserId>`, else same email, else a new password-less account). AdVault sends `ownerAdvaultUserId`/`ownerEmail` on internal create, and backfills older sites via `POST /api/internal/sites/<slug>/owner` (never moves an owned site). The AdVault password is never stored here.
 
+## One 3PandaLabs account (2026-11-16)
+
+**The login lives in AdVault's `users` table, shared by AdVault and SiteVault**
+(advault `lib/sharedAccount`, `api/ROUTES.md` "Internal: SiteVault"). The KV
+`acct:` record keeps SiteVault's part (sites, sessions) linked by
+`advaultUserId`. Helpers in `src/accounts.ts`, all bearer `INTERNAL_TOKEN` to
+`ADVAULT_API_URL`, 8 s timeout, never throw:
+
+- **Sign-up** (`/signup` and the build form, `signUpShared`): `POST
+  /internal/sitevault/accounts` creates the user with `signup_app = sitevault`;
+  the KV account gets `advaultUserId` and `pw: null`, and `/login` then checks
+  the password with AdVault (verify-login). 409 `email_exists` = "already has a
+  3PandaLabs account, sign in" (never linked: a sign-up proves nothing). AdVault
+  down or unconfigured = a local-password account, moved later. New passwords
+  need 10+ characters (AdVault's rule); older 8-9 character ones still work.
+- **Lazy move** (`moveToSharedAccount`, in `authSubmit`): an account with `pw`
+  and no `advaultUserId` that signs in with its SiteVault password is created in
+  AdVault with that password, its original `createdAt` and its first site's time.
+  Created = local `pw` dropped. Email already in AdVault = linked, NEITHER
+  password changed, local `pw` kept (so both passwords work, as before). Never
+  relinks an AdVault id held by another account. Failure = unchanged, retried
+  next sign-in.
+- **Usage** (`markSitevaultUsed` / `reportSitevaultUse`, `ctx.waitUntil`): `POST
+  /internal/sitevault/usage` when an owner creates or claims a site and on every
+  sign-in of a linked account that has one (self-healing for older sites and
+  failed reports). AdVault stamps `sitevault_first_used_at`; its
+  `account_app_usage` view defines **SiteVault-only = has a SiteVault website
+  and never made an AdVault campaign** (advault CLAUDE.md "One 3PandaLabs
+  account"). AdVault stamps sites it makes through "Make me a website" itself.
+- **Deploy order**: advault-api first (the routes must exist), then this
+  Worker. No new secrets: the same `INTERNAL_TOKEN` / `ADVAULT_API_URL`.
+- Availability: a moved or new account can only sign in while AdVault's API
+  answers. Accepted for one source of truth (no stale second password).
+- Privacy and terms pages (`pages.ts`) describe the shared account; change them
+  with any change to what it stores.
+
 ## One website per business
 
 No accounts, so the business PHONE is the identity: one live site per phone (`phone:<digits>` -> slug, `phoneIdentity` drops formatting and the US 1). Create (public and internal) and phone edits are refused with `PHONE_TAKEN`; removal frees the number; renames re-point it. Same name in the same town (`nt:<name>|<town>`) is only flagged (`possibleDuplicateOf`, in KV metadata and the admin list), never blocked. AdVault adds one site per AdVault account on top. Admin override for a shared number: delete the `phone:` key by hand.

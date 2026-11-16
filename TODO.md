@@ -116,6 +116,10 @@ problem hits every customer (and every AdVault ad pointing at them).
       single-use, time-limited reset token via the `mailer` Worker (so it
       depends on the owner-email item above). Until built, keep the
       "email 3pandas@3pandalabs.com" fallback on `/login`.
+      Since 2026-11-16 (one 3PandaLabs account) new and moved accounts keep
+      their password in AdVault only, so a reset belongs in AdVault's API
+      and serves both apps; only unmoved or email-linked accounts still have
+      a local PBKDF2 hash.
 - [ ] **Contact form** on customer sites (delivered by email via `mailer`).
       Update the privacy page first: we'd then process visitors' messages.
 - [ ] **Claude copy polish** (optional "write my About text"): facts-only

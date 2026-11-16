@@ -6,15 +6,28 @@
 //   sess:<sha256(token)> -> account id, expires after SESSION_DAYS
 // The session cookie lives on the main site only (sitevault.3pandalabs.com).
 // Customer sites (<slug>.3pandasite.com) never see or set a cookie.
+//
+// One 3PandaLabs account (2026-11-16): the LOGIN lives in AdVault's users
+// table, shared by AdVault and SiteVault. This KV record keeps SiteVault's own
+// part (sites, sessions) and links to it by advaultUserId.
+//   - New sign-ups create the shared account first (signUpShared); pw stays
+//     null here and /login checks the password with AdVault.
+//   - Older SiteVault-only accounts (pw set, no advaultUserId) move lazily on
+//     their next successful SiteVault-password sign-in (moveToSharedAccount).
+//   - SiteVault tells AdVault when an account starts using SiteVault (first
+//     website) so AdVault can tell SiteVault-only customers apart.
+// If AdVault is unreachable, sign-up falls back to a local password and the
+// account moves on a later sign-in; nothing here ever blocks on AdVault
+// except checking a password only AdVault holds.
 
 import { randomKey, safeEqual, sha256Hex } from "./util.js";
 
 export type Account = {
   id: string;
   email: string;
-  /** PBKDF2-SHA256. null for an account made by AdVault single sign-in (no password yet). */
+  /** PBKDF2-SHA256. null when the password lives in the shared 3PandaLabs account (AdVault). */
   pw: { hash: string; salt: string; iter: number } | null;
-  /** The AdVault user this account belongs to (sign in with AdVault). */
+  /** The shared 3PandaLabs account (AdVault user id) this account belongs to. */
   advaultUserId?: string | null;
   /** Slugs of the websites this account owns. */
   sites: string[];
@@ -42,7 +55,9 @@ export function emailProblem(email: string): string | null {
 }
 
 export function passwordProblem(pw: string): string | null {
-  if (pw.length < 8) return "Use at least 8 characters.";
+  // 10, the shared 3PandaLabs account rule (AdVault's). Older accounts made
+  // with 8 still sign in everywhere.
+  if (pw.length < 10) return "Use at least 10 characters.";
   if (pw.length > 200) return "That password is too long.";
   return null;
 }
@@ -149,6 +164,102 @@ export async function verifyAdvaultLogin(
     console.warn("advault login check failed", String(err));
     return null;
   }
+}
+
+type AdvaultApi = { apiUrl: string | undefined; token: string | undefined };
+
+/** POST to an AdVault internal route; null on any failure (unconfigured, down, timeout). */
+async function advaultPost(api: AdvaultApi, path: string, body: unknown): Promise<{ status: number; body: Record<string, unknown> } | null> {
+  if (!api.apiUrl || !api.token) return null;
+  try {
+    const res = await fetch(`${api.apiUrl.replace(/\/$/, "")}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${api.token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
+    });
+    return { status: res.status, body: ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown> };
+  } catch (err) {
+    console.warn("advault call failed", path, String(err));
+    return null;
+  }
+}
+
+export type SharedCreate = { kind: "created" | "exists"; advaultUserId: string } | null;
+
+/**
+ * Create the shared 3PandaLabs account in AdVault (signup_app = sitevault).
+ * "exists" carries the existing account's id and changes nothing on it.
+ * null = AdVault unavailable or refused (caller falls back).
+ */
+export async function createAdvaultAccount(
+  api: AdvaultApi,
+  input: { email: string; password: string; createdAt?: string; sitevaultUsedAt?: string },
+): Promise<SharedCreate> {
+  const r = await advaultPost(api, "/internal/sitevault/accounts", input);
+  const id = typeof r?.body.userId === "string" ? r.body.userId : null;
+  if (r?.status === 201 && id) return { kind: "created", advaultUserId: id };
+  if (r?.status === 409 && r.body.error === "email_exists" && id) return { kind: "exists", advaultUserId: id };
+  if (r) console.warn("advault account create refused", { status: r.status, error: r.body.error });
+  return null;
+}
+
+/** Tell AdVault this account uses SiteVault (has a website). Idempotent; never throws. */
+export async function markSitevaultUsed(api: AdvaultApi, advaultUserId: string | null | undefined, at?: string): Promise<boolean> {
+  if (!advaultUserId) return false;
+  const r = await advaultPost(api, "/internal/sitevault/usage", at ? { userId: advaultUserId, at } : { userId: advaultUserId });
+  return r?.status === 200;
+}
+
+/**
+ * Sign up with the shared 3PandaLabs account. "exists" when the email already
+ * has a SiteVault account or a 3PandaLabs (AdVault) account: sign in instead.
+ * When AdVault can't be reached the account is made here with a local
+ * password and moves to the shared account on a later sign-in.
+ */
+export async function signUpShared(kv: KVNamespace, api: AdvaultApi, email: string, password: string): Promise<Account | "exists"> {
+  if (await kv.get(emailKey(email))) return "exists";
+  const shared = await createAdvaultAccount(api, { email, password });
+  if (shared?.kind === "exists") return "exists";
+  if (shared?.kind === "created") return createAccount(kv, email, null, { advaultUserId: shared.advaultUserId });
+  console.warn("shared account unavailable, local sign-up");
+  return createAccount(kv, email, password);
+}
+
+/**
+ * Lazy move of a SiteVault-only account to the shared 3PandaLabs account,
+ * right after its SiteVault password was verified (so `password` is proven).
+ *   - created: AdVault now holds the password; the local copy is dropped.
+ *   - exists (email already in AdVault): linked, AdVault's password untouched,
+ *     and the local password kept so this person can still sign in here.
+ *   - AdVault unavailable: unchanged; tried again next sign-in.
+ * Keeps the account's createdAt; sitevaultUsedAt stamps its first website.
+ */
+export async function moveToSharedAccount(
+  kv: KVNamespace,
+  api: AdvaultApi,
+  account: Account,
+  password: string,
+  sitevaultUsedAt?: string,
+): Promise<Account> {
+  if (account.advaultUserId) return account;
+  const shared = await createAdvaultAccount(api, {
+    email: account.email,
+    password,
+    createdAt: account.createdAt,
+    ...(sitevaultUsedAt ? { sitevaultUsedAt } : {}),
+  });
+  if (!shared) return account;
+  // Never take over an AdVault id another SiteVault account is linked to.
+  const holder = await kv.get(advKey(shared.advaultUserId));
+  if (holder && holder !== account.id) {
+    console.warn("shared account already linked elsewhere", { account: account.id, holder });
+    return account;
+  }
+  const next: Account = { ...account, advaultUserId: shared.advaultUserId, pw: shared.kind === "created" ? null : account.pw };
+  await saveAccount(kv, next);
+  console.log("account_moved_to_shared", { id: account.id, kind: shared.kind });
+  return next;
 }
 
 /** A new account, or "exists" when the email already has one. */
