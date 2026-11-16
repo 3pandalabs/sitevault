@@ -60,6 +60,12 @@ describe("one website per account", () => {
     expect(one).not.toContain("/account/claim");
     expect(accountPage("o@x.test", [])).toContain("/account/claim");
   });
+  it("an admin can build more than one website", () => {
+    const admin = accountPage("a@x.test", [{ slug: "b", name: "B", siteUrl: "https://b.3pandasite.com/", state: "live" }], { admin: true });
+    expect(admin).toContain("Build another website");
+    expect(admin).not.toContain("One website per account");
+    expect(admin).toContain('href="/new"');
+  });
 });
 
 describe("sign out in the header", () => {
