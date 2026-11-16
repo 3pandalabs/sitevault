@@ -196,8 +196,7 @@ function plansBlock(billingOn: boolean, festive: boolean): string {
   <div class="included"><h2>Basic</h2><p class="plan-price">${basicPrice}</p><p class="plan-sub">Everything included:</p>${list(INCLUDED)}</div>
   <div class="included pro"><h2>Pro</h2><p class="plan-price">${proPrice}</p><p class="plan-sub">Everything in Basic, plus visitor stats:</p>${list(PRO_EXTRAS)}</div>
 </div>
-<p class="plan-note">Build it free first. You choose Basic or Pro when you publish, and can upgrade to Pro anytime.</p>
-<p class="hint" style="margin:0 0 24px">Making video ads with <a href="https://advault.3pandalabs.com">AdVault</a>? Your website is $${DOLLARS.advaultSetup} with the first year of Pro included, then Pro is $${DOLLARS.proAdvault}/year.</p>`;
+<p class="plan-note" style="margin-bottom:24px">Build it free first. You choose Basic or Pro when you publish, and can upgrade to Pro anytime.</p>`;
 }
 
 /** The home page's price line. `festiveUntil`: the festive offer's last day, while it's open. */
@@ -221,7 +220,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
   ${plansBlock(billingOn, festiveUntil !== null)}
   <div style="display:flex;flex-wrap:wrap;gap:12px">${owner ? `<a class="btn" href="/account">Go to my website</a>` : `<a class="btn" href="/new">Build my website</a>`}<a class="btn ghost" href="#features">What you get</a></div>
-  <p class="hint" style="margin-top:16px;font-size:.95rem">Want more customers? Turn your photos into a YouTube video ad, shown to people nearby, with <a href="https://advault.3pandalabs.com">AdVault</a>: $10 makes your ad, and it can link straight to your SiteVault website.</p>
+  <p class="hint" style="margin-top:16px;font-size:.95rem">Want more customers? Turn your photos into a YouTube video ad, shown to people nearby, with <a href="https://advault.3pandalabs.com">AdVault</a>: $10 makes your ad, and if you make your website there it's ${DOLLARS.advaultSetup} with the first year of Pro included.</p>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
 <div class="steps">
@@ -237,7 +236,6 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
     <div class="card"><h3>Hours, area, directions</h3><p>Everything a customer checks before they call.</p></div>
     <div class="card"><h3>Fast and private</h3><p>Loads quickly on any phone. No cookies, no trackers.</p></div>
   </div>
-  <p>Running video ads with <a href="https://advault.3pandalabs.com">AdVault</a>? Your SiteVault link works as your ad's website.</p>
 </section>`,
   });
 }
