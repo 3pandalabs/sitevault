@@ -88,7 +88,7 @@ section{padding:24px 0}
 form .field{margin:0 0 18px}
 label{display:block;font-weight:500;margin-bottom:6px;color:var(--fg)}
 .hint{display:block;font-weight:400;color:var(--muted);font-size:.85rem}
-input[type=text],input[type=tel],input[type=email],select,textarea,input[type=file]{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:rgba(255,255,255,.05);color:var(--fg)}
+input[type=text],input[type=tel],input[type=email],input[type=password],input[type=url],select,textarea,input[type=file]{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:rgba(255,255,255,.05);color:var(--fg)}
 select option{background:#18181b}
 input::placeholder,textarea::placeholder{color:var(--dim)}
 textarea{min-height:110px;resize:vertical}
