@@ -532,7 +532,8 @@ async function serveSite(
   // Preview a style without saving (owner clicks "Preview" on the edit page).
   const style = new URL(visit.request.url).searchParams.get("style") ?? undefined;
   if (countsVisits(site, cfg, now) && !style) countView(env, visit.ctx, visit.request, site);
-  const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) && !style, previewTemplate: style }));
+  const n = nonce();
+  const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) && !style, previewTemplate: style, nonce: n }), 200, n);
   if (style) {
     res.headers.set("x-robots-tag", "noindex");
     res.headers.set("cache-control", "no-store");

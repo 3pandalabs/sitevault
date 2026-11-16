@@ -1,7 +1,10 @@
 // The customer's public site. Static templates, coloured per business type.
-// Plain HTML + inline CSS, no JavaScript, no web fonts, no maps embed, no
-// trackers: it loads fast on a phone, sets no cookies, and has nothing on it
-// the business didn't type. The template (spotlight/split/editorial) only
+// Plain HTML + inline CSS, no web fonts, no maps embed, no trackers, no
+// cookies: it loads fast on a phone and has nothing on it the business didn't
+// type. One small FIRST-PARTY inline script (nonce'd, no network, no external
+// code) adds motion: scroll reveals, a hero ken-burns and a gallery lightbox.
+// It is progressive — everything works with JS off — and respects
+// prefers-reduced-motion. The template (spotlight/split/editorial) only
 // changes the hero layout, typography and spacing — every section is shared.
 //
 // Accessibility is a requirement, not polish: US small-business sites are a
@@ -28,7 +31,22 @@ export type RenderContext = {
   ping?: boolean;
   /** Preview a style without saving (from `?style=`): overrides site.template for this view only. */
   previewTemplate?: string;
+  /** CSP nonce; when set, the motion script is included (customer sites). */
+  nonce?: string;
 };
+
+// First-party, no-network motion for customer sites. Progressive: adds `.js` to
+// <html> so reveal styles only apply when this runs; honours reduced motion.
+const SITE_JS = `(function(){
+  var d=document,root=d.documentElement;root.className+=(root.className?' ':'')+'js';
+  var reduce=matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var rev=[].slice.call(d.querySelectorAll('.reveal'));
+  if(reduce||!('IntersectionObserver' in window)){rev.forEach(function(e){e.classList.add('in');});}
+  else{var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{rootMargin:'0px 0px -8% 0px',threshold:.08});rev.forEach(function(e){io.observe(e);});}
+  var hdr=d.querySelector('header.top');if(hdr){var s=function(){hdr.classList.toggle('scrolled',(window.scrollY||window.pageYOffset)>8);};addEventListener('scroll',s,{passive:true});s();}
+  var imgs=[].slice.call(d.querySelectorAll('.gallery img'));
+  if(imgs.length){var box=d.createElement('div');box.className='lightbox';box.hidden=true;box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label','Photo');var big=d.createElement('img');big.alt='';box.appendChild(big);d.body.appendChild(box);var close=function(){box.hidden=true;big.removeAttribute('src');};box.addEventListener('click',close);addEventListener('keydown',function(e){if(e.key==='Escape'&&!box.hidden)close();});imgs.forEach(function(im){im.style.cursor='zoom-in';im.addEventListener('click',function(){big.src=im.currentSrc||im.src;big.alt=im.alt;box.hidden=false;});});}
+})();`;
 
 export function photoUrl(ctx: RenderContext, key: string): string {
   return `${ctx.assetOrigin}/p/${key.split("/").map(encodeURIComponent).join("/")}`;
@@ -111,6 +129,17 @@ a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
 .eyebrow{margin:0 0 10px;font-size:.78rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .kicker{margin:0 0 8px;font-size:.78rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--primary)}
 .ic{flex:none;vertical-align:-3px}
+.reveal{transition:opacity .7s ease,transform .7s ease}
+:root.js .reveal{opacity:0;transform:translateY(22px)}
+:root.js .reveal.in{opacity:1;transform:none}
+header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
+.lightbox{position:fixed;inset:0;background:rgba(5,8,12,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;cursor:zoom-out}
+.lightbox[hidden]{display:none}
+.lightbox img{max-width:100%;max-height:100%;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.gallery img{cursor:zoom-in}
+@media(prefers-reduced-motion:no-preference){.hero.spotlight img,.hero.split .hero-img img,.hero-band img{animation:kenburns 20s ease-out both}}
+@keyframes kenburns{from{transform:scale(1.08)}to{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;padding-bottom:12px}
 .name{font-weight:800;font-size:1.1rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
@@ -223,7 +252,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   };
 
   const services = site.services.length
-    ? `<section aria-labelledby="services-h" class="band">
+    ? `<section aria-labelledby="services-h" class="band reveal">
   <div class="wrap">
     <p class="kicker">What we offer</p>
     <h2 id="services-h">Services</h2>
@@ -240,7 +269,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
     : "";
 
   const about = site.about
-    ? `<section aria-labelledby="about-h">
+    ? `<section aria-labelledby="about-h" class="reveal">
   <div class="wrap">
     <p class="kicker">Our story</p>
     <h2 id="about-h">About us</h2>
@@ -280,7 +309,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
     : "";
   const visit =
     locationBlock || hoursBlock
-      ? `<section aria-label="Location and hours" class="band">
+      ? `<section aria-label="Location and hours" class="band reveal">
   <div class="wrap visit">
     ${locationBlock}
     ${hoursBlock}
@@ -289,7 +318,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
       : "";
 
   const video = site.video
-    ? `<section aria-labelledby="video-h">
+    ? `<section aria-labelledby="video-h" class="reveal">
   <div class="wrap">
     <h2 id="video-h">See us in action</h2>
     <video class="ad" controls playsinline preload="metadata"${hero ? ` poster="${esc(hero)}"` : ""} aria-label="${esc(`${site.businessName} video`)}">
@@ -300,7 +329,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
     : "";
 
   const galleryHtml = gallery.length
-    ? `<section aria-labelledby="gallery-h" class="band">
+    ? `<section aria-labelledby="gallery-h" class="band reveal">
   <div class="wrap">
     <p class="kicker">Recent work</p>
     <h2 id="gallery-h">Our work</h2>
@@ -335,6 +364,7 @@ ${hero ? `<meta property="og:image" content="${esc(hero)}">` : ""}
 ${baseCss(theme)}
 ${TEMPLATE_CSS[template]}
 </style>
+${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=' js'</script>` : ""}
 </head>
 <body class="t-${template}">
 <a class="skip" href="#main">Skip to content</a>
@@ -358,7 +388,7 @@ ${services}
 ${about}
 ${galleryHtml}
 ${visit}
-<section aria-labelledby="contact-h">
+<section aria-labelledby="contact-h" class="reveal">
   <div class="wrap">
     <p class="kicker">Get in touch</p>
     <h2 id="contact-h">Contact</h2>
@@ -380,6 +410,7 @@ ${visit}
   <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call</a>
   <a class="btn ghost" href="${esc(smsHref(site.phone))}">Text</a>
 </nav>
+${ctx.nonce ? `<script nonce="${ctx.nonce}">${SITE_JS}</script>` : ""}
 </body>
 </html>`;
 }

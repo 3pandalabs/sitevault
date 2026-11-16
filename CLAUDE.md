@@ -131,7 +131,12 @@ No accounts, so the business PHONE is the identity: one live site per phone (`ph
 - **No links in free text** (`LINK_PATTERN` in `site.ts`): a business card,
   not a redirect page, so SiteVault can't become a phishing host.
 - **Escape everything** with `esc()`; JSON-LD via `jsonForScript()`. Strict CSP:
-  customer sites run no JavaScript at all; builder pages use a per-response nonce.
+  the only script anywhere is FIRST-PARTY and nonce'd (`script-src 'nonce-…'`,
+  no external/eval). Customer sites run one small inline motion script (`SITE_JS`
+  in `render.ts`: scroll reveals, hero ken-burns, gallery lightbox) — progressive
+  (works with JS off via the `.js` class gate), reduced-motion aware, no network,
+  no cookies, no trackers. Hold pages (`renderHold`) stay script-free. Builder
+  pages use their own per-response nonce.
 - **Accessibility is required** (US ADA website suits): landmarks, headings,
   alt text, focus outlines, 44px targets, 4.5:1 contrast for every
   `CATEGORIES[*].brand` colour against white.
