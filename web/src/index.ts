@@ -170,7 +170,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       const cfg = billingConfig(env);
       const me = await currentAccount(env.SITES, request);
       const owner = me ? (await accountSites(env, me)).length > 0 : false;
-      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner));
+      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me)));
     }
     if (path === "/new") {
       const me = await currentAccount(env.SITES, request);
@@ -545,7 +545,8 @@ async function editPage(request: Request, env: Env, slug: string, key: string, j
     if (!key && !(await currentAccount(env.SITES, request))) return Response.redirect(`${env.PUBLIC_ORIGIN}/login?next=/edit/${slug}`, 302);
     return html(messagePage("Edit link not valid", "Check you copied the whole link, or sign in to the account that owns this website. Lost it? Email 3pandas@3pandalabs.com.", "Can't open"), 403);
   }
-  return builder(env, await editMode(env, site, key, justPaid));
+  const signedIn = Boolean(await currentAccount(env.SITES, request));
+  return builder(env, { ...(await editMode(env, site, key, justPaid)), signedIn });
 }
 
 /** The edit form plus its "Plan & billing" (BILLING on) and "Visitors" (STATS bound) sections. */
