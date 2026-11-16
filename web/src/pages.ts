@@ -203,7 +203,7 @@ function plansBlock(billingOn: boolean, festive: boolean): string {
 function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   if (!billingOn) return "<b>Free</b> during early access.";
   if (festiveUntil) {
-    return `<b>Festive season price: $${DOLLARS.festive}/year</b> (price locked for life). Pro: $${DOLLARS.festivePro}/year. Join before ${esc(fmtDate(festiveUntil))}. After that, $${DOLLARS.basic}/year (Pro $${DOLLARS.pro}).<br>Build it free. Pay only when you publish.`;
+    return `<b>Festive season price: $${DOLLARS.festive}/year and Pro: $${DOLLARS.festivePro}/year</b> (price locked for life). Join before ${esc(fmtDate(festiveUntil))}.<br>After that, $${DOLLARS.basic}/year (Pro $${DOLLARS.pro}).<br>Build it free. Pay only when you publish.`;
   }
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
@@ -221,7 +221,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   ${plansBlock(billingOn, festiveUntil !== null)}
   <div style="display:flex;flex-wrap:wrap;gap:12px">${owner ? `<a class="btn" href="/account">Go to my website</a>` : `<a class="btn" href="/new">Build my website</a>`}<a class="btn ghost" href="#features">What you get</a></div>
   <div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
-    <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span class="hint" style="display:block;font-weight:400">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included.</span></p>
+    <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included.</span></p>
     <a class="btn" href="https://advault.3pandalabs.com">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
   </div>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
