@@ -11,7 +11,8 @@ import type { SiteStats } from "./stats.js";
 
 const CONTACT = "3pandas@3pandalabs.com";
 
-export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean }): string {
+/** `owner`: a signed-in owner who already has their website (one per account): no "Build" button. */
+export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -137,7 +138,9 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
 <div class="backdrop" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><div class="dots"></div></div>
 <header class="top"><div class="wrap">
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
-  <nav class="links"><a class="plain" href="https://advault.3pandalabs.com">Video ads</a><a class="plain" href="/account">My websites</a><a class="btn small" href="/new">Build my website</a></nav>
+  <nav class="links"><a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${
+    opts.owner ? `<a class="btn small" href="/account">My website</a>` : `<a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a>`
+  }</nav>
 </div></header>
 <main id="main" class="wrap">
 ${opts.body}
@@ -203,8 +206,9 @@ function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
 
-export function homePage(billingOn = false, festiveUntil: Date | null = null): string {
+export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false): string {
   return layout({
+    owner,
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>
@@ -212,7 +216,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null): s
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
   ${plansBlock(billingOn, festiveUntil !== null)}
-  <div style="display:flex;flex-wrap:wrap;gap:12px"><a class="btn" href="/new">Build my website</a><a class="btn ghost" href="#features">What you get</a></div>
+  <div style="display:flex;flex-wrap:wrap;gap:12px">${owner ? `<a class="btn" href="/account">Go to my website</a>` : `<a class="btn" href="/new">Build my website</a>`}<a class="btn ghost" href="#features">What you get</a></div>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
 <div class="steps">
@@ -495,6 +499,7 @@ ${
     title: mode.kind === "edit" ? "Edit your website | SiteVault" : "Build your website | SiteVault",
     body,
     nonce,
+    owner: mode.kind === "edit",
     noindex: mode.kind === "edit",
     script: BUILDER_SCRIPT,
   });
@@ -664,24 +669,25 @@ export function accountPage(email: string, sites: AccountSite[], opts: { claimEr
   <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}">Edit, billing and visitors</a><a class="btn ghost" href="${esc(s.siteUrl)}" target="_blank" rel="noopener">View</a></div></div>`,
         )
         .join("")
-    : `<p>No websites on this account yet. <a href="/new">Build one</a>, or add one you already made below.</p>`;
+    : `<p>No website on this account yet. <a href="/new">Build it</a>, or add one you already made below.</p>`;
   return layout({
-    title: "My websites | SiteVault",
+    title: "My website | SiteVault",
     noindex: true,
+    owner: sites.length > 0,
     body: `<section>
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:center">
-  <h1 style="margin:0">My websites</h1>
+  <h1 style="margin:0">My website</h1>
   <form method="post" action="/logout"><button class="btn ghost small" type="submit">Sign out</button></form>
 </div>
 <p class="hint">Signed in as ${esc(email)}</p>
 ${opts.claimed ? `<p class="notice ok" role="status">Added to your account.</p>` : ""}
 ${rows}
-<form method="post" action="/account/claim" class="notice" style="margin-top:28px">
+${sites.length ? `<p class="hint" style="margin-top:20px">One website per account. Another business? Sign out and create a new account for it.</p>` : `<form method="post" action="/account/claim" class="notice" style="margin-top:28px">
   <p><strong>Made a website before accounts existed?</strong> Paste its private edit link to add it here.</p>
   ${opts.claimError ? `<p class="err" role="alert">${esc(opts.claimError)}</p>` : ""}
   <div class="field"><label for="editLink">Edit link</label><input id="editLink" name="editLink" type="url" required placeholder="https://sitevault.3pandalabs.com/edit/..."></div>
   <button class="btn ghost" type="submit">Add to my account</button>
-</form>
+</form>`}
 </section>`,
   });
 }
