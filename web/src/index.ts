@@ -256,7 +256,10 @@ function html(body: string, status = 200, scriptNonce?: string): Response {
     "style-src 'unsafe-inline'",
     scriptNonce ? `script-src 'nonce-${scriptNonce}'` : "script-src 'none'",
     "connect-src 'self'",
-    "form-action 'self'",
+    // Stripe hosts so a browser follows the checkout/portal form POST's 303 to
+    // Stripe — form-action is enforced against the redirect target, not just
+    // the POST URL, so 'self' alone silently blocks publishing and billing.
+    "form-action 'self' https://checkout.stripe.com https://billing.stripe.com",
     "base-uri 'none'",
     "frame-ancestors 'none'",
   ].join("; ");
