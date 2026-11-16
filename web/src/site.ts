@@ -197,9 +197,11 @@ export function parseContent(
   const required: [string, string][] = [
     ["businessName", businessName],
     ["phone", phone],
-    ["city", city],
   ];
   for (const [k, v] of required) if (!v) errors[k] = "Required.";
+  // Town or city locates the business; a street address does the same job, so
+  // it's only required when no address is given.
+  if (!city && !address) errors.city = "Add a town or city, or a street address.";
   if (!(category in CATEGORIES)) errors.category = "Pick a business type.";
 
   const lengths: [keyof typeof LIMITS, string][] = [
@@ -256,7 +258,8 @@ export function parseContent(
 export function headline(site: SiteContent): string {
   if (site.tagline) return site.tagline;
   const label = CATEGORIES[site.category].label.toLowerCase();
-  return site.category === "other" ? `Serving ${site.city}` : `${capitalize(label)} in ${site.city}`;
+  if (site.category === "other") return site.city ? `Serving ${site.city}` : "";
+  return site.city ? `${capitalize(label)} in ${site.city}` : capitalize(label);
 }
 
 function capitalize(s: string): string {
