@@ -18,6 +18,7 @@ export function layout(opts: { title: string; body: string; nonce?: string; scri
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <title>${esc(opts.title)}</title>
 <meta name="description" content="A simple website for your local business in about five minutes. Built from your own details and photos.">
 ${opts.noindex ? '<meta name="robots" content="noindex">' : ""}

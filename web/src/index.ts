@@ -116,6 +116,9 @@ export interface Env {
 
 const bootedAt = Date.now();
 
+/** Tab icon: an "S" in SiteVault sky on the dark rounded square AdVault's "A" uses. */
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#09090b"/><path d="M21.5 10.5C20 8.6 17.9 8 16 8c-3 0-5.5 1.7-5.5 4.2 0 5.6 11 3.3 11 9 0 2.4-2.4 4.3-5.6 4.3-2.3 0-4.4-.8-5.9-2.6" stroke="#38bdf8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
@@ -186,6 +189,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
     if (path === "/robots.txt") return new Response("User-agent: *\nDisallow: /edit/\nDisallow: /api/\n", { headers: { "content-type": "text/plain" } });
+    // The tab icon: an "S", matching AdVault's "A" (main site only; customer sites are the business's own).
+    if (path === "/favicon.svg" || path === "/favicon.ico") {
+      return new Response(FAVICON_SVG, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
+    }
     if (path === "/metrics") return metrics(request, env);
     if (path === "/api/admin/sites") return adminList(request, env);
     if (path === "/api/address") return addressCheck(env, url);
