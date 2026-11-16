@@ -221,6 +221,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
   ${plansBlock(billingOn, festiveUntil !== null)}
   <div style="display:flex;flex-wrap:wrap;gap:12px">${owner ? `<a class="btn" href="/account">Go to my website</a>` : `<a class="btn" href="/new">Build my website</a>`}<a class="btn ghost" href="#features">What you get</a></div>
+  <p class="hint" style="margin-top:16px;font-size:.95rem">Want more customers? Turn your photos into a YouTube video ad, shown to people nearby, with <a href="https://advault.3pandalabs.com">AdVault</a>: $10 makes your ad, and it can link straight to your SiteVault website.</p>
   <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
 <div class="steps">
