@@ -12,7 +12,7 @@ import type { SiteStats } from "./stats.js";
 const CONTACT = "3pandas@3pandalabs.com";
 
 /** `owner`: a signed-in owner who already has their website (one per account): no "Build" button. */
-export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean }): string {
+export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -134,6 +134,20 @@ details.section[open]>summary::before{transform:rotate(90deg)}
 details.section>summary .sum{color:var(--fg2);font-weight:400;font-size:.95rem}
 details.section[open]>summary{border-bottom:1px solid var(--line)}
 details.section .section-body{padding:14px 18px 4px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0}
+.tab{background:var(--panel);border:1px solid var(--line);color:var(--fg2);border-radius:999px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer}
+.tab.active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.tabpanel{margin-top:8px}.tabpanel.hidden{display:none}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.tile-n{font-size:2rem;font-weight:800;line-height:1}.tile-l{color:var(--fg2);font-size:.9rem;margin-top:6px}
+.tablewrap{overflow-x:auto}
+.atable{width:100%;border-collapse:collapse;margin-top:4px;min-width:520px}
+.atable th,.atable td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.atable thead th{color:var(--muted);font-size:.85rem;font-weight:600}
+.atable .n{text-align:right}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.8rem;font-weight:600}
+.badge.live{background:rgba(52,211,153,.15);color:#6ee7b7}.badge.unpublished{background:rgba(255,255,255,.1);color:#d4d4d8}.badge.grace{background:rgba(251,191,36,.15);color:#fcd34d}.badge.paused{background:rgba(248,113,113,.15);color:#fca5a5}
 .buttons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}
 .buttons form{margin:0}
 dl.facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0 0 8px}
@@ -153,7 +167,7 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
   <nav class="links">${
     opts.signedIn
-      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a><a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a><form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
+      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a><form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
       : `<a class="btn small" href="/login">Sign in</a>`
   }</nav>
 </div></header>
@@ -786,12 +800,87 @@ export function accountPage(
     noindex: true,
     owner: sites.length > 0,
     signedIn: true,
+    admin: opts.admin,
     body: `<section>
 <h1>${opts.admin ? "My websites" : "My website"}</h1>
 <p class="hint">Signed in as ${esc(email)}${opts.admin ? " · admin (unlimited websites, published free)" : ""}</p>
+${opts.admin ? `<div class="buttons"><a class="btn" href="/admin">Admin dashboard</a></div>` : ""}
 ${opts.claimed ? `<p class="notice ok" role="status">Added to your account.</p>` : ""}
 ${rows}
 ${footer}
+</section>`,
+  });
+}
+
+export type AdminSite = { slug: string; name: string; category: string; source: string; state: string; siteUrl: string };
+
+const ADMIN_STATE_LABEL: Record<string, string> = { live: "Published", unpublished: "Unpublished", grace: "Payment overdue", paused: "Paused" };
+
+const ADMIN_TAB_SCRIPT = `(function(){
+  var tabs=[].slice.call(document.querySelectorAll('.tab')); if(!tabs.length) return;
+  function show(id){ tabs.forEach(function(t){ var on=t.getAttribute('data-tab')===id; t.classList.toggle('active',on); var p=document.getElementById(t.getAttribute('data-tab')); if(p) p.classList.toggle('hidden',!on); }); }
+  tabs.forEach(function(t){ t.addEventListener('click',function(){ show(t.getAttribute('data-tab')); }); });
+  show('overview');
+})();`;
+
+const catLabel = (c: string) => CATEGORIES[c as keyof typeof CATEGORIES]?.label ?? c;
+
+/** Admin-only dashboard: every customer website, status totals, per-category stats. */
+export function adminPage(sites: AdminSite[], nonce: string): string {
+  const count = (st: string) => sites.filter((s) => s.state === st).length;
+  const fromAdvault = sites.filter((s) => s.source === "advault").length;
+  const tile = (label: string, n: number) => `<div class="tile"><div class="tile-n">${n}</div><div class="tile-l">${esc(label)}</div></div>`;
+
+  const byCat = new Map<string, { total: number; published: number }>();
+  for (const s of sites) {
+    const e = byCat.get(s.category) ?? { total: 0, published: 0 };
+    e.total++;
+    if (s.state === "live") e.published++;
+    byCat.set(s.category, e);
+  }
+  const catRows =
+    [...byCat.entries()]
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(
+        ([cat, e]) =>
+          `<tr><th scope="row">${esc(catLabel(cat))}</th><td class="n">${e.total}</td><td class="n">${e.published}</td><td class="n">${e.total - e.published}</td></tr>`,
+      )
+      .join("") || `<tr><td colspan="4">No websites yet.</td></tr>`;
+
+  const siteRows =
+    sites
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(
+        (s) =>
+          `<tr><th scope="row">${esc(s.name)}</th><td>${esc(catLabel(s.category))}</td><td><span class="badge ${esc(s.state)}">${esc(ADMIN_STATE_LABEL[s.state] ?? s.state)}</span></td><td>${s.source === "advault" ? "AdVault" : "SiteVault"}</td><td><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">open</a> · <a href="/edit/${esc(s.slug)}">edit</a></td></tr>`,
+      )
+      .join("") || `<tr><td colspan="5">No websites yet.</td></tr>`;
+
+  return layout({
+    title: "Admin | SiteVault",
+    noindex: true,
+    signedIn: true,
+    admin: true,
+    nonce,
+    script: ADMIN_TAB_SCRIPT,
+    body: `<section>
+<h1>Admin</h1>
+<p class="hint">Every customer website across SiteVault. <a href="/account">Back to my account</a>.</p>
+<div class="tabs" role="tablist">
+  <button class="tab" type="button" data-tab="overview">Overview</button>
+  <button class="tab" type="button" data-tab="categories">By category</button>
+  <button class="tab" type="button" data-tab="websites">All websites (${sites.length})</button>
+</div>
+<div id="overview" class="tabpanel">
+  <div class="tiles">${tile("Total websites", sites.length)}${tile("Published", count("live"))}${tile("Unpublished", count("unpublished"))}${tile("Payment overdue", count("grace"))}${tile("Paused", count("paused"))}${tile("From AdVault", fromAdvault)}</div>
+</div>
+<div id="categories" class="tabpanel">
+  <div class="tablewrap"><table class="atable"><thead><tr><th>Category</th><th class="n">Total</th><th class="n">Published</th><th class="n">Unpublished</th></tr></thead><tbody>${catRows}</tbody></table></div>
+</div>
+<div id="websites" class="tabpanel">
+  <div class="tablewrap"><table class="atable"><thead><tr><th>Business</th><th>Category</th><th>Status</th><th>Made with</th><th></th></tr></thead><tbody>${siteRows}</tbody></table></div>
+</div>
 </section>`,
   });
 }

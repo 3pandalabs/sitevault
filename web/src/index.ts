@@ -29,7 +29,7 @@
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
 import { renderHold, renderSite, type RenderContext } from "./render.js";
-import { accountPage, authPage, builderPage, donePage, homePage, messagePage, privacyPage, termsPage, type AccountSite, type BillingView, type FormMode } from "./pages.js";
+import { accountPage, adminPage, authPage, builderPage, donePage, homePage, messagePage, privacyPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
   accountForAdvault,
@@ -190,9 +190,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       return html(authPage(path === "/login" ? "login" : "signup", { next: url.searchParams.get("next") ?? undefined }));
     }
     if (path === "/account") return accountHome(request, env, url);
+    if (path === "/admin") return adminDashboard(request, env);
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
-    if (path === "/robots.txt") return new Response("User-agent: *\nDisallow: /edit/\nDisallow: /api/\n", { headers: { "content-type": "text/plain" } });
+    if (path === "/robots.txt") return new Response("User-agent: *\nDisallow: /edit/\nDisallow: /api/\nDisallow: /admin\nDisallow: /account\n", { headers: { "content-type": "text/plain" } });
     // The tab icon: an "S", matching AdVault's "A" (main site only; customer sites are the business's own).
     if (path === "/favicon.svg" || path === "/favicon.ico") {
       return new Response(FAVICON_SVG, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
@@ -819,6 +820,26 @@ async function accountSites(env: Env, account: Account): Promise<AccountSite[]> 
     out.push({ slug: site.slug, name: site.businessName, siteUrl: siteUrl(env, site.slug), state: siteState(site, cfg, now) });
   }
   return out;
+}
+
+// Admin-only dashboard: every live site, with status totals and per-category stats.
+// Gated on the signed-in account's email (ADMIN_EMAILS), not ADMIN_TOKEN.
+async function adminDashboard(request: Request, env: Env): Promise<Response> {
+  const account = await currentAccount(env.SITES, request);
+  if (!account) return Response.redirect(`${env.PUBLIC_ORIGIN}/login?next=/admin`, 302);
+  if (!isAdminEmail(env, account.email)) return html(messagePage("Not found", "This page doesn't exist.", "Not found"), 404);
+  const cfg = billingConfig(env);
+  const now = new Date();
+  const sites: AdminSite[] = [];
+  for (const k of await listSites(env)) {
+    if ((k.metadata as { status?: string } | undefined)?.status === "removed") continue;
+    const slug = k.name.slice("site:".length);
+    const site = await loadSite(env, slug);
+    if (!site || site.status !== "live") continue;
+    sites.push({ slug, name: site.businessName, category: site.category, source: site.source, state: siteState(site, cfg, now), siteUrl: siteUrl(env, slug) });
+  }
+  const n = nonce();
+  return html(adminPage(sites, n), 200, n);
 }
 
 async function accountHome(request: Request, env: Env, url: URL, claimError?: string): Promise<Response> {
