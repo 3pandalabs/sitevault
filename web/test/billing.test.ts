@@ -6,6 +6,7 @@ import {
   checkoutItems,
   checkoutParams,
   checkoutProblem,
+  compBilling,
   countsVisits,
   effectivePaidUntil,
   eventFromStripe,
@@ -82,6 +83,14 @@ describe("siteState", () => {
   });
   it("pending sites are unpublished", () => {
     expect(siteState({ billing: initialBilling("web", ON, NOW) }, ON, NOW)).toBe("unpublished");
+  });
+  it("comped (admin) sites are always live, never pending or paused", () => {
+    expect(compBilling().status).toBe("active");
+    expect(compBilling().comp).toBe(true);
+    expect(siteState({ billing: compBilling() }, ON, NOW)).toBe("live");
+    // comp overrides an expired paid period and a pending status
+    expect(siteState({ billing: { ...compBilling(), paidUntil: day(-100).toISOString() } }, ON, NOW)).toBe("live");
+    expect(siteState({ billing: { ...compBilling(), status: "pending" } }, ON, NOW)).toBe("live");
   });
   it("live until paidUntil, then 14 days grace, then paused", () => {
     expect(siteState({ billing: active({ paidUntil: day(1).toISOString() }) }, ON, NOW)).toBe("live");

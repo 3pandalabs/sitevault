@@ -62,6 +62,7 @@ import {
   eventFromStripe,
   festiveFor,
   festiveOpen,
+  compBilling,
   initialBilling,
   internalOfferSpend,
   OFFER_REF_TTL_SECONDS,
@@ -90,6 +91,8 @@ export interface Env {
   SITES_DOMAIN?: string;
   METRICS_TOKEN?: string;
   ADMIN_TOKEN?: string;
+  /** Comma-separated owner emails that publish websites free (3PandaLabs admins). */
+  ADMIN_EMAILS?: string;
   /** Shared with advault-api (SITEVAULT_INTERNAL_TOKEN) for one-click sites. */
   INTERNAL_TOKEN?: string;
   /** AdVault API (DNS-only internal host: Workers can't fetch the proxied one). AdVault logins are checked there. */
@@ -969,6 +972,17 @@ async function nameTownDuplicate(env: Env, name: string, city: string, self?: st
   return site?.status === "live" ? slug : null;
 }
 
+/** Owner emails that publish free (3PandaLabs admins), from ADMIN_EMAILS. */
+function isAdminEmail(env: Env, email: string | null | undefined): boolean {
+  if (!email) return false;
+  const e = email.trim().toLowerCase();
+  return (env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(e);
+}
+
 async function insertSite(
   env: Env,
   content: SiteContent,
@@ -978,13 +992,16 @@ async function insertSite(
   requested: string | null = null,
   awaitingPayment = false,
   ownerId: string | null = null,
+  comp = false,
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
   const nowDate = new Date();
   const now = nowDate.toISOString();
+  const cfg = billingConfig(env);
   // BILLING off: no billing record, so the site counts as early access later.
-  const billing = initialBilling(source, billingConfig(env), nowDate, awaitingPayment);
+  // Admin-owned sites are comped: published free (only meaningful while BILLING is on).
+  const billing = comp && cfg.on ? compBilling() : initialBilling(source, cfg, nowDate, awaitingPayment);
   const site: Site = {
     ...(billing ? { billing } : {}),
     ...(ownerId ? { ownerId } : {}),
@@ -1148,7 +1165,7 @@ async function createSite(request: Request, env: Env): Promise<Response> {
     owner = made;
     console.log("account_created", { id: made.id });
   }
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested, false, owner.id);
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested, false, owner.id, isAdminEmail(env, owner.email));
   await addSiteToAccount(env.SITES, owner, slug);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
   // BILLING on: the site waits for payment; the done page offers Publish.

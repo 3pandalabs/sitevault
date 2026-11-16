@@ -41,6 +41,9 @@
     // Festive season prices: plans paid on or before this day (UTC) keep Basic
     // $29 / Pro $59 a year for life. Remove (or empty) to end the offer; locked sites keep them.
     "FESTIVE_UNTIL": "2027-01-31",
+    // Owner emails that publish websites free (3PandaLabs admins), comma-separated.
+    // Their sites are comped at creation: live at once, no payment, no expiry.
+    "ADMIN_EMAILS": "anil.s.sv@gmail.com",
     // Stripe price ids (shared org account). Empty = that checkout answers 503.
     "STRIPE_PRICE_BASIC": "price_1UcBuTCrSBBxBBeWqKauA3yi",
     "STRIPE_PRICE_BASIC_FESTIVE": "price_1UcBuUCrSBBxBBeWuMsYwYt2",
