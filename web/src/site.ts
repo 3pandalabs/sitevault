@@ -31,6 +31,33 @@ export const CATEGORIES = {
 
 export type CategoryKey = keyof typeof CATEGORIES;
 
+/**
+ * A starting list of common services per business type, prefilled into the
+ * builder's "Services and prices" box when the owner picks a category (only
+ * while the box is empty or still holds an untouched suggestion). Names only,
+ * no prices: the owner fills in their own — we never invent a business's prices.
+ */
+export const SERVICE_TEMPLATES: Record<CategoryKey, string> = {
+  landscaping: "Lawn mowing\nSpring & fall cleanup\nHedge & shrub trimming\nMulching\nLeaf removal\nWeeding",
+  cleaning: "Standard home cleaning\nDeep cleaning\nMove-in / move-out cleaning\nOffice cleaning\nCarpet cleaning",
+  plumbing: "Leak repair\nDrain cleaning\nWater heater install\nFaucet & fixture install\nToilet repair\nEmergency call-out",
+  electrical: "Outlet & switch install\nLighting installation\nCeiling fan install\nPanel upgrade\nTroubleshooting & repairs",
+  hvac: "AC repair\nAC installation\nFurnace repair\nHeating installation\nSeasonal tune-up\nDuct cleaning",
+  handyman: "Furniture assembly\nTV mounting\nDrywall repair\nPainting touch-ups\nDoor & lock repair\nGeneral repairs",
+  salon: "Haircut & style\nHair colour\nHighlights\nBlow-dry\nManicure\nPedicure",
+  barber: "Haircut\nBeard trim\nHot towel shave\nKids' haircut\nLine-up",
+  spa: "Swedish massage\nDeep tissue massage\nFacial\nBody scrub\nAromatherapy",
+  restaurant: "Dine-in\nTakeout & delivery\nCatering\nPrivate events\nDaily specials",
+  bakery: "Custom cakes\nBirthday cakes\nWedding cakes\nCupcakes & pastries\nCatering orders",
+  dentist: "Routine cleaning & exam\nFillings\nTeeth whitening\nCrowns & bridges\nRoot canal\nEmergency visits",
+  clinic: "General consultation\nHealth check-up\nVaccinations\nLab tests\nMinor procedures",
+  fitness: "Personal training\nGroup classes\nYoga classes\nMonthly membership\nDrop-in session",
+  auto: "Oil change\nBrake service\nTire rotation & replacement\nEngine diagnostics\nAC service\nState inspection",
+  realestate: "Buyer representation\nSeller listing\nHome valuation\nProperty management\nRental search",
+  petcare: "Dog walking\nPet sitting\nGrooming\nBoarding\nNail trim",
+  other: "",
+};
+
 export type Service = { name: string; price: string | null };
 
 export type SiteContent = {

@@ -3,7 +3,7 @@
 // that shrinks photos in the browser before upload, so a 12 MB phone photo
 // arrives as ~300 KB; without JavaScript the form still posts normally.
 
-import { CATEGORIES, MAX_PHOTOS, servicesToText, type FieldErrors, type Site } from "./site.js";
+import { CATEGORIES, MAX_PHOTOS, SERVICE_TEMPLATES, servicesToText, type FieldErrors, type Site } from "./site.js";
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
 import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
@@ -539,6 +539,20 @@ const BUILDER_SCRIPT = `
 (function(){
   var form=document.getElementById('builder'); if(!form||!window.fetch||!window.FormData) return;
   var FIELDS=${JSON.stringify(FIELD_ORDER)};
+  // Prefill "Services and prices" from the chosen business type. Only replaces
+  // an empty box or an untouched earlier suggestion, so typed content is kept
+  // (including if you just tab past it).
+  var SERVICE_TEMPLATES=${JSON.stringify(SERVICE_TEMPLATES)};
+  var svc=document.getElementById('services'), catSel=document.getElementById('category');
+  if(svc && catSel){
+    var lastFill='';
+    var fillServices=function(){
+      var t=SERVICE_TEMPLATES[catSel.value]||'';
+      if(t && (svc.value.trim()==='' || svc.value===lastFill)){ svc.value=t; lastFill=t; }
+    };
+    catSel.addEventListener('change',fillServices);
+    if(svc.value.trim()==='') fillServices();
+  }
   var slug=document.getElementById('slug'), status=document.getElementById('slug-status');
   if(slug && !slug.readOnly){
     var touched=slug.value!=='', timer=null, seq=0;
