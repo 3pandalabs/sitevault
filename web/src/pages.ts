@@ -755,8 +755,23 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
 export type AccountSite = { slug: string; name: string; siteUrl: string; state: string };
 
 /** "My websites": every site on the account, and a way to add one made before accounts. */
-export function accountPage(email: string, sites: AccountSite[], opts: { claimError?: string; claimed?: boolean } = {}): string {
+export function accountPage(
+  email: string,
+  sites: AccountSite[],
+  opts: { claimError?: string; claimed?: boolean; admin?: boolean } = {},
+): string {
   const STATE: Record<string, string> = { live: "Live", unpublished: "Not published yet", grace: "Payment overdue", paused: "Paused" };
+  const claimForm = `<form method="post" action="/account/claim" class="notice" style="margin-top:28px">
+  <p><strong>Made a website before accounts existed?</strong> Paste its private edit link to add it here.</p>
+  ${opts.claimError ? `<p class="err" role="alert">${esc(opts.claimError)}</p>` : ""}
+  <div class="field"><label for="editLink">Edit link</label><input id="editLink" name="editLink" type="url" required placeholder="https://sitevault.3pandalabs.com/edit/..."></div>
+  <button class="btn ghost" type="submit">Add to my account</button>
+</form>`;
+  const footer = opts.admin
+    ? `<div class="buttons" style="margin-top:20px"><a class="btn" href="/new">Build another website</a></div>${claimForm}`
+    : sites.length
+      ? `<p class="hint" style="margin-top:20px">One website per account. Another business? Sign out and create a new account for it.</p>`
+      : claimForm;
   const rows = sites.length
     ? sites
         .map(
@@ -772,16 +787,11 @@ export function accountPage(email: string, sites: AccountSite[], opts: { claimEr
     owner: sites.length > 0,
     signedIn: true,
     body: `<section>
-<h1>My website</h1>
-<p class="hint">Signed in as ${esc(email)}</p>
+<h1>${opts.admin ? "My websites" : "My website"}</h1>
+<p class="hint">Signed in as ${esc(email)}${opts.admin ? " · admin (unlimited websites, published free)" : ""}</p>
 ${opts.claimed ? `<p class="notice ok" role="status">Added to your account.</p>` : ""}
 ${rows}
-${sites.length ? `<p class="hint" style="margin-top:20px">One website per account. Another business? Sign out and create a new account for it.</p>` : `<form method="post" action="/account/claim" class="notice" style="margin-top:28px">
-  <p><strong>Made a website before accounts existed?</strong> Paste its private edit link to add it here.</p>
-  ${opts.claimError ? `<p class="err" role="alert">${esc(opts.claimError)}</p>` : ""}
-  <div class="field"><label for="editLink">Edit link</label><input id="editLink" name="editLink" type="url" required placeholder="https://sitevault.3pandalabs.com/edit/..."></div>
-  <button class="btn ghost" type="submit">Add to my account</button>
-</form>`}
+${footer}
 </section>`,
   });
 }

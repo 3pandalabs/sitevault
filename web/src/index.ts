@@ -180,8 +180,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
     if (path === "/new") {
       const me = await currentAccount(env.SITES, request);
-      // One website per account: an owner who has one goes to it.
-      if (me && (await accountSites(env, me)).length > 0) return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
+      // One website per account (admins excepted): an owner who has one goes to it.
+      if (me && !isAdminEmail(env, me.email) && (await accountSites(env, me)).length > 0)
+        return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
       return builder(env, { kind: "new", account: me });
     }
     if (path === "/login" || path === "/signup") {
@@ -823,7 +824,14 @@ async function accountSites(env: Env, account: Account): Promise<AccountSite[]> 
 async function accountHome(request: Request, env: Env, url: URL, claimError?: string): Promise<Response> {
   const account = await currentAccount(env.SITES, request);
   if (!account) return Response.redirect(`${env.PUBLIC_ORIGIN}/login`, 302);
-  return html(accountPage(account.email, await accountSites(env, account), { claimError, claimed: url.searchParams.get("claimed") === "1" }), claimError ? 400 : 200);
+  return html(
+    accountPage(account.email, await accountSites(env, account), {
+      claimError,
+      claimed: url.searchParams.get("claimed") === "1",
+      admin: isAdminEmail(env, account.email),
+    }),
+    claimError ? 400 : 200,
+  );
 }
 
 // Add a site made before accounts: prove ownership with its edit link.
@@ -846,7 +854,8 @@ async function claimSite(request: Request, env: Env): Promise<Response> {
   const site = current && key ? await authorize(env, current, key) : null;
   if (!site) return fail("That edit link didn't work. Check you copied all of it.");
   if (site.ownerId && site.ownerId !== account.id) return fail("This website already belongs to another account. Email 3pandas@3pandalabs.com if that's wrong.");
-  if ((await accountSites(env, account)).some((x) => x.slug !== site.slug)) return fail("Your account already has a website (one per account). Sign out and create a new account for this one.");
+  if (!isAdminEmail(env, account.email) && (await accountSites(env, account)).some((x) => x.slug !== site.slug))
+    return fail("Your account already has a website (one per account). Sign out and create a new account for this one.");
   await saveSite(env, { ...site, ownerId: account.id, updatedAt: new Date().toISOString() });
   await addSiteToAccount(env.SITES, account, site.slug);
   console.log("site_claimed", { slug: site.slug, account: account.id });
@@ -1140,7 +1149,7 @@ async function createSite(request: Request, env: Env): Promise<Response> {
     if (problem) errors.slug = problem;
   }
   if (parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
-  if (signedIn && (await accountSites(env, signedIn)).length > 0) {
+  if (signedIn && !isAdminEmail(env, signedIn.email) && (await accountSites(env, signedIn)).length > 0) {
     errors.form = "Your account already has a website (one per account). Open My website to edit it.";
   }
   if (!signedIn) {
