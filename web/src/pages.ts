@@ -338,15 +338,15 @@ export function billingSection(slug: string, key: string, v: BillingView): strin
       : "",
   ].join("");
 
-  return `<section class="panel" aria-labelledby="billing-h" id="billing">
-  <h2 id="billing-h">Plan &amp; billing</h2>
+  return `<fieldset id="billing">
+  <legend>Plan &amp; billing</legend>
   ${v.justPaid ? `<p class="notice ok" role="status">Thanks, your payment went through. It can take a minute to show here.</p>` : ""}
   ${status}
   <dl class="facts">${rows.join("")}</dl>
   ${buttons.join("")}
   <p class="hint">Changing your current special uses 1 credit. Clearing it is free. Upgrading from Basic to Pro starts a new yearly Pro plan; the unused part of Basic is credited to your next payment. Payments are handled by Stripe.</p>
   <div class="buttons">${extra}</div>
-</section>`;
+</fieldset>`;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -376,7 +376,7 @@ export function visitorsSection(v: VisitorsView): string {
   if (!s) return "";
   const total = `<p><strong>${s.total}</strong> visit${s.total === 1 ? "" : "s"} in the last 30 days.</p>`;
   if (!v.full) {
-    return `<section class="panel" aria-labelledby="visitors-h"><h2 id="visitors-h">Visitors</h2>${total}<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p></section>`;
+    return `<fieldset><legend>Visitors</legend>${total}<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p></fieldset>`;
   }
   const place = (p: { city: string; country: string }) => [p.city, p.country].filter(Boolean).join(", ") || "Unknown";
   const tables = [
@@ -385,10 +385,10 @@ export function visitorsSection(v: VisitorsView): string {
     barTable("Devices", "Device", s.devices.map((r) => ({ label: r.device.charAt(0).toUpperCase() + r.device.slice(1), n: Number(r.views) }))),
     barTable("Visits by day", "Day", s.days.map((r) => ({ label: fmtDate(new Date(`${r.day}T00:00:00Z`)), n: Number(r.views) }))),
   ].filter(Boolean);
-  return `<section class="panel" aria-labelledby="visitors-h"><h2 id="visitors-h">Visitors</h2>${total}
+  return `<fieldset><legend>Visitors</legend>${total}
   <dl class="facts"><dt>Taps to call</dt><dd>${s.taps.calls}</dd><dt>Taps for directions</dt><dd>${s.taps.directions}</dd></dl>
   ${tables.length ? `<div class="stats">${tables.join("")}</div>` : ""}
-  <p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p></section>`;
+  <p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p></fieldset>`;
 }
 
 const FIELD_ORDER = [
@@ -464,8 +464,6 @@ export function builderPage(
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
 <p class="lead">${mode.kind === "edit" ? `Changes go live as soon as you save.` : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>
-${mode.kind === "edit" && mode.billing ? billingSection(mode.site.slug, mode.key, mode.billing) : ""}
-${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors) : ""}
 <form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate>
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
 <fieldset><legend>Your business</legend>
@@ -513,6 +511,8 @@ ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
   ${mode.kind === "edit" ? `<a class="btn ghost" href="/edit/${encodeURIComponent(mode.site.slug)}?k=${encodeURIComponent(mode.key)}">Cancel</a>` : ""}
 </div>
 </form>
+${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors) : ""}
+${mode.kind === "edit" && mode.billing ? billingSection(mode.site.slug, mode.key, mode.billing) : ""}
 ${
   mode.kind === "edit"
     ? `<div style="margin-top:28px" class="notice">
