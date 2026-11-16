@@ -721,9 +721,9 @@ function accountFields(
     return `<p class="hint" style="margin:16px 0">This website will be saved to your account, <strong>${esc(account.email)}</strong>.</p>`;
   }
   return `<fieldset><legend>Your account</legend>
-  <p class="hint">Sign in any time to edit your website, pay and see visitors. Already have an account? <a href="/login?next=/new">Sign in first</a>.</p>
+  <p class="hint">Sign in any time to edit your website, pay and see visitors. This 3PandaLabs account also works on AdVault. Already have one (SiteVault or AdVault)? <a href="/login?next=/new">Sign in first</a>.</p>
   <div class="field"><label for="acct_email">Email</label><input type="email" id="acct_email" name="acct_email" autocomplete="email" required maxlength="200" value="${v("acct_email", "")}">${e("acct_email")}</div>
-  <div class="field"><label for="acct_password">Password <span class="hint">At least 8 characters</span></label><input type="password" id="acct_password" name="acct_password" autocomplete="new-password" required minlength="8" maxlength="200">${e("acct_password")}</div>
+  <div class="field"><label for="acct_password">Password <span class="hint">At least 10 characters</span></label><input type="password" id="acct_password" name="acct_password" autocomplete="new-password" required minlength="10" maxlength="200">${e("acct_password")}</div>
 </fieldset>`;
 }
 
@@ -740,13 +740,13 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
 <form method="post" action="/${login ? "login" : "signup"}">
   <input type="hidden" name="next" value="${esc(next)}">
   <div class="field"><label for="email">Email</label><input type="email" id="email" name="email" autocomplete="email" required maxlength="200" value="${esc(opts.email ?? "")}"></div>
-  <div class="field"><label for="password">Password${login ? "" : ` <span class="hint">At least 8 characters</span>`}</label><input type="password" id="password" name="password" autocomplete="${login ? "current-password" : "new-password"}" required minlength="${login ? 1 : 8}" maxlength="200"></div>
+  <div class="field"><label for="password">Password${login ? "" : ` <span class="hint">At least 10 characters</span>`}</label><input type="password" id="password" name="password" autocomplete="${login ? "current-password" : "new-password"}" required minlength="${login ? 1 : 10}" maxlength="200"></div>
   <button class="btn" type="submit">${login ? "Sign in" : "Create account"}</button>
 </form>
 <p class="hint" style="margin-top:20px">${
       login
-        ? `<strong>AdVault customer?</strong> Sign in with your AdVault email and password.<br>New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>. Forgot your password? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.`
-        : `Already have an account? <a href="/login">Sign in</a>.`
+        ? `<strong>One 3PandaLabs login:</strong> the same email and password work on SiteVault and <a href="https://advault.3pandalabs.com">AdVault</a>, whichever you signed up on.<br>New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>. Forgot your password? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.`
+        : `This is your 3PandaLabs account: it also signs you in to <a href="https://advault.3pandalabs.com">AdVault</a>. Already have one (from SiteVault or AdVault)? <a href="/login">Sign in</a>.`
     }</p>
 </section>`,
   });
@@ -799,13 +799,14 @@ export function privacyPage(): string {
     title: "Privacy | SiteVault",
     body: `<section class="prose">
 <h1>Privacy</h1>
-<p>Last updated 15 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
+<p>Last updated 16 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
 <h2>What we store</h2>
 <ul>
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
   <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
-  <li><strong>Your account</strong>: your email address (if you signed in with your AdVault login, we ask AdVault to check it and store only your AdVault account ID, never your AdVault password), a scrambled (hashed) copy of your password, which can't be turned back into the password, and which websites are yours. While you're signed in we keep a session record that expires after 30 days or when you sign out.</li>
+  <li><strong>Your account is one 3PandaLabs account, shared with <a href="https://advault.3pandalabs.com">AdVault</a></strong> (our video-ad app, also by 3PandaLabs): the same email and password sign you in to both, whichever you signed up on. Your sign-in (email and a scrambled, hashed copy of your password, which can't be turned back into the password) is stored by AdVault for both apps; when you sign in here we send AdVault the email and password you typed to check them. SiteVault stores your email, your 3PandaLabs account ID and which websites are yours. Accounts made on SiteVault before 16 November 2026 kept their hashed password here; it moves to the shared account the next time you sign in. While you're signed in we keep a session record that expires after 30 days or when you sign out.</li>
+  <li><strong>Which apps you use</strong>: with your account we record which app you created it on (SiteVault or AdVault) and when you first used each one (your first website here, your first ad campaign in AdVault), so we know whether you use SiteVault, AdVault or both and can offer benefits that depend on it, for example to customers who use only SiteVault.</li>
   <li><strong>A short-lived counter per network address</strong> to limit how many sites can be created in a day. It expires after about a day.</li>
   <li><strong>Visit counts for each website, in total only</strong>: per day, the number of visits and of taps on the call and directions buttons, grouped by rough location (country and city, as worked out by Cloudflare), device type (phone, tablet or computer) and where visitors came from (for example YouTube, Google or a typed-in address). We don't store visitors' IP addresses, the full address of the page they came from, or their browser details, and we keep no record of any individual visitor. The business owner sees these totals on their edit page.</li>
   <li><strong>If you pay for a plan</strong>: payments are handled by Stripe, which processes your card details; we never see or store them. We store the Stripe customer and subscription IDs for your website and the email address Stripe gives us for the payer, plus your plan, paid-until date and offer credits.</li>
@@ -819,7 +820,7 @@ export function privacyPage(): string {
 <h2>Where it's kept</h2>
 <p>Sites, photos and visit counts are stored and served by Cloudflare, our hosting provider, in its global network. Visitors' browsers connect to Cloudflare to load your site, as with any website. Payment records are kept by Stripe.</p>
 <h2>Your choices</h2>
-<p>Change anything at any time with your edit link. To have your website removed, email 3pandas@3pandalabs.com with your web address: we confirm with you at the phone number on the site, then take it offline and delete its photos. If you've lost your edit link, email us too and we'll help.</p>
+<p>Change anything at any time with your edit link. Your 3PandaLabs account can be deleted in AdVault (Settings, Delete account) or by emailing us; that ends your sign-in on both apps but doesn't remove your website. To have your website removed, email 3pandas@3pandalabs.com with your web address: we confirm with you at the phone number on the site, then take it offline and delete its photos. If you've lost your edit link, email us too and we'll help.</p>
 <h2>Children</h2>
 <p>SiteVault is for businesses and is not directed at children under 13.</p>
 </section>`,
@@ -831,7 +832,9 @@ export function termsPage(): string {
     title: "Terms | SiteVault",
     body: `<section class="prose">
 <h1>Terms</h1>
-<p>Last updated 15 November 2026. These terms are between you and 3PandaLabs LLC (New Jersey), which runs SiteVault.</p>
+<p>Last updated 16 November 2026. These terms are between you and 3PandaLabs LLC (New Jersey), which runs SiteVault.</p>
+<h2>Your account</h2>
+<p>Your SiteVault account is a single 3PandaLabs account shared with AdVault: the same email and password sign you in to both, whichever you created it on, and it is stored by AdVault. Keep your password to yourself; you're responsible for what's done with your account. Deleting the account ends your sign-in on both apps. Each app's own terms apply to what you do in it, and SiteVault plans are billed separately from AdVault.</p>
 <h2>Your content</h2>
 <p>You must own or run the business, or have its permission. Everything you publish must be true and lawful, and you must have the right to use every photo. You keep ownership of your content and give us permission to host and display it on your website.</p>
 <h2>Not allowed</h2>

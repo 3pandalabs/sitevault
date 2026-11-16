@@ -34,9 +34,11 @@ import {
   accountByEmail,
   accountForAdvault,
   verifyAdvaultLogin,
+  markSitevaultUsed,
+  moveToSharedAccount,
+  signUpShared,
   addSiteToAccount,
   clearCookie,
-  createAccount,
   currentAccount,
   emailProblem,
   endSession,
@@ -221,10 +223,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   if (method === "POST") {
-    if (path === "/api/sites") return createSite(request, env);
-    if (path === "/login" || path === "/signup") return authSubmit(request, env, path === "/login" ? "login" : "signup");
+    if (path === "/api/sites") return createSite(request, env, ctx);
+    if (path === "/login" || path === "/signup") return authSubmit(request, env, ctx, path === "/login" ? "login" : "signup");
     if (path === "/logout") return logout(request, env);
-    if (path === "/account/claim") return claimSite(request, env);
+    if (path === "/account/claim") return claimSite(request, env, ctx);
     if (path === "/api/internal/sites") return createInternal(request, env);
     if (path === "/api/billing/checkout") return billingCheckout(request, env);
     if (path === "/api/billing/portal") return billingPortal(request, env);
@@ -772,7 +774,32 @@ function redirectTo(env: Env, path: string, cookie?: string): Response {
   return res;
 }
 
-async function authSubmit(request: Request, env: Env, kind: "login" | "signup"): Promise<Response> {
+/** AdVault's internal API, where the shared 3PandaLabs account lives. */
+function advaultApi(env: Env) {
+  return { apiUrl: env.ADVAULT_API_URL, token: env.INTERNAL_TOKEN };
+}
+
+/** When this account's first website was made (its owned, live sites), or undefined. */
+async function firstSiteAt(env: Env, account: Account): Promise<string | undefined> {
+  let first: string | undefined;
+  for (const slug of account.sites) {
+    const site = await loadSite(env, slug);
+    if (!site || site.status !== "live" || site.ownerId !== account.id) continue;
+    if (!first || site.createdAt < first) first = site.createdAt;
+  }
+  return first;
+}
+
+/**
+ * Shared account: tell AdVault this account uses SiteVault (has a website).
+ * In the background; a failure is retried by the owner's next sign-in.
+ */
+function reportSitevaultUse(env: Env, ctx: ExecutionContext, account: Account, at?: string): void {
+  if (!account.advaultUserId) return;
+  ctx.waitUntil(markSitevaultUsed(advaultApi(env), account.advaultUserId, at).then(() => undefined));
+}
+
+async function authSubmit(request: Request, env: Env, ctx: ExecutionContext, kind: "login" | "signup"): Promise<Response> {
   const form = await readForm(request);
   const email = normaliseEmail(form?.fields.email ?? "");
   const password = form?.fields.password ?? "";
@@ -784,20 +811,27 @@ async function authSubmit(request: Request, env: Env, kind: "login" | "signup"):
   if (kind === "login") {
     const account = email ? await accountByEmail(env.SITES, email) : null;
     if (account && (await verifyPassword(password, account.pw))) {
+      // Shared 3PandaLabs account: an older SiteVault-only account moves to it
+      // now, with the password just proven (best effort; retried next time).
+      // A linked one with a website re-reports its use (self-healing).
+      const siteAt = account.sites.length > 0 ? await firstSiteAt(env, account) : undefined;
+      if (!account.advaultUserId) await moveToSharedAccount(env.SITES, advaultApi(env), account, password, siteAt);
+      else if (siteAt) reportSitevaultUse(env, ctx, account, siteAt);
       return redirectTo(env, next, sessionCookie(await startSession(env.SITES, account.id)));
     }
     // Same login as AdVault: an AdVault customer's email + password works here too.
     const adv = await verifyAdvaultLogin(env.ADVAULT_API_URL, env.INTERNAL_TOKEN, email, password);
     if (adv) {
       const linked = await accountForAdvault(env.SITES, adv);
+      if (linked.sites.length > 0) reportSitevaultUse(env, ctx, linked, await firstSiteAt(env, linked));
       return redirectTo(env, next, sessionCookie(await startSession(env.SITES, linked.id)));
     }
     return again("Wrong email or password.", 401);
   }
   const problem = emailProblem(email) ?? passwordProblem(password);
   if (problem) return again(problem);
-  const made = await createAccount(env.SITES, email, password);
-  if (made === "exists") return again("This email already has an account. Sign in instead.", 409);
+  const made = await signUpShared(env.SITES, advaultApi(env), email, password);
+  if (made === "exists") return again("This email already has a 3PandaLabs account (SiteVault or AdVault). Sign in instead.", 409);
   console.log("account_created", { id: made.id });
   return redirectTo(env, next, sessionCookie(await startSession(env.SITES, made.id)));
 }
@@ -827,7 +861,7 @@ async function accountHome(request: Request, env: Env, url: URL, claimError?: st
 }
 
 // Add a site made before accounts: prove ownership with its edit link.
-async function claimSite(request: Request, env: Env): Promise<Response> {
+async function claimSite(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const account = await currentAccount(env.SITES, request);
   if (!account || !sameOrigin(request, env.PUBLIC_ORIGIN)) return redirectTo(env, "/login");
   const form = await readForm(request);
@@ -849,6 +883,7 @@ async function claimSite(request: Request, env: Env): Promise<Response> {
   if ((await accountSites(env, account)).some((x) => x.slug !== site.slug)) return fail("Your account already has a website (one per account). Sign out and create a new account for this one.");
   await saveSite(env, { ...site, ownerId: account.id, updatedAt: new Date().toISOString() });
   await addSiteToAccount(env.SITES, account, site.slug);
+  reportSitevaultUse(env, ctx, account);
   console.log("site_claimed", { slug: site.slug, account: account.id });
   return redirectTo(env, "/account?claimed=1");
 }
@@ -1119,7 +1154,7 @@ async function rateLimited(request: Request, env: Env): Promise<boolean> {
   return false;
 }
 
-async function createSite(request: Request, env: Env): Promise<Response> {
+async function createSite(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const form = await readForm(request);
   const signedIn = await currentAccount(env.SITES, request);
   const mode = { kind: "new", account: signedIn } as const;
@@ -1160,13 +1195,14 @@ async function createSite(request: Request, env: Env): Promise<Response> {
 
   let owner: Account | null = signedIn;
   if (!owner) {
-    const made = await createAccount(env.SITES, acctEmail, acctPassword);
-    if (made === "exists") return rejected(request, env, mode, { acct_email: "This email already has an account. Sign in first, then build your website." }, safeFields, 409);
+    const made = await signUpShared(env.SITES, advaultApi(env), acctEmail, acctPassword);
+    if (made === "exists") return rejected(request, env, mode, { acct_email: "This email already has a 3PandaLabs account (SiteVault or AdVault). Sign in first, then build your website." }, safeFields, 409);
     owner = made;
     console.log("account_created", { id: made.id });
   }
   const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested, false, owner.id, isAdminEmail(env, owner.email));
   await addSiteToAccount(env.SITES, owner, slug);
+  reportSitevaultUse(env, ctx, owner);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
   // BILLING on: the site waits for payment; the done page offers Publish.
   const publish = pending ? { slug, key, prices: planPrices("web", festiveOpen(billingConfig(env), new Date())) } : undefined;
