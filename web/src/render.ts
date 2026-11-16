@@ -63,6 +63,17 @@ function parseHours(raw: string): { day: string; time: string }[] {
 
 const heroImg = (src: string, alt: string) => `<img src="${esc(src)}" alt="${esc(alt)}" fetchpriority="high">`;
 
+// Inline, decorative line icons (no external requests; aria-hidden).
+const ICONS: Record<string, string> = {
+  phone: `<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>`,
+  chat: `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`,
+  mail: `<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M22 6l-10 7L2 6"/>`,
+  pin: `<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>`,
+  clock: `<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>`,
+};
+const icon = (n: keyof typeof ICONS) =>
+  `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">${ICONS[n]}</svg>`;
+
 /** The hero, per template. `headline` may be empty; `eyebrow` is the category. */
 function buildHero(
   template: TemplateKey,
@@ -98,12 +109,14 @@ a{color:var(--primary)}
 a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
 .skip{position:absolute;left:-9999px}.skip:focus{left:16px;top:8px;background:#fff;padding:8px;z-index:9}
 .eyebrow{margin:0 0 10px;font-size:.78rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.kicker{margin:0 0 8px;font-size:.78rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--primary)}
+.ic{flex:none;vertical-align:-3px}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;padding-bottom:12px}
 .name{font-weight:800;font-size:1.1rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:11px 20px;border-radius:12px;font-weight:700;text-decoration:none;border:2px solid var(--primary);transition:transform .12s ease,box-shadow .12s ease,background .12s ease}
-.btn.primary{background:var(--primary);color:#fff;box-shadow:0 2px 6px rgba(15,23,42,.18)}
-.btn.primary:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(15,23,42,.24)}
+.btn.primary{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 82%,#000));color:#fff;box-shadow:0 2px 6px rgba(15,23,42,.18)}
+.btn.primary:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,23,42,.26)}
 .btn.ghost{background:var(--card);color:var(--primary)}
 .btn.ghost:hover{background:var(--band)}
 .offer{background:#fef3c7;color:#78350f;font-weight:700;text-align:center;padding:14px 16px;border-bottom:3px solid var(--accent)}
@@ -120,7 +133,8 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .gallery img{width:100%;height:220px;object-fit:cover;border-radius:14px;display:block}
 video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:#000}
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
-.facts h3{margin:0 0 4px;font-size:1rem}
+.facts h3{margin:0 0 4px;font-size:1rem;display:flex;align-items:center;gap:8px}
+.facts h3 .ic{color:var(--primary)}
 .facts p{margin:0;white-space:pre-line;color:var(--muted)}
 .visit{display:grid;gap:32px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start}
 .visit-col h2{margin:0 0 4px}
@@ -144,8 +158,8 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.spotlight .copy{position:absolute;left:0;right:0;bottom:0;padding:40px 0}
 .hero.spotlight.noimg{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 68%,#000))}
 .hero.spotlight.noimg .copy{position:static;padding:72px 0}
-.hero.spotlight .eyebrow{color:rgba(255,255,255,.82)}
-.hero.spotlight h1{font-family:var(--head-font);margin:0 0 10px;font-size:clamp(2rem,6vw,3.2rem);line-height:1.1;letter-spacing:-.01em;text-shadow:0 2px 14px rgba(0,0,0,.35)}
+.hero.spotlight .eyebrow{display:inline-block;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);padding:6px 14px;border-radius:999px;backdrop-filter:blur(4px)}
+.hero.spotlight h1{font-family:var(--head-font);margin:14px 0 10px;font-size:clamp(2rem,6vw,3.3rem);line-height:1.08;letter-spacing:-.015em;text-shadow:0 2px 14px rgba(0,0,0,.35)}
 .hero.spotlight .lede{margin:0;font-size:1.2rem;max-width:46ch;opacity:.96}`,
   split: `.hero.split{display:grid;grid-template-columns:1.05fr .95fr;background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 78%,#000));color:#fff;align-items:stretch}
 .hero.split .hero-text{padding:52px clamp(18px,5vw,60px);align-self:center}
@@ -154,21 +168,28 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.split .lede{margin:0 0 24px;font-size:1.15rem;opacity:.95;max-width:40ch}
 .hero.split .hero-cta{background:#fff;color:var(--primary);border-color:#fff}
 .hero.split .hero-cta:hover{background:var(--band)}
+.hero.split .hero-img{clip-path:polygon(7% 0,100% 0,100% 100%,0% 100%)}
 .hero.split .hero-img img{display:block;width:100%;height:100%;min-height:300px;object-fit:cover}
 .hero.split.noimg{display:block}
-@media(max-width:720px){.hero.split{grid-template-columns:1fr}.hero.split .hero-img img{min-height:240px}}`,
+@media(max-width:720px){.hero.split{grid-template-columns:1fr}.hero.split .hero-img{clip-path:none}.hero.split .hero-img img{min-height:240px}}`,
   editorial: `:root{--head-font:Georgia,Cambria,"Times New Roman",serif}
 .hero.editorial{background:var(--band);color:var(--ink);text-align:center;padding:72px 0 56px;border-bottom:1px solid var(--line)}
 .hero.editorial .eyebrow{color:var(--primary)}
 .hero.editorial h1{font-family:var(--head-font);margin:0 0 14px;font-size:clamp(2.2rem,6.4vw,3.4rem);line-height:1.08;letter-spacing:-.015em}
 .hero.editorial .lede{margin:0 auto;max-width:44ch;color:var(--muted);font-size:1.2rem}
-.hero-band img{display:block;width:100%;height:min(54vh,460px);object-fit:cover}
+.hero.editorial .eyebrow::before,.hero.editorial .eyebrow::after{content:"";display:inline-block;width:30px;height:1px;background:var(--primary);opacity:.55;vertical-align:middle;margin:0 12px}
+.hero-band{padding:44px 16px;background:var(--band)}
+.hero-band img{display:block;width:100%;max-width:960px;margin:0 auto;height:min(54vh,460px);object-fit:cover;border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.14)}
+.t-editorial .kicker{text-align:center}
+.t-editorial .kicker::before,.t-editorial .kicker::after{content:"";display:inline-block;width:26px;height:1px;background:var(--accent);vertical-align:middle;margin:0 10px}
 .t-editorial h2{text-align:center;padding-bottom:16px}
 .t-editorial h2::after{left:50%;transform:translateX(-50%);width:56px}
 .t-editorial .services{max-width:720px;margin:0 auto}
 .t-editorial .services li{background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;padding:16px 4px}
 .t-editorial .services li:hover{transform:none;box-shadow:none}
-.t-editorial .facts{text-align:center}`,
+.t-editorial .facts{text-align:center}
+.t-editorial .facts h3{justify-content:center}
+.t-editorial section[aria-labelledby="about-h"] p:first-of-type::first-letter{float:left;font-family:var(--head-font);font-size:3.4em;line-height:.72;padding:6px 10px 0 0;color:var(--primary)}`,
 };
 
 export function renderSite(site: Site, ctx: RenderContext): string {
@@ -204,6 +225,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   const services = site.services.length
     ? `<section aria-labelledby="services-h" class="band">
   <div class="wrap">
+    <p class="kicker">What we offer</p>
     <h2 id="services-h">Services</h2>
     <ul class="services">
       ${site.services
@@ -220,6 +242,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   const about = site.about
     ? `<section aria-labelledby="about-h">
   <div class="wrap">
+    <p class="kicker">Our story</p>
     <h2 id="about-h">About us</h2>
     ${site.about
       .split(/\n{2,}/)
@@ -279,6 +302,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   const galleryHtml = gallery.length
     ? `<section aria-labelledby="gallery-h" class="band">
   <div class="wrap">
+    <p class="kicker">Recent work</p>
     <h2 id="gallery-h">Our work</h2>
     <ul class="gallery">
       ${gallery
@@ -317,17 +341,17 @@ ${TEMPLATE_CSS[template]}
 <header class="top">
   <div class="wrap">
     <a class="name" href="${esc(ctx.siteUrl)}">${esc(site.businessName)}</a>
-    <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call ${esc(site.phone)}</a>
+    <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>${icon("phone")}Call ${esc(site.phone)}</a>
   </div>
 </header>
 <main id="main">
 ${buildHero(template, { eyebrow: cat.label, name: site.businessName, headline: headline(site), hero, phone: site.phone, pingCall: ping("call") })}
 ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
 <div class="wrap actions">
-  <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call now</a>
-  <a class="btn ghost" href="${esc(smsHref(site.phone))}">Send a text</a>
-  ${site.email ? `<a class="btn ghost" href="mailto:${esc(site.email)}">Email us</a>` : ""}
-  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>Get directions</a>` : ""}
+  <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>${icon("phone")}Call now</a>
+  <a class="btn ghost" href="${esc(smsHref(site.phone))}">${icon("chat")}Send a text</a>
+  ${site.email ? `<a class="btn ghost" href="mailto:${esc(site.email)}">${icon("mail")}Email us</a>` : ""}
+  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>${icon("pin")}Get directions</a>` : ""}
 </div>
 ${video}
 ${services}
@@ -336,11 +360,12 @@ ${galleryHtml}
 ${visit}
 <section aria-labelledby="contact-h">
   <div class="wrap">
+    <p class="kicker">Get in touch</p>
     <h2 id="contact-h">Contact</h2>
     <div class="facts">
-      <div><h3>Phone</h3><p><a href="${esc(telHref(site.phone))}"${ping("call")}>${esc(site.phone)}</a></p></div>
-      ${site.email ? `<div><h3>Email</h3><p><a href="mailto:${esc(site.email)}">${esc(site.email)}</a></p></div>` : ""}
-      ${site.serviceArea ? `<div><h3>Areas we serve</h3><p>${esc(site.serviceArea)}</p></div>` : ""}
+      <div><h3>${icon("phone")}Phone</h3><p><a href="${esc(telHref(site.phone))}"${ping("call")}>${esc(site.phone)}</a></p></div>
+      ${site.email ? `<div><h3>${icon("mail")}Email</h3><p><a href="mailto:${esc(site.email)}">${esc(site.email)}</a></p></div>` : ""}
+      ${site.serviceArea ? `<div><h3>${icon("pin")}Areas we serve</h3><p>${esc(site.serviceArea)}</p></div>` : ""}
     </div>
   </div>
 </section>
