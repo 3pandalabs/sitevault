@@ -108,6 +108,14 @@ problem hits every customer (and every AdVault ad pointing at them).
 - [ ] **Owner email + lost-link recovery**: collect the owner's email
       (verified) and send the edit link through the shared `mailer` Worker
       (needs a MAILER_TOKEN and quota).
+- [ ] **Forgot-password flow**: the login page still says "email us" because
+      there is no self-service reset. Design one that works for SiteVault as a
+      standalone app, not only for AdVault-linked accounts — AdVault users
+      reset in AdVault (no password stored here), but native SiteVault accounts
+      (`acct:<id>`, PBKDF2 hash) need their own reset. Likely an emailed,
+      single-use, time-limited reset token via the `mailer` Worker (so it
+      depends on the owner-email item above). Until built, keep the
+      "email 3pandas@3pandalabs.com" fallback on `/login`.
 - [ ] **Contact form** on customer sites (delivered by email via `mailer`).
       Update the privacy page first: we'd then process visitors' messages.
 - [ ] **Claude copy polish** (optional "write my About text"): facts-only
