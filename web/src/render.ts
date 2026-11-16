@@ -60,7 +60,7 @@ function parseHours(raw: string): { day: string; time: string }[] {
 export function renderSite(site: Site, ctx: RenderContext): string {
   const cat = CATEGORIES[site.category];
   const brand = cat.brand;
-  const title = `${site.businessName} | ${cat.label} in ${site.city}`;
+  const title = `${site.businessName} | ${cat.label}${site.city ? ` in ${site.city}` : ""}`;
   const description = (site.about || headline(site)).slice(0, 160);
   const photos = site.photos.map((k) => photoUrl(ctx, k));
   const hero = photos[0];
@@ -75,9 +75,11 @@ export function renderSite(site: Site, ctx: RenderContext): string {
     name: site.businessName,
     telephone: site.phone,
     ...(site.email ? { email: site.email } : {}),
-    address: site.address
-      ? { "@type": "PostalAddress", streetAddress: site.address, addressLocality: site.city }
-      : { "@type": "PostalAddress", addressLocality: site.city },
+    address: {
+      "@type": "PostalAddress",
+      ...(site.address ? { streetAddress: site.address } : {}),
+      ...(site.city ? { addressLocality: site.city } : {}),
+    },
     ...(site.serviceArea ? { areaServed: site.serviceArea } : {}),
     ...(hero ? { image: hero } : {}),
     url: ctx.siteUrl,
@@ -255,7 +257,7 @@ footer a{color:var(--muted)}
   ${hero ? `<img src="${esc(hero)}" alt="${esc(site.businessName)}" fetchpriority="high">\n  <div class="shade"></div>` : ""}
   <div class="copy"><div class="wrap">
     <h1>${esc(site.businessName)}</h1>
-    <p>${esc(headline(site))}</p>
+    ${headline(site) ? `<p>${esc(headline(site))}</p>` : ""}
   </div></div>
 </div>
 ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}

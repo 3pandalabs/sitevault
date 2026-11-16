@@ -493,7 +493,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   ${addressField}
   <div class="row">
     <div class="field"><label for="phone">Phone</label><input type="tel" id="phone" name="phone" maxlength="24" required value="${v("phone", site?.phone)}" autocomplete="tel" placeholder="(201) 555-0100">${e("phone")}</div>
-    <div class="field"><label for="city">Town or city</label><input type="text" id="city" name="city" maxlength="60" required value="${v("city", site?.city)}" placeholder="Secaucus, NJ">${e("city")}</div>
+    <div class="field"><label for="city">Town or city <span class="hint">Needed unless you add a street address below.</span></label><input type="text" id="city" name="city" maxlength="60" value="${v("city", site?.city)}" placeholder="Secaucus, NJ">${e("city")}</div>
   </div>
   <div class="row">
     <div class="field"><label for="category">Type of business</label><select id="category" name="category" required>
@@ -575,6 +575,18 @@ const BUILDER_SCRIPT = `
     catSel.addEventListener('change',fillServices);
     if(svc.value.trim()==='') fillServices();
   }
+  // Inline check for phone and email on blur, mirroring the server's rules.
+  var setErr=function(id,msg){ var el=document.getElementById('err-'+id); if(el) el.textContent=msg||''; };
+  var emailEl=document.getElementById('email');
+  if(emailEl) emailEl.addEventListener('blur',function(){
+    var val=emailEl.value.trim();
+    setErr('email', val && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(val) ? 'Enter a valid email, like you@example.com.' : '');
+  });
+  var phoneEl=document.getElementById('phone');
+  if(phoneEl) phoneEl.addEventListener('blur',function(){
+    var val=phoneEl.value.trim(), d=val.replace(/\\D/g,'');
+    setErr('phone', val && (d.length<7||d.length>15||/[^\\d\\s()+.-]/.test(val)) ? 'Enter a phone number, like (201) 555-0100.' : '');
+  });
   var slug=document.getElementById('slug'), status=document.getElementById('slug-status');
   if(slug && !slug.readOnly){
     var touched=slug.value!=='', timer=null, seq=0;

@@ -39,6 +39,23 @@ describe("parseContent", () => {
   it("rejects a phone with letters", () => {
     expect(parseContent({ ...base, phone: "call me maybe" }).ok).toBe(false);
   });
+
+  it("rejects a malformed email", () => {
+    expect(parseContent({ ...base, email: "not-an-email" }).ok).toBe(false);
+  });
+
+  it("accepts a street address in place of a town or city", () => {
+    const { city, ...noCity } = base;
+    const r = parseContent({ ...noCity, address: "1325 Paterson Plank Road" });
+    expect(r.ok).toBe(true);
+  });
+
+  it("still requires a town or city when there is no address", () => {
+    const { city, ...noCity } = base;
+    const r = parseContent(noCity);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.city).toBeTruthy();
+  });
 });
 
 describe("services", () => {
