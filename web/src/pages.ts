@@ -12,7 +12,7 @@ import type { SiteStats } from "./stats.js";
 const CONTACT = "3pandas@3pandalabs.com";
 
 /** `owner`: a signed-in owner who already has their website (one per account): no "Build" button. */
-export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean }): string {
+export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -50,7 +50,10 @@ header.top .wrap{display:flex;justify-content:space-between;align-items:center;p
 .tag{display:inline-block;margin-left:8px;padding-left:8px;border-left:1px solid rgba(244,244,245,.2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.1em;color:var(--dim);text-decoration:none;vertical-align:middle}
 .tag:hover{color:var(--fg2);text-decoration:underline}
 @media (max-width:640px){.tag{display:none}}
-nav.links{display:flex;gap:8px;align-items:center;font-size:.875rem}
+nav.links{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;font-size:.875rem}
+nav.links form{margin:0}
+nav.links button.plain{background:none;border:0;font:inherit;color:var(--fg2);padding:8px 12px;border-radius:8px;cursor:pointer;min-height:44px}
+nav.links button.plain:hover{background:rgba(255,255,255,.10)}
 nav.links a.plain{color:var(--fg2);text-decoration:none;padding:8px 12px;border-radius:8px}
 nav.links a.plain:hover{background:rgba(255,255,255,.10)}
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 20px;border-radius:12px;font-weight:600;text-decoration:none;border:1px solid transparent;background:var(--accent);color:var(--on-accent);font-size:1rem;cursor:pointer;font-family:inherit}
@@ -140,7 +143,7 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
   <nav class="links"><a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${
     opts.owner ? `<a class="btn small" href="/account">My website</a>` : `<a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a>`
-  }</nav>
+  }${opts.signedIn ? `<form method="post" action="/logout"><button class="plain" type="submit">Sign out</button></form>` : ""}</nav>
 </div></header>
 <main id="main" class="wrap">
 ${opts.body}
@@ -206,9 +209,10 @@ function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
 
-export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false): string {
+export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false): string {
   return layout({
     owner,
+    signedIn,
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>
@@ -239,7 +243,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
 
 export type FormMode =
   | { kind: "new"; account?: { email: string } | null }
-  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView };
+  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; signedIn?: boolean };
 
 /** Everything the edit page's "Plan & billing" section shows. Only built while BILLING is on. */
 export type BillingView = {
@@ -517,6 +521,7 @@ ${
     body,
     nonce,
     owner: mode.kind === "edit",
+    signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
     noindex: mode.kind === "edit",
     script: BUILDER_SCRIPT,
   });
@@ -691,6 +696,7 @@ export function accountPage(email: string, sites: AccountSite[], opts: { claimEr
     title: "My website | SiteVault",
     noindex: true,
     owner: sites.length > 0,
+    signedIn: true,
     body: `<section>
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:center">
   <h1 style="margin:0">My website</h1>

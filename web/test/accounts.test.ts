@@ -61,3 +61,10 @@ describe("one website per account", () => {
     expect(accountPage("o@x.test", [])).toContain("/account/claim");
   });
 });
+
+describe("sign out in the header", () => {
+  it("shows only when signed in", () => {
+    expect(homePage(true, null, true, true)).toContain('action="/logout"');
+    expect(homePage(true, null, false, false)).not.toContain('action="/logout"');
+  });
+});
