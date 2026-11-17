@@ -215,12 +215,12 @@ video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:
 .facts h3{margin:0 0 4px;font-size:1rem;display:flex;align-items:center;gap:8px}
 .facts h3 .ic{color:var(--primary)}
 .facts p{margin:0;white-space:pre-line;color:var(--muted)}
-.visit{display:grid;gap:32px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start}
-.visit-col h2{margin:0 0 4px}
-.visit-sub{margin:0 0 16px;color:var(--muted)}
-.visit-addr{font-style:normal;margin:0 0 16px;color:var(--ink);font-size:1.05rem}
-.schedule{width:100%;border-collapse:separate;border-spacing:0 4px}
-.schedule th,.schedule td{padding:12px 16px;font-size:1rem}
+.visit{display:grid;gap:28px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start}
+.visit-col h2{margin:0 0 4px;font-size:1.3rem;padding-bottom:10px}
+.visit-sub{margin:0 0 12px;color:var(--muted);font-size:.88rem}
+.visit-addr{font-style:normal;margin:0 0 14px;color:var(--ink);font-size:.95rem}
+.schedule{width:100%;border-collapse:separate;border-spacing:0 3px}
+.schedule th,.schedule td{padding:7px 13px;font-size:.88rem}
 .schedule th{background:var(--primary);color:#fff;text-align:left;font-weight:700;width:42%;white-space:nowrap;border-radius:6px}
 .schedule td{text-align:center;color:var(--ink);background:var(--card);border:1px solid var(--line);border-left:0;border-radius:0 6px 6px 0}
 .visit-note{text-align:center;color:var(--muted);font-weight:600;background:var(--band);border-radius:6px}
