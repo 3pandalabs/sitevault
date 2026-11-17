@@ -122,8 +122,12 @@ export type Site = SiteContent & {
 };
 
 export const MAX_PHOTOS = 8;
-export const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
-export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+// Phone photos are large (a modern phone shoots 4-12 MB), and the browser's
+// pre-upload shrink can't always run (HEIC it can't decode, no createImageBitmap).
+// Accept the original: Cloudflare Images resizes it to a web-sized JPEG on store.
+export const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
+// HEIC/HEIF are the iPhone default; Cloudflare Images converts them to JPEG.
+export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 export const MAX_SERVICES = 12;
 
 const LIMITS = {
