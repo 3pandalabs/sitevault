@@ -153,8 +153,9 @@ describe("renderSite", () => {
       expect(out).toContain('<h2 id="ba-h">Before &amp; after</h2>');
       expect(out).toContain('src="https://x/p/sites/a/b1.jpg" alt="Before: Bob&#39;s &lt;b&gt;Lawns&lt;/b&gt; job 1"');
       expect(out).toContain('alt="After: Bob&#39;s &lt;b&gt;Lawns&lt;/b&gt; job 1"');
-      expect(out).toContain("<figcaption>Before</figcaption>");
-      expect(out).toContain("<figcaption>After</figcaption>");
+      expect(out).toContain('<span class="ba-tag ba-tag-b">Before</span>');
+      expect(out).toContain('<span class="ba-tag ba-tag-a">After</span>');
+      expect(out).toContain('class="ba-cmp"'); // drag-to-compare slider
       expect(out).not.toContain("<b>Lawns</b>");
     }
   });
