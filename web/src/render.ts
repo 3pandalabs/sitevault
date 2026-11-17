@@ -49,7 +49,7 @@ const SITE_JS = `(function(){
   tt.addEventListener('click',function(){w.scrollTo({top:0,behavior:reduce?'auto':'smooth'});});
   var onScroll=function(){var st=w.scrollY||w.pageYOffset,h=d.documentElement.scrollHeight-w.innerHeight;pb.style.width=(h>0?Math.min(100,st/h*100):0)+'%';tt.classList.toggle('show',st>600);if(hdr)hdr.classList.toggle('scrolled',st>8);};
   w.addEventListener('scroll',onScroll,{passive:true});onScroll();
-  var imgs=[].slice.call(d.querySelectorAll('.gallery img,.ba img'));
+  var imgs=[].slice.call(d.querySelectorAll('.gallery img'));
   if(imgs.length){
     var box=d.createElement('div');box.className='lightbox';box.hidden=true;box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label','Photo');
     var big=d.createElement('img');big.alt='';
@@ -65,18 +65,29 @@ const SITE_JS = `(function(){
     box.addEventListener('click',function(e){if(e.target===box||e.target===big)close();});
     w.addEventListener('keydown',function(e){if(box.hidden)return;if(e.key==='Escape')close();else if(e.key==='ArrowLeft')show(idx-1);else if(e.key==='ArrowRight')show(idx+1);});
   }
-  [].slice.call(d.querySelectorAll('.ba-cmp')).forEach(function(c){
-    var div=c.querySelector('.ba-divider');if(!div)return;
-    var setPct=function(p){p=Math.max(0,Math.min(100,p));c.style.setProperty('--pos',p+'%');div.setAttribute('aria-valuenow',Math.round(p));};
-    var setX=function(x){var r=c.getBoundingClientRect();setPct((x-r.left)/r.width*100);};
-    var moving=false;
-    var move=function(e){if(!moving)return;e.preventDefault();setX(e.touches?e.touches[0].clientX:e.clientX);};
-    var down=function(e){moving=true;e.preventDefault();setX(e.touches?e.touches[0].clientX:e.clientX);};
-    div.addEventListener('mousedown',down);div.addEventListener('touchstart',down,{passive:false});
-    w.addEventListener('mousemove',move,{passive:false});w.addEventListener('touchmove',move,{passive:false});
-    w.addEventListener('mouseup',function(){moving=false;});w.addEventListener('touchend',function(){moving=false;});
-    div.addEventListener('keydown',function(e){var cur=parseFloat(c.style.getPropertyValue('--pos'))||50;if(e.key==='ArrowLeft'){setPct(cur-5);e.preventDefault();}else if(e.key==='ArrowRight'){setPct(cur+5);e.preventDefault();}});
-  });
+  var cmps=[].slice.call(d.querySelectorAll('.ba-cmp'));
+  if(cmps.length){
+    var pbox=d.createElement('div');pbox.className='lightbox pairbox';pbox.hidden=true;pbox.setAttribute('role','dialog');pbox.setAttribute('aria-modal','true');pbox.setAttribute('aria-label','Before and after, side by side');
+    var prow=d.createElement('div');prow.className='pairrow';pbox.appendChild(prow);d.body.appendChild(pbox);
+    var pclose=function(){pbox.classList.remove('open');setTimeout(function(){pbox.hidden=true;while(prow.firstChild)prow.removeChild(prow.firstChild);},240);};
+    var fig=function(img,lab){var f=d.createElement('figure');f.className='pairfig';var im=d.createElement('img');im.src=img.currentSrc||img.src;im.alt=img.alt;var cap=d.createElement('figcaption');cap.textContent=lab;f.appendChild(im);f.appendChild(cap);return f;};
+    var popen=function(b,a){while(prow.firstChild)prow.removeChild(prow.firstChild);prow.appendChild(fig(b,'Before'));prow.appendChild(fig(a,'After'));pbox.hidden=false;requestAnimationFrame(function(){pbox.classList.add('open');});};
+    pbox.addEventListener('click',function(e){if(e.target===pbox||e.target===prow||e.target.tagName==='IMG')pclose();});
+    w.addEventListener('keydown',function(e){if(!pbox.hidden&&e.key==='Escape')pclose();});
+    cmps.forEach(function(c){
+      var div=c.querySelector('.ba-divider');if(!div)return;
+      var setPct=function(p){p=Math.max(0,Math.min(100,p));c.style.setProperty('--pos',p+'%');div.setAttribute('aria-valuenow',Math.round(p));};
+      var setX=function(x){var r=c.getBoundingClientRect();setPct((x-r.left)/r.width*100);};
+      var moving=false,dragged=false;
+      var move=function(e){if(!moving)return;e.preventDefault();dragged=true;setX(e.touches?e.touches[0].clientX:e.clientX);};
+      var down=function(e){moving=true;dragged=false;e.preventDefault();setX(e.touches?e.touches[0].clientX:e.clientX);};
+      div.addEventListener('mousedown',down);div.addEventListener('touchstart',down,{passive:false});
+      w.addEventListener('mousemove',move,{passive:false});w.addEventListener('touchmove',move,{passive:false});
+      w.addEventListener('mouseup',function(){moving=false;});w.addEventListener('touchend',function(){moving=false;});
+      div.addEventListener('keydown',function(e){var cur=parseFloat(c.style.getPropertyValue('--pos'))||50;if(e.key==='ArrowLeft'){setPct(cur-5);e.preventDefault();}else if(e.key==='ArrowRight'){setPct(cur+5);e.preventDefault();}});
+      c.addEventListener('click',function(e){if(e.target.closest('.ba-divider'))return;if(dragged){dragged=false;return;}var bi=c.querySelector('.ba-reveal img'),ai=c.querySelector('.ba-base');if(bi&&ai)popen(bi,ai);});
+    });
+  }
 })();`;
 
 export function photoUrl(ctx: RenderContext, key: string): string {
@@ -169,6 +180,11 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox{position:fixed;inset:0;background:rgba(5,8,12,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;cursor:zoom-out}
 .lightbox[hidden]{display:none}
 .lightbox img{max-width:100%;max-height:100%;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.pairrow{display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap;max-width:100%;max-height:100%}
+.pairfig{margin:0;display:flex;flex-direction:column;align-items:center;max-width:48%}
+.pairfig img{max-width:100%;max-height:80vh;object-fit:contain}
+.pairfig figcaption{margin-top:10px;color:#fff;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase}
+@media(max-width:640px){.pairfig{max-width:100%}.pairfig img{max-height:40vh}}
 .gallery img,:root.js .ba img{cursor:zoom-in}
 .hero.spotlight,.hero.split .hero-img{overflow:hidden}
 :root.js .reveal .services li,:root.js .reveal .gallery li{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
