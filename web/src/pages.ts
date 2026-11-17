@@ -768,8 +768,11 @@ const BUILDER_SCRIPT = `
     // e.g. on the edit page), treat it as replaceable so changing the type updates it.
     for(var _k in SERVICE_TEMPLATES){ if(SERVICE_TEMPLATES[_k] && svc.value.trim()===SERVICE_TEMPLATES[_k].trim()){ lastFill=svc.value; break; } }
     var fillServices=function(){
-      var t=SERVICE_TEMPLATES[catSel.value]||'';
-      if(t && (svc.value.trim()==='' || svc.value===lastFill)){ svc.value=t; lastFill=t; }
+      var t=SERVICE_TEMPLATES[catSel.value];
+      if(typeof t!=='string') return; // unknown / "Choose one": leave as-is
+      // Replace an empty box or an untouched suggestion — including clearing it
+      // when the type has no template (e.g. "Other local business").
+      if(svc.value.trim()==='' || svc.value===lastFill){ svc.value=t; lastFill=t; }
     };
     // Recolour the style thumbnails to the chosen business type's palette.
     var CAT_THUMB=${JSON.stringify(CAT_THUMB_COLORS)};
