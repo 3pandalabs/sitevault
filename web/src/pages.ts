@@ -116,7 +116,10 @@ legend{font-weight:600;padding:0 6px}
 #builder{margin-bottom:32px}
 .photos{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0}
 .photo{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.85rem}
-.photo img{width:110px;height:82px;object-fit:cover;border-radius:8px;border:1px solid var(--line2)}
+.photo[draggable=true]{cursor:grab}
+.photo.dragging{opacity:.5;cursor:grabbing}
+.photo img{width:110px;height:82px;object-fit:cover;border-radius:8px;border:1px solid var(--line2);pointer-events:none}
+.photo.dragging img{outline:2px dashed var(--accent);outline-offset:2px}
 .photo-ctl{display:flex;align-items:center;gap:6px}
 .pmove{width:28px;height:28px;border-radius:7px;border:1px solid var(--line2);background:var(--panel);color:var(--fg2);cursor:pointer;font-size:.95rem;line-height:1;padding:0}
 .pmove:hover{color:var(--fg);border-color:var(--fg2)}
@@ -535,11 +538,11 @@ export function builderPage(
 
   const existing =
     mode.kind === "edit" && mode.site.photos.length
-      ? `<p class="hint">Current photos. The first is the big one at the top — use the arrows to reorder, untick to remove.</p>
+      ? `<p class="hint">Current photos. The first is the big one at the top — drag them, or use the arrows, to reorder; untick to remove.</p>
 <div class="photos" id="photolist">${mode.site.photos
           .map(
             (k, i) =>
-              `<div class="photo"><img src="${esc(mode.photoUrl(k))}" alt="Photo ${i + 1}"><div class="photo-ctl"><button type="button" class="pmove" data-dir="up" aria-label="Move earlier">&#8593;</button><button type="button" class="pmove" data-dir="down" aria-label="Move later">&#8595;</button><label class="pkeep"><input type="checkbox" name="keep" value="${esc(k)}" checked> Keep</label></div></div>`,
+              `<div class="photo" draggable="true"><img src="${esc(mode.photoUrl(k))}" alt="Photo ${i + 1}"><div class="photo-ctl"><button type="button" class="pmove" data-dir="up" aria-label="Move earlier">&#8593;</button><button type="button" class="pmove" data-dir="down" aria-label="Move later">&#8595;</button><label class="pkeep"><input type="checkbox" name="keep" value="${esc(k)}" checked> Keep</label></div></div>`,
           )
           .join("")}</div>`
       : "";
@@ -647,6 +650,18 @@ const BUILDER_SCRIPT = `
       else if(card.nextElementSibling){ plist.insertBefore(card.nextElementSibling,card); }
       renumber();
     });
+    // Drag and drop (desktop; touch uses the arrows). The DOM order is the saved order.
+    var drag=null;
+    var afterCard=function(x,y){
+      var els=plist.querySelectorAll('.photo:not(.dragging)');
+      for(var i=0;i<els.length;i++){ var b=els[i].getBoundingClientRect();
+        if(y<b.top) return els[i];
+        if(y<=b.bottom && x<b.left+b.width/2) return els[i]; }
+      return null;
+    };
+    plist.addEventListener('dragstart',function(e){ var c=e.target.closest&&e.target.closest('.photo'); if(!c)return; drag=c; c.classList.add('dragging'); if(e.dataTransfer){e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain','');}catch(_){}} });
+    plist.addEventListener('dragend',function(){ if(drag)drag.classList.remove('dragging'); drag=null; renumber(); });
+    plist.addEventListener('dragover',function(e){ if(!drag)return; e.preventDefault(); var ref=afterCard(e.clientX,e.clientY); if(ref==null){ if(plist.lastElementChild!==drag) plist.appendChild(drag); } else if(ref!==drag){ plist.insertBefore(drag,ref); } });
   }
   // Prefill "Services and prices" from the chosen business type. Only replaces
   // an empty box or an untouched earlier suggestion, so typed content is kept
