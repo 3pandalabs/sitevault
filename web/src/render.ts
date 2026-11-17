@@ -65,6 +65,18 @@ const SITE_JS = `(function(){
     box.addEventListener('click',function(e){if(e.target===box||e.target===big)close();});
     w.addEventListener('keydown',function(e){if(box.hidden)return;if(e.key==='Escape')close();else if(e.key==='ArrowLeft')show(idx-1);else if(e.key==='ArrowRight')show(idx+1);});
   }
+  [].slice.call(d.querySelectorAll('.ba-cmp')).forEach(function(c){
+    var div=c.querySelector('.ba-divider');if(!div)return;
+    var setPct=function(p){p=Math.max(0,Math.min(100,p));c.style.setProperty('--pos',p+'%');div.setAttribute('aria-valuenow',Math.round(p));};
+    var setX=function(x){var r=c.getBoundingClientRect();setPct((x-r.left)/r.width*100);};
+    var moving=false;
+    var move=function(e){if(!moving)return;e.preventDefault();setX(e.touches?e.touches[0].clientX:e.clientX);};
+    var down=function(e){moving=true;e.preventDefault();setX(e.touches?e.touches[0].clientX:e.clientX);};
+    div.addEventListener('mousedown',down);div.addEventListener('touchstart',down,{passive:false});
+    w.addEventListener('mousemove',move,{passive:false});w.addEventListener('touchmove',move,{passive:false});
+    w.addEventListener('mouseup',function(){moving=false;});w.addEventListener('touchend',function(){moving=false;});
+    div.addEventListener('keydown',function(e){var cur=parseFloat(c.style.getPropertyValue('--pos'))||50;if(e.key==='ArrowLeft'){setPct(cur-5);e.preventDefault();}else if(e.key==='ArrowRight'){setPct(cur+5);e.preventDefault();}});
+  });
 })();`;
 
 export function photoUrl(ctx: RenderContext, key: string): string {
@@ -207,12 +219,16 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .svc{font-weight:600}.price{color:var(--primary);font-weight:700;white-space:nowrap}
 .gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
 .gallery img{width:100%;height:160px;object-fit:cover;border-radius:var(--radius);display:block}
-.ba{list-style:none;margin:0;padding:0;display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
-.ba-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.ba figure{margin:0;position:relative}
-.ba img{width:100%;aspect-ratio:4/3;height:auto;object-fit:cover;border-radius:var(--radius);display:block;background:var(--band)}
-.ba figcaption{position:absolute;left:8px;top:8px;background:rgba(15,23,42,.82);color:#fff;font-size:.8rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
-.ba figure.after figcaption{background:var(--primary)}
+.ba{list-style:none;margin:0;padding:0;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
+.ba-cmp{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--band);--pos:50%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.ba-cmp img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
+.ba-reveal{position:absolute;inset:0;clip-path:inset(0 calc(100% - var(--pos)) 0 0);-webkit-clip-path:inset(0 calc(100% - var(--pos)) 0 0)}
+.ba-tag{position:absolute;top:10px;z-index:2;background:rgba(15,23,42,.82);color:#fff;font-size:.74rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
+.ba-tag-b{left:10px}.ba-tag-a{right:10px;background:var(--primary)}
+.ba-divider{position:absolute;top:0;bottom:0;left:var(--pos);width:3px;margin-left:-1.5px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);z-index:3}
+.ba-handle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:#fff;color:#111;box-shadow:0 2px 10px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700}
+:root.js .ba-divider{cursor:ew-resize}
+:root.js .ba-divider:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:#000}
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .facts h3{margin:0 0 4px;font-size:1rem;display:flex;align-items:center;gap:8px}
@@ -414,7 +430,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
       ${pairs
         .map(
           (p, i) =>
-            `<li><div class="ba-pair"><figure class="before"><img src="${esc(photoUrl(ctx, p.before))}" alt="${esc(`Before: ${site.businessName} job ${i + 1}`)}" loading="lazy" decoding="async"><figcaption>Before</figcaption></figure><figure class="after"><img src="${esc(photoUrl(ctx, p.after))}" alt="${esc(`After: ${site.businessName} job ${i + 1}`)}" loading="lazy" decoding="async"><figcaption>After</figcaption></figure></div></li>`,
+            `<li><div class="ba-cmp" style="--pos:50%"><img class="ba-base" src="${esc(photoUrl(ctx, p.after))}" alt="${esc(`After: ${site.businessName} job ${i + 1}`)}" loading="lazy" decoding="async"><div class="ba-reveal"><img src="${esc(photoUrl(ctx, p.before))}" alt="${esc(`Before: ${site.businessName} job ${i + 1}`)}" loading="lazy" decoding="async"></div><span class="ba-tag ba-tag-b">Before</span><span class="ba-tag ba-tag-a">After</span><div class="ba-divider" role="slider" tabindex="0" aria-label="Drag to compare before and after" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span class="ba-handle" aria-hidden="true">⇄</span></div></div></li>`,
         )
         .join("\n      ")}
     </ul>
