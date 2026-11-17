@@ -223,7 +223,7 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
   <nav class="links">${
     opts.signedIn
-      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a><a class="btn small" href="/new">Build my website</a><form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
+      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a>${opts.admin || !opts.owner ? `<a class="btn small" href="/new">Build my website</a>` : ""}<form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
       : `<a class="btn small" href="/login">Sign in</a>`
   }</nav>
 </div></header>
@@ -290,10 +290,11 @@ function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
 
-export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false): string {
+export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false, admin = false): string {
   return layout({
     owner,
     signedIn,
+    admin,
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>
@@ -326,8 +327,8 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
 }
 
 export type FormMode =
-  | { kind: "new"; account?: { email: string } | null }
-  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; signedIn?: boolean; siteUrl?: string };
+  | { kind: "new"; account?: { email: string } | null; admin?: boolean }
+  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; signedIn?: boolean; siteUrl?: string; admin?: boolean };
 
 /** Everything the edit page's "Plan & billing" section shows. Only built while BILLING is on. */
 export type BillingView = {
@@ -700,6 +701,7 @@ ${
     body,
     nonce,
     owner: mode.kind === "edit",
+    admin: mode.admin,
     signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
     noindex: mode.kind === "edit",
     script: SUGGEST_SCRIPT + BUILDER_SCRIPT,
@@ -893,6 +895,7 @@ export function donePage(opts: {
     noindex: true,
     signedIn: opts.signedIn,
     admin: opts.admin,
+    owner: opts.signedIn,
     nonce: opts.nonce,
     script: `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='Copied';});});});`,
     body: `<section>
@@ -996,7 +999,7 @@ export function accountPage(
     body: `<section>
 <h1>${opts.admin ? "My websites" : "My website"}</h1>
 <p class="hint">Signed in as ${esc(email)}${opts.admin ? " · admin (unlimited websites, published free)" : ""}</p>
-${opts.admin ? `<div class="buttons"><a class="btn" href="/admin">Admin dashboard</a></div>` : ""}
+${opts.admin ? `<div class="buttons" style="margin:14px 0 26px"><a class="btn" href="/admin">Admin dashboard</a></div>` : ""}
 ${opts.claimed ? `<p class="notice ok" role="status">Added to your account.</p>` : ""}
 ${rows}
 ${footer}
