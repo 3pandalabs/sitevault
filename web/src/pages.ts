@@ -144,6 +144,11 @@ legend{font-weight:600;padding:0 6px}
 .pmove{width:28px;height:28px;border-radius:7px;border:1px solid var(--line2);background:var(--panel);color:var(--fg2);cursor:pointer;font-size:.95rem;line-height:1;padding:0}
 .pmove:hover{color:var(--fg);border-color:var(--fg2)}
 .pkeep{display:flex;align-items:center;gap:4px;font-weight:400;min-height:44px}
+.premove{min-height:40px;padding:0 12px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);color:#f87171;cursor:pointer;font:inherit;font-size:.8rem;font-weight:600}
+.premove:hover{border-color:#f87171;background:rgba(248,113,113,.1)}
+.clearfield{display:inline-block;margin-top:6px;background:none;border:0;color:var(--fg2);cursor:pointer;font:inherit;font-size:.82rem;text-decoration:underline;padding:4px 0}
+.clearfield:hover{color:var(--fg)}
+.clearfield[hidden]{display:none}
 .ba-thumbs{display:flex;gap:4px}
 .check{display:flex;gap:10px;align-items:flex-start;font-weight:400;color:var(--fg2)}
 .check input{margin-top:5px;width:18px;height:18px;accent-color:var(--accent)}
@@ -606,7 +611,7 @@ export function builderPage(
 <div class="photos" id="photolist">${mode.site.photos
           .map(
             (k, i) =>
-              `<div class="photo" draggable="true"><img src="${esc(mode.photoUrl(k))}" alt="Photo ${i + 1}"><div class="photo-ctl"><button type="button" class="pmove" data-dir="up" aria-label="Move earlier">&#8593;</button><button type="button" class="pmove" data-dir="down" aria-label="Move later">&#8595;</button><label class="pkeep"><input type="checkbox" name="keep" value="${esc(k)}" checked> Keep</label></div></div>`,
+              `<div class="photo" draggable="true"><img src="${esc(mode.photoUrl(k))}" alt="Photo ${i + 1}"><input type="hidden" name="keep" value="${esc(k)}"><div class="photo-ctl"><button type="button" class="pmove" data-dir="up" aria-label="Move earlier">&#8593;</button><button type="button" class="pmove" data-dir="down" aria-label="Move later">&#8595;</button><button type="button" class="premove" aria-label="Remove this photo">&#10005; Remove</button></div></div>`,
           )
           .join("")}</div>`
       : "";
@@ -712,6 +717,8 @@ const BUILDER_SCRIPT = `
   if(plist){
     var renumber=function(){ [].forEach.call(plist.querySelectorAll('.photo img'),function(im,i){ im.alt='Photo '+(i+1); }); };
     plist.addEventListener('click',function(ev){
+      var rm=ev.target.closest&&ev.target.closest('.premove');
+      if(rm){ var rc=rm.closest('.photo'); if(rc){ rc.parentNode.removeChild(rc); renumber(); } return; }
       var btn=ev.target.closest&&ev.target.closest('.pmove'); if(!btn)return;
       var card=btn.closest('.photo'); if(!card)return;
       if(btn.getAttribute('data-dir')==='up'){ if(card.previousElementSibling) plist.insertBefore(card,card.previousElementSibling); }
@@ -730,6 +737,21 @@ const BUILDER_SCRIPT = `
     plist.addEventListener('dragstart',function(e){ var c=e.target.closest&&e.target.closest('.photo'); if(!c)return; drag=c; c.classList.add('dragging'); if(e.dataTransfer){e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain','');}catch(_){}} });
     plist.addEventListener('dragend',function(){ if(drag)drag.classList.remove('dragging'); drag=null; renumber(); });
     plist.addEventListener('dragover',function(e){ if(!drag)return; e.preventDefault(); var ref=afterCard(e.clientX,e.clientY); if(ref==null){ if(plist.lastElementChild!==drag) plist.appendChild(drag); } else if(ref!==drag){ plist.insertBefore(drag,ref); } });
+  }
+  // A "Clear" button on every text box.
+  [].forEach.call(form.querySelectorAll('textarea'),function(ta){
+    var b=document.createElement('button'); b.type='button'; b.className='clearfield'; b.textContent='Clear';
+    b.addEventListener('click',function(){ ta.value=''; try{ta.dispatchEvent(new Event('input',{bubbles:true}));}catch(_){} ta.focus(); });
+    if(ta.parentNode) ta.parentNode.insertBefore(b,ta.nextSibling);
+  });
+  // Clear a not-yet-saved photo selection.
+  var photoInput=document.getElementById('photos');
+  if(photoInput){
+    var cb=document.createElement('button'); cb.type='button'; cb.className='clearfield'; cb.hidden=true;
+    if(photoInput.parentNode) photoInput.parentNode.insertBefore(cb,photoInput.nextSibling);
+    var sync=function(){ var n=photoInput.files?photoInput.files.length:0; cb.hidden=!n; if(n) cb.textContent='Clear '+n+' selected'; };
+    cb.addEventListener('click',function(){ photoInput.value=''; sync(); });
+    photoInput.addEventListener('change',sync); sync();
   }
   // Prefill "Services and prices" from the chosen business type. Only replaces
   // an empty box or an untouched earlier suggestion, so typed content is kept
