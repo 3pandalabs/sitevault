@@ -9,9 +9,11 @@ import {
   HOURS_TEMPLATE,
   MAX_BEFORE_AFTER,
   MAX_PHOTOS,
+  MAX_TESTIMONIALS,
   SERVICE_TEMPLATES,
   beforeAfterAllowed,
   servicesToText,
+  testimonialsToText,
   type CategoryKey,
   type FieldErrors,
   type Site,
@@ -507,6 +509,7 @@ const FIELD_ORDER = [
   "tagline",
   "offer",
   "services",
+  "testimonials",
   "hours",
   "about",
   "photos",
@@ -668,6 +671,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   <div class="field"><label for="services">Services and prices <span class="hint">Optional. One per line, price after a dash.</span></label><textarea id="services" name="services" placeholder="Lawn mowing - from $35&#10;Spring cleanup - $149&#10;Hedge trimming">${v("services", site ? servicesToText(site.services) : "")}</textarea>${sg("services")}${e("services")}</div>
   <div class="field"><label for="hours">Opening hours <span class="hint">Optional</span></label><textarea id="hours" name="hours" placeholder="Mon-Fri 8am-6pm&#10;Sat 9am-2pm&#10;Sun closed">${v("hours", site?.hours ?? "")}</textarea>${sg("hours")}${e("hours")}</div>
   <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${sg("about")}${e("about")}</div>
+  <div class="field"><label for="testimonials">Customer testimonials <span class="hint">Optional. Up to ${MAX_TESTIMONIALS}, one per line as "Name — what they said".</span></label><textarea id="testimonials" name="testimonials" placeholder="Jane D — Punctual, tidy and fair. Highly recommend.&#10;Mark T — Best in town, booked them again already.">${v("testimonials", site ? testimonialsToText(site.testimonials ?? []) : "")}</textarea>${e("testimonials")}</div>
 </fieldset>
 <fieldset><legend>Photos &amp; video</legend>
   <label class="check"><input type="hidden" name="heroPhoto" value="no"><input type="checkbox" name="heroPhoto" value="yes"${mode.kind === "new" || mode.site.heroPhoto ? " checked" : ""}> <span>Use my first photo as the big banner at the top. Unticked, the top is a clean coloured banner and every photo goes in the gallery.</span></label>

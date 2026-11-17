@@ -37,7 +37,7 @@ export type RenderContext = {
 
 // First-party, no-network motion for customer sites. Progressive: adds `.js` to
 // <html> so reveal styles only apply when this runs; honours reduced motion.
-const SITE_JS = `(function(){
+export const SITE_JS = `(function(){
   var d=document,root=d.documentElement,w=window;root.className+=(root.className?' ':'')+'js';
   var reduce=w.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   var rev=[].slice.call(d.querySelectorAll('.reveal'));
@@ -245,6 +245,11 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .ba-handle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:#fff;color:#111;box-shadow:0 2px 10px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700}
 :root.js .ba-divider{cursor:ew-resize}
 :root.js .ba-divider:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.quotes{list-style:none;margin:0;padding:0;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
+.quotes li{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:var(--radius);padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.quotes blockquote{margin:0;font-size:1.02rem;line-height:1.5;color:var(--ink)}
+.quotes .qby{margin:0;font-weight:700;color:var(--muted);font-size:.9rem}
+.quotes .qby::before{content:"— "}
 video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:#000}
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .facts h3{margin:0 0 4px;font-size:1rem;display:flex;align-items:center;gap:8px}
@@ -454,6 +459,31 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  const reviews = site.testimonials ?? [];
+  const testimonialsHtml = reviews.length
+    ? `<section aria-labelledby="reviews-h" class="band reveal">
+  <div class="wrap">
+    <p class="kicker">Kind words</p>
+    <h2 id="reviews-h">What customers say</h2>
+    <ul class="quotes">
+      ${reviews
+        .map(
+          (t) =>
+            `<li><blockquote>${esc(t.quote)}</blockquote>${t.name ? `<p class="qby">${esc(t.name)}</p>` : ""}</li>`,
+        )
+        .join("\n      ")}
+    </ul>
+  </div>
+</section>`
+    : "";
+
+  // A tiny SVG favicon: the business's initial on the theme colour, inlined as a
+  // data URI (no extra request, and the strict CSP allows data: images).
+  const favInitial = (site.businessName.match(/[A-Za-z0-9]/)?.[0] ?? "S").toUpperCase();
+  const faviconHref = `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="${theme.primary}"/><text x="16" y="23" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="#ffffff">${favInitial}</text></svg>`,
+  )}`;
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -468,6 +498,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 <meta property="og:url" content="${esc(ctx.siteUrl)}">
 ${hero ? `<meta property="og:image" content="${esc(hero)}">` : ""}
 <meta name="theme-color" content="${theme.primary}">
+<link rel="icon" href="${faviconHref}">
 <script type="application/ld+json">${jsonForScript(jsonLd)}</script>
 <style>
 ${baseCss(theme)}
@@ -495,6 +526,7 @@ ${services}
 ${about}
 ${galleryHtml}
 ${beforeAfterHtml}
+${testimonialsHtml}
 ${visit}
 <section aria-labelledby="contact-h" class="reveal">
   <div class="wrap">

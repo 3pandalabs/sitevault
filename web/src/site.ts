@@ -77,6 +77,9 @@ export const HOURS_TEMPLATE = [
 
 export type Service = { name: string; price: string | null };
 
+/** One customer testimonial: what they said, and who said it (name may be blank). */
+export type Testimonial = { name: string; quote: string };
+
 export type SiteContent = {
   businessName: string;
   category: CategoryKey;
@@ -89,6 +92,7 @@ export type SiteContent = {
   serviceArea: string | null;
   hours: string | null;
   services: Service[];
+  testimonials: Testimonial[];
   offer: string | null;
   /** Which customer-site template (layout/style) to render. */
   template: TemplateKey;
@@ -136,6 +140,7 @@ export const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
 // HEIC/HEIF are the iPhone default; Cloudflare Images converts them to JPEG.
 export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 export const MAX_SERVICES = 12;
+export const MAX_TESTIMONIALS = 3;
 
 /** One before & after pair: R2 keys of the two photos. */
 export type BeforeAfter = { before: string; after: string };
@@ -214,6 +219,8 @@ const LIMITS = {
   offer: 160,
   serviceName: 60,
   servicePrice: 24,
+  testimonialName: 60,
+  testimonialQuote: 300,
 } as const;
 
 /** Links in free text: scheme, www., or a bare domain with a path. */
@@ -273,6 +280,26 @@ export function servicesToText(services: Service[]): string {
   return services.map((s) => (s.price ? `${s.name} - ${s.price}` : s.name)).join("\n");
 }
 
+/**
+ * One testimonial per line, "Name — what they said". A line with no separator
+ * is taken as an unattributed quote. Caps at MAX_TESTIMONIALS.
+ */
+export function parseTestimonials(raw: string): Testimonial[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, MAX_TESTIMONIALS)
+    .map((line) => {
+      const m = line.match(/^(.*?)\s+[-–—:]\s+(.+)$/);
+      return m ? { name: m[1]!.trim(), quote: m[2]!.trim() } : { name: "", quote: line };
+    });
+}
+
+export function testimonialsToText(testimonials: Testimonial[]): string {
+  return testimonials.map((t) => (t.name ? `${t.name} — ${t.quote}` : t.quote)).join("\n");
+}
+
 /** Validate form fields into SiteContent, or field-level errors. */
 export function parseContent(
   fields: Record<string, unknown>,
@@ -292,6 +319,7 @@ export function parseContent(
   const hours = get("hours");
   const offer = get("offer");
   const services = parseServices(get("services"));
+  const testimonials = parseTestimonials(get("testimonials"));
 
   const required: [string, string][] = [
     ["businessName", businessName],
@@ -326,6 +354,13 @@ export function parseContent(
       errors.services = "Links aren't allowed here.";
     }
   }
+  for (const t of testimonials) {
+    if (t.name.length > LIMITS.testimonialName || t.quote.length > LIMITS.testimonialQuote) {
+      errors.testimonials = `Keep each name under ${LIMITS.testimonialName} and each quote under ${LIMITS.testimonialQuote} characters.`;
+    } else if (LINK_PATTERN.test(t.name) || LINK_PATTERN.test(t.quote)) {
+      errors.testimonials = "Links aren't allowed here.";
+    }
+  }
 
   const digits = phone.replace(/\D/g, "");
   if (phone && (digits.length < 7 || digits.length > 15 || /[^\d\s()+.-]/.test(phone))) {
@@ -348,6 +383,7 @@ export function parseContent(
       serviceArea: serviceArea || null,
       hours: hours || null,
       services,
+      testimonials,
       offer: offer || null,
       template: asTemplate(get("template")),
       heroPhoto: get("heroPhoto") !== "no",

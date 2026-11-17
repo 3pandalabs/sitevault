@@ -67,6 +67,25 @@ describe("parseContent", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors.city).toBeTruthy();
   });
+
+  it("parses testimonials: splits name and quote, caps at three, allows unattributed", () => {
+    const r = parseContent({
+      ...base,
+      testimonials: "Jane D — Punctual and tidy\nNo-name quote line\nMark T — Great job\nFourth is dropped",
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok)
+      expect(r.value.testimonials).toEqual([
+        { name: "Jane D", quote: "Punctual and tidy" },
+        { name: "", quote: "No-name quote line" },
+        { name: "Mark T", quote: "Great job" },
+      ]);
+  });
+
+  it("refuses links and over-long text in testimonials", () => {
+    expect(parseContent({ ...base, testimonials: "Spammer — visit www.evil.com" }).ok).toBe(false);
+    expect(parseContent({ ...base, testimonials: `Jane — ${"x".repeat(301)}` }).ok).toBe(false);
+  });
 });
 
 describe("services", () => {
@@ -158,6 +177,25 @@ describe("renderSite", () => {
       expect(out).toContain('class="ba-cmp"'); // drag-to-compare slider
       expect(out).not.toContain("<b>Lawns</b>");
     }
+  });
+  it("shows the testimonials section only with quotes, labelled and escaped, in every template", () => {
+    expect(html).not.toContain("What customers say");
+    const ctx = { siteUrl: "https://x/s/a", assetOrigin: "https://x", homeUrl: "https://x" };
+    for (const template of ["spotlight", "split", "editorial"] as const) {
+      const p = parseContent({ ...base, testimonials: `Bob <b>D</b> — Said "great" & tidy` });
+      if (!p.ok) throw new Error("fixture invalid");
+      const out = renderSite({ ...site, ...p.value, template }, ctx);
+      expect(out).toContain('<h2 id="reviews-h">What customers say</h2>');
+      expect(out).toContain("<blockquote>Said &quot;great&quot; &amp; tidy</blockquote>");
+      expect(out).toContain('<p class="qby">Bob &lt;b&gt;D&lt;/b&gt;</p>');
+      expect(out).not.toContain("<b>D</b>");
+    }
+  });
+  it("gives each site a themed SVG favicon with its initial", () => {
+    expect(html).toContain('<link rel="icon" href="data:image/svg+xml,');
+    // 'E' for EkMoliya, URL-encoded, on the landscaping primary (#143626 -> %23143626)
+    expect(html).toContain("%3Ctext"); // the <text> element is present
+    expect(html).toContain("%23143626"); // theme primary, encoded
   });
   it("adds the fair-housing line only for real estate", () => {
     expect(html).not.toContain("Equal Housing Opportunity");
