@@ -762,6 +762,9 @@ const BUILDER_SCRIPT = `
   var svc=document.getElementById('services'), catSel=document.getElementById('category');
   if(svc && catSel){
     var lastFill='';
+    // If the box already holds one of the category templates (an untouched prefill,
+    // e.g. on the edit page), treat it as replaceable so changing the type updates it.
+    for(var _k in SERVICE_TEMPLATES){ if(SERVICE_TEMPLATES[_k] && svc.value.trim()===SERVICE_TEMPLATES[_k].trim()){ lastFill=svc.value; break; } }
     var fillServices=function(){
       var t=SERVICE_TEMPLATES[catSel.value]||'';
       if(t && (svc.value.trim()==='' || svc.value===lastFill)){ svc.value=t; lastFill=t; }
