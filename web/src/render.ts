@@ -156,8 +156,6 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox[hidden]{display:none}
 .lightbox img{max-width:100%;max-height:100%;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
 .gallery img{cursor:zoom-in}
-@media(prefers-reduced-motion:no-preference){.hero.spotlight img,.hero.split .hero-img img,.hero-band img{animation:kenburns 20s ease-out both}}
-@keyframes kenburns{from{transform:scale(1.08)}to{transform:scale(1)}}
 .hero.spotlight,.hero.split .hero-img{overflow:hidden}
 :root.js .reveal .services li,:root.js .reveal .gallery li{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
 :root.js .reveal.in .services li,:root.js .reveal.in .gallery li{opacity:1;transform:none}
@@ -232,7 +230,7 @@ footer a{color:var(--muted)}
 
 const TEMPLATE_CSS: Record<TemplateKey, string> = {
   spotlight: `.hero.spotlight{position:relative;background:var(--primary);color:#fff}
-.hero.spotlight img{display:block;width:100%;height:min(66vh,540px);object-fit:cover}
+.hero.spotlight img{display:block;width:100%;height:clamp(220px,42vw,380px);object-fit:contain}
 .hero.spotlight .shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.34) 45%,rgba(0,0,0,.80) 100%)}
 .hero.spotlight .copy{position:absolute;left:0;right:0;bottom:0;padding:40px 0}
 .hero.spotlight.noimg{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 68%,#000))}
@@ -248,7 +246,7 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.split .hero-cta{background:#fff;color:var(--primary);border-color:#fff}
 .hero.split .hero-cta:hover{background:var(--band)}
 .hero.split .hero-img{clip-path:polygon(7% 0,100% 0,100% 100%,0% 100%)}
-.hero.split .hero-img img{display:block;width:100%;height:100%;min-height:300px;object-fit:cover}
+.hero.split .hero-img img{display:block;width:100%;height:clamp(220px,42vw,380px);object-fit:contain;background:var(--primary)}
 .hero.split.noimg{display:block}
 @media(max-width:720px){.hero.split{grid-template-columns:1fr}.hero.split .hero-img{clip-path:none}.hero.split .hero-img img{min-height:240px}}`,
   editorial: `:root{--head-font:Georgia,Cambria,"Times New Roman",serif}
@@ -258,7 +256,7 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.editorial .lede{margin:0 auto;max-width:44ch;color:var(--muted);font-size:1.2rem}
 .hero.editorial .eyebrow::before,.hero.editorial .eyebrow::after{content:"";display:inline-block;width:30px;height:1px;background:var(--primary);opacity:.55;vertical-align:middle;margin:0 12px}
 .hero-band{padding:44px 16px;background:var(--band)}
-.hero-band img{display:block;width:100%;max-width:960px;margin:0 auto;height:min(54vh,460px);object-fit:cover;border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.14)}
+.hero-band img{display:block;width:100%;max-width:960px;margin:0 auto;height:clamp(220px,42vw,380px);object-fit:contain;background:var(--card);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.14)}
 .t-editorial .kicker{text-align:center}
 .t-editorial .kicker::before,.t-editorial .kicker::after{content:"";display:inline-block;width:26px;height:1px;background:var(--accent);vertical-align:middle;margin:0 10px}
 .t-editorial h2{text-align:center;padding-bottom:16px}
