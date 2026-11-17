@@ -57,6 +57,15 @@ export const GRACE_DAYS = 14;
 export const ADVAULT_INCLUDED_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Appended to the shared Stripe account's `3PANDALABS` prefix so card
+ * statements read `3PANDALABS* SITEVAULT`. Stripe caps prefix + "* " + suffix
+ * at 22 chars (so 10 here), letters/digits/spaces only. One-time payments
+ * only: Stripe rejects `payment_intent_data` on subscription-mode Checkout, so
+ * subscriptions show the plain account descriptor.
+ */
+export const STATEMENT_DESCRIPTOR_SUFFIX = "SITEVAULT";
+
 /** Dollar amounts for display. Stripe prices hold the real amounts. */
 export const DOLLARS = { basic: 49, festive: 29, pro: 89, festivePro: 59, proAdvault: 49, advaultSetup: 10, advaultAd: 10, pack: 10 } as const;
 
@@ -289,7 +298,11 @@ export function checkoutParams(opts: {
     );
     if (festive) p.push(["subscription_data[metadata][festive]", "1"]);
   } else {
-    p.push(["payment_intent_data[metadata][app]", "sitevault"], ["payment_intent_data[metadata][slug]", slug]);
+    p.push(
+      ["payment_intent_data[metadata][app]", "sitevault"],
+      ["payment_intent_data[metadata][slug]", slug],
+      ["payment_intent_data[statement_descriptor_suffix]", STATEMENT_DESCRIPTOR_SUFFIX],
+    );
   }
   if (billing.customerId) p.push(["customer", billing.customerId]);
   else if (items.mode === "payment") p.push(["customer_creation", "always"]);
