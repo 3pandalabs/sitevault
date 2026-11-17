@@ -139,6 +139,7 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .gallery img{cursor:zoom-in}
 @media(prefers-reduced-motion:no-preference){.hero.spotlight img,.hero.split .hero-img img,.hero-band img{animation:kenburns 20s ease-out both}}
 @keyframes kenburns{from{transform:scale(1.08)}to{transform:scale(1)}}
+.hero.spotlight,.hero.split .hero-img{overflow:hidden}
 @media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;padding-bottom:12px}
