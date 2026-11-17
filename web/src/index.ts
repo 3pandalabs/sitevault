@@ -1369,7 +1369,9 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   if (!spend.ok) {
     errors.offer = "Changing your special uses 1 credit and you have none left. Buy more credits in Plan & billing above, or keep the current special.";
   }
-  const kept = site.photos.filter((k) => form.keep.includes(k));
+  // Keep the order the owner arranged (form.keep is in the edit page's DOM order),
+  // filtered to this site's real photo keys.
+  const kept = form.keep.filter((k) => site.photos.includes(k));
   const photoErr = checkPhotos(form.files, kept.length);
   if (photoErr) errors.photos = photoErr;
   // A new address: allowed a few times; the old one becomes a permanent redirect.

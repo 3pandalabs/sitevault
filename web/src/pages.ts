@@ -114,9 +114,13 @@ textarea{min-height:110px;resize:vertical}
 fieldset{border:1px solid var(--line);border-radius:16px;padding:18px 18px 4px;margin:0 0 20px;background:var(--panel)}
 legend{font-weight:600;padding:0 6px}
 #builder{margin-bottom:32px}
-.photos{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
-.photos label{font-weight:400;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.85rem}
-.photos img{width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.photos{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0}
+.photo{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.85rem}
+.photo img{width:110px;height:82px;object-fit:cover;border-radius:8px;border:1px solid var(--line2)}
+.photo-ctl{display:flex;align-items:center;gap:6px}
+.pmove{width:28px;height:28px;border-radius:7px;border:1px solid var(--line2);background:var(--panel);color:var(--fg2);cursor:pointer;font-size:.95rem;line-height:1;padding:0}
+.pmove:hover{color:var(--fg);border-color:var(--fg2)}
+.pkeep{display:flex;align-items:center;gap:4px;font-weight:400}
 .check{display:flex;gap:10px;align-items:flex-start;font-weight:400;color:var(--fg2)}
 .check input{margin-top:5px;width:18px;height:18px;accent-color:var(--accent)}
 .notice{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
@@ -531,11 +535,11 @@ export function builderPage(
 
   const existing =
     mode.kind === "edit" && mode.site.photos.length
-      ? `<p class="hint">Current photos. Untick any you want to remove. The first photo is the big one at the top.</p>
-<div class="photos">${mode.site.photos
+      ? `<p class="hint">Current photos. The first is the big one at the top — use the arrows to reorder, untick to remove.</p>
+<div class="photos" id="photolist">${mode.site.photos
           .map(
             (k, i) =>
-              `<label><img src="${esc(mode.photoUrl(k))}" alt="Photo ${i + 1}"><span><input type="checkbox" name="keep" value="${esc(k)}" checked> Keep</span></label>`,
+              `<div class="photo"><img src="${esc(mode.photoUrl(k))}" alt="Photo ${i + 1}"><div class="photo-ctl"><button type="button" class="pmove" data-dir="up" aria-label="Move earlier">&#8593;</button><button type="button" class="pmove" data-dir="down" aria-label="Move later">&#8595;</button><label class="pkeep"><input type="checkbox" name="keep" value="${esc(k)}" checked> Keep</label></div></div>`,
           )
           .join("")}</div>`
       : "";
@@ -632,6 +636,18 @@ const BUILDER_SCRIPT = `
 (function(){
   var form=document.getElementById('builder'); if(!form||!window.fetch||!window.FormData) return;
   var FIELDS=${JSON.stringify(FIELD_ORDER)};
+  // Reorder existing photos with the arrows; the "keep" inputs' DOM order is the saved order.
+  var plist=document.getElementById('photolist');
+  if(plist){
+    var renumber=function(){ [].forEach.call(plist.querySelectorAll('.photo img'),function(im,i){ im.alt='Photo '+(i+1); }); };
+    plist.addEventListener('click',function(ev){
+      var btn=ev.target.closest&&ev.target.closest('.pmove'); if(!btn)return;
+      var card=btn.closest('.photo'); if(!card)return;
+      if(btn.getAttribute('data-dir')==='up'){ if(card.previousElementSibling) plist.insertBefore(card,card.previousElementSibling); }
+      else if(card.nextElementSibling){ plist.insertBefore(card.nextElementSibling,card); }
+      renumber();
+    });
+  }
   // Prefill "Services and prices" from the chosen business type. Only replaces
   // an empty box or an untouched earlier suggestion, so typed content is kept
   // (including if you just tab past it).
