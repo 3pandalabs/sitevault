@@ -104,6 +104,11 @@ export type Site = SiteContent & {
    * other sites, and never claims its number (so it can't block a customer).
    */
   adminTest?: boolean;
+  /**
+   * Before & after photo pairs of the business's own work (R2 keys under
+   * sites/<slug>/, like photos). Up to MAX_BEFORE_AFTER. Absent = none.
+   */
+  beforeAfter?: BeforeAfter[];
   /** R2 key of the business's video ad (AdVault sites only). */
   video?: string | null;
   /** Earlier addresses, each a permanent redirect to this one. */
@@ -131,6 +136,70 @@ export const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
 // HEIC/HEIF are the iPhone default; Cloudflare Images converts them to JPEG.
 export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 export const MAX_SERVICES = 12;
+
+/** One before & after pair: R2 keys of the two photos. */
+export type BeforeAfter = { before: string; after: string };
+export const MAX_BEFORE_AFTER = 2;
+/** Multipart file fields for new pairs, [before, after] per pair (AdVault's contract). */
+export const BEFORE_AFTER_FIELDS = [
+  ["ba1Before", "ba1After"],
+  ["ba2Before", "ba2After"],
+] as const;
+export type BeforeAfterField = (typeof BEFORE_AFTER_FIELDS)[number][number];
+/** What AdVault may send for a pair: no HEIC (its photos are already web images). */
+export const INTERNAL_BEFORE_AFTER_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * The trades where "before & after" photos of the work fit: building, repair,
+ * outdoor, cleaning and vehicle work. Never health, medical, dental, cosmetic,
+ * salon, spa, fitness or anything about bodies (Google restricts before/after
+ * imagery of personal health and cosmetic results), nor food, retail or real
+ * estate. The ONE list SiteVault checks before an owner may add pairs here.
+ */
+export const BEFORE_AFTER_CATEGORIES: readonly CategoryKey[] = [
+  "landscaping",
+  "cleaning",
+  "plumbing",
+  "electrical",
+  "hvac",
+  "handyman",
+  "auto",
+];
+
+export function beforeAfterAllowed(category: string): boolean {
+  return (BEFORE_AFTER_CATEGORIES as readonly string[]).includes(category);
+}
+
+type PhotoLike = { type: string; size: number };
+
+/**
+ * New pairs from the upload slots. A pair counts only with both halves; half a
+ * pair is an error. Pure: the caller checks the category and the attestation.
+ */
+export function pickBeforeAfter<F extends PhotoLike>(
+  slots: Partial<Record<BeforeAfterField, F>>,
+  opts: { existing: number; types: string[]; maxBytes: number },
+): { ok: true; pairs: [F, F][] } | { ok: false; error: string } {
+  const pairs: [F, F][] = [];
+  for (const [b, a] of BEFORE_AFTER_FIELDS) {
+    const before = slots[b];
+    const after = slots[a];
+    if (!before && !after) continue;
+    if (!before || !after) return { ok: false, error: "Add both a before and an after photo for each pair." };
+    pairs.push([before, after]);
+  }
+  if (opts.existing + pairs.length > MAX_BEFORE_AFTER) return { ok: false, error: `Up to ${MAX_BEFORE_AFTER} before & after pairs in total.` };
+  for (const f of pairs.flat()) {
+    if (!opts.types.includes(f.type)) return { ok: false, error: `Before & after photos must be JPG, PNG${opts.types.includes("image/heic") ? ", WebP or HEIC" : " or WebP"} images.` };
+    if (f.size > opts.maxBytes) return { ok: false, error: `Each before & after photo must be under ${Math.round(opts.maxBytes / 1024 / 1024)} MB.` };
+  }
+  return { ok: true, pairs };
+}
+
+/** Every R2 key this site's own host may serve (and removal must delete). */
+export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter">): string[] {
+  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after])];
+}
 
 const LIMITS = {
   businessName: 80,

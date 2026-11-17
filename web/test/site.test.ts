@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { headline, parseContent, parseServices, servicesToText } from "../src/site.js";
+import {
+  BEFORE_AFTER_CATEGORIES,
+  CATEGORIES,
+  INTERNAL_BEFORE_AFTER_TYPES,
+  beforeAfterAllowed,
+  headline,
+  parseContent,
+  parseServices,
+  pickBeforeAfter,
+  servicesToText,
+  siteFileKeys,
+} from "../src/site.js";
 import { renderHold, renderSite } from "../src/render.js";
 import { esc, jsonForScript, phoneIdentity, slugify, telHref } from "../src/util.js";
 import type { Site } from "../src/site.js";
@@ -131,6 +142,22 @@ describe("renderSite", () => {
     expect(v).toContain('<source src="https://x/p/sites/ekmoliya-landscaping-secaucus/ad.mp4" type="video/mp4">');
     expect(v).toContain("playsinline");
   });
+  it("shows the before & after section only with pairs, labelled and escaped, in every template", () => {
+    expect(html).not.toContain("Before &amp; after");
+    const ctx = { siteUrl: "https://x/s/a", assetOrigin: "https://x", homeUrl: "https://x" };
+    for (const template of ["spotlight", "split", "editorial"] as const) {
+      const out = renderSite(
+        { ...site, template, businessName: `Bob's <b>Lawns</b>`, beforeAfter: [{ before: "sites/a/b1.jpg", after: "sites/a/a1.jpg" }] },
+        ctx,
+      );
+      expect(out).toContain('<h2 id="ba-h">Before &amp; after</h2>');
+      expect(out).toContain('src="https://x/p/sites/a/b1.jpg" alt="Before: Bob&#39;s &lt;b&gt;Lawns&lt;/b&gt; job 1"');
+      expect(out).toContain('alt="After: Bob&#39;s &lt;b&gt;Lawns&lt;/b&gt; job 1"');
+      expect(out).toContain("<figcaption>Before</figcaption>");
+      expect(out).toContain("<figcaption>After</figcaption>");
+      expect(out).not.toContain("<b>Lawns</b>");
+    }
+  });
   it("adds the fair-housing line only for real estate", () => {
     expect(html).not.toContain("Equal Housing Opportunity");
     const re = renderSite({ ...site, category: "realestate" }, {
@@ -158,5 +185,31 @@ describe("renderSite", () => {
     expect(unpub).toContain("isn't published yet");
     expect(unpub).not.toContain(site.businessName);
     expect(unpub).toContain('content="noindex"');
+  });
+});
+
+describe("before & after", () => {
+  it("allows trades only, never health, cosmetic, body, food, retail or real estate", () => {
+    for (const k of ["landscaping", "cleaning", "plumbing", "electrical", "hvac", "handyman", "auto"]) expect(beforeAfterAllowed(k)).toBe(true);
+    for (const k of ["salon", "barber", "spa", "dentist", "clinic", "fitness", "restaurant", "bakery", "realestate", "petcare", "other", "nope"])
+      expect(beforeAfterAllowed(k)).toBe(false);
+    for (const k of BEFORE_AFTER_CATEGORIES) expect(k in CATEGORIES).toBe(true);
+  });
+
+  const f = (type = "image/jpeg", size = 10) => ({ type, size });
+  const opts = { existing: 0, types: INTERNAL_BEFORE_AFTER_TYPES, maxBytes: 100 };
+  it("takes complete pairs or none; refuses half pairs, too many, bad types and big files", () => {
+    expect(pickBeforeAfter({}, opts)).toEqual({ ok: true, pairs: [] });
+    const two = pickBeforeAfter({ ba1Before: f(), ba1After: f("image/png"), ba2Before: f("image/webp"), ba2After: f() }, opts);
+    expect(two.ok && two.pairs.length).toBe(2);
+    expect(pickBeforeAfter({ ba2After: f() }, opts).ok).toBe(false);
+    expect(pickBeforeAfter({ ba1Before: f(), ba1After: f() }, { ...opts, existing: 2 }).ok).toBe(false);
+    expect(pickBeforeAfter({ ba1Before: f("image/gif"), ba1After: f() }, opts).ok).toBe(false);
+    expect(pickBeforeAfter({ ba1Before: f("image/jpeg", 101), ba1After: f() }, opts).ok).toBe(false);
+  });
+
+  it("siteFileKeys covers photos, video and both halves of each pair", () => {
+    expect(siteFileKeys({ photos: ["p"], video: "v", beforeAfter: [{ before: "b", after: "a" }] })).toEqual(["p", "v", "b", "a"]);
+    expect(siteFileKeys({ photos: [], video: null })).toEqual([]);
   });
 });

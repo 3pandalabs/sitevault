@@ -32,13 +32,17 @@ function memoryKv() {
 
 function memoryR2() {
   const data = new Map<string, ArrayBuffer>();
+  const types = new Map<string, string>();
   return {
     data,
-    async put(key: string, value: ArrayBuffer) {
+    async put(key: string, value: ArrayBuffer, opts?: { httpMetadata?: { contentType?: string } }) {
       data.set(key, value);
+      if (opts?.httpMetadata?.contentType) types.set(key, opts.httpMetadata.contentType);
     },
-    async get() {
-      return null;
+    async get(key: string) {
+      const v = data.get(key);
+      if (!v) return null;
+      return { body: new Uint8Array(v), size: v.byteLength, httpMetadata: { contentType: types.get(key) } };
     },
     async delete(keys: string | string[]) {
       for (const k of Array.isArray(keys) ? keys : [keys]) data.delete(k);
@@ -278,5 +282,168 @@ describe("/metrics", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.app).toBe("sitevault");
     expect(body.uptimeSeconds).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Before & after pairs (optional; AdVault's internal create + the edit page)
+
+const jpeg = (name: string, bytes = 10, type = "image/jpeg") => new File([new Uint8Array(bytes)], name, { type });
+const R2 = () => env.PHOTOS as ReturnType<typeof memoryR2>;
+type Pair = { before: string; after: string };
+
+async function internalCreateWith(fields: Record<string, string>, files: Record<string, File>): Promise<Response> {
+  const form = new FormData();
+  const base = { businessName: "Green Lawns", category: "landscaping", phone: "(555) 201-0000", city: "Edison" };
+  for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+  for (const [k, f] of Object.entries(files)) form.set(k, f);
+  return call(`${ORIGIN}/api/internal/sites`, { method: "POST", headers: auth, body: form });
+}
+
+const twoPairs = () => ({ ba1Before: jpeg("1b.jpg"), ba1After: jpeg("1a.jpg"), ba2Before: jpeg("2b.jpg"), ba2After: jpeg("2a.jpg") });
+const stored = (slug: string) =>
+  JSON.parse(kv.data.get(`site:${slug}`)!.value) as { beforeAfter?: Pair[]; photos: string[]; status: string; category: string };
+
+describe("internal create: before & after pairs", () => {
+  it("stores complete pairs as R2 keys under the site's folder", async () => {
+    const res = await internalCreateWith({}, twoPairs());
+    expect(res.status).toBe(201);
+    const { slug } = (await res.json()) as { slug: string };
+    const pairs = stored(slug).beforeAfter!;
+    expect(pairs).toHaveLength(2);
+    for (const p of pairs) {
+      expect(p.before.startsWith(`sites/${slug}/`) && p.after.startsWith(`sites/${slug}/`)).toBe(true);
+      expect(R2().data.has(p.before) && R2().data.has(p.after)).toBe(true);
+    }
+  });
+
+  it("no before & after fields: made exactly as before, no beforeAfter on the record", async () => {
+    const { slug } = await makeSite();
+    expect(stored(slug).beforeAfter).toBeUndefined();
+    expect(R2().data.size).toBe(0);
+  });
+
+  it("half a pair is a 400 with errors.beforeAfter, and nothing is stored", async () => {
+    const res = await internalCreateWith({}, { ba1Before: jpeg("1b.jpg"), ba2Before: jpeg("2b.jpg"), ba2After: jpeg("2a.jpg") });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { errors: Record<string, string> };
+    expect(body.errors.beforeAfter).toMatch(/both a before and an after/);
+    expect([...kv.data.keys()].some((k) => k.startsWith("site:"))).toBe(false);
+    expect(R2().data.size).toBe(0);
+  });
+
+  it("rejects a non-image type, HEIC (AdVault sends web images only) and over 8 MB", async () => {
+    for (const bad of [jpeg("x.gif", 10, "image/gif"), jpeg("x.heic", 10, "image/heic"), jpeg("big.jpg", 8 * 1024 * 1024 + 1)]) {
+      const res = await internalCreateWith({}, { ba1Before: bad, ba1After: jpeg("1a.jpg") });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { errors: Record<string, string> }).errors.beforeAfter).toBeTruthy();
+    }
+  });
+
+  it("the customer host serves the pair photos, and only this site's", async () => {
+    const res = await internalCreateWith({}, { ba1Before: jpeg("1b.jpg"), ba1After: jpeg("1a.jpg") });
+    const { slug } = (await res.json()) as { slug: string };
+    const [p] = stored(slug).beforeAfter!;
+    const host = `https://${slug}.3pandasite.test`;
+    const page = await (await call(`${host}/`)).text();
+    expect(page).toContain("Before &amp; after");
+    expect(page).toContain(`/p/${p!.before}`);
+    expect((await call(`${host}/p/${p!.before}`)).status).toBe(200);
+    expect((await call(`${host}/p/${p!.after}`, { method: "HEAD" })).status).toBe(200);
+    const other = (await (await internalCreateWith({ businessName: "Other Co", phone: "555-201-7777" }, {})).json()) as { slug: string };
+    expect((await call(`https://${other.slug}.3pandasite.test/p/${p!.before}`)).status).toBe(404);
+  });
+
+  it("removal deletes the pair photos and clears them from the record", async () => {
+    const res = await internalCreateWith({}, twoPairs());
+    const { slug } = (await res.json()) as { slug: string };
+    expect(R2().data.size).toBe(4);
+    env.ADMIN_TOKEN = "admin-token";
+    const rm = await call(`${ORIGIN}/api/admin/sites/${slug}/remove`, { method: "POST", headers: { authorization: "Bearer admin-token" } });
+    expect(rm.status).toBeLessThan(400);
+    expect(R2().data.size).toBe(0);
+    expect(stored(slug).status).toBe("removed");
+    expect(stored(slug).beforeAfter).toBeUndefined();
+  });
+});
+
+describe("edit page: before & after", () => {
+  async function made(fields: Record<string, string> = {}, files: Record<string, File> = {}) {
+    const res = await internalCreateWith(fields, files);
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string | string[]>, files: Record<string, File> = {}) {
+    const form = new FormData();
+    const base = { businessName: "Green Lawns", category: "landscaping", phone: "(555) 201-0000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) for (const x of Array.isArray(v) ? v : [v]) form.append(k, x);
+    for (const [k, f] of Object.entries(files)) form.set(k, f);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", headers: { accept: "application/json" }, body: form });
+  }
+  const errs = async (r: Response) => ((await r.json()) as { errors: Record<string, string> }).errors;
+
+  it("shows current pairs with keep boxes, and add slots + the tick for an allowed trade", async () => {
+    const { slug, key } = await made({}, { ba1Before: jpeg("1b.jpg"), ba1After: jpeg("1a.jpg") });
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    const [p] = stored(slug).beforeAfter!;
+    expect(page).toContain(`name="keepPair" value="${p!.before}"`);
+    expect(page).toContain('name="ba1Before"');
+    expect(page).not.toContain('name="ba2Before"'); // one pair left of the two
+    expect(page).toContain("These are real photos of our own work.");
+  });
+
+  it("no before & after fieldset for a trade where it does not fit", async () => {
+    const { slug, key } = await made({ category: "salon" });
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).not.toContain('name="ba1Before"');
+    expect(page).not.toContain("<legend>Before &amp; after</legend>");
+  });
+
+  it("unticking a pair removes it and deletes its photos; kept pairs stay", async () => {
+    const { slug, key } = await made({}, twoPairs());
+    const [p1, p2] = stored(slug).beforeAfter!;
+    const res = await save(slug, key, { keepPair: [p2!.before] });
+    expect(res.status).toBe(200);
+    expect(stored(slug).beforeAfter).toEqual([p2]);
+    expect(R2().data.has(p1!.before) || R2().data.has(p1!.after)).toBe(false);
+    expect(R2().data.has(p2!.before)).toBe(true);
+    // Untick all: the section goes away.
+    await save(slug, key, {});
+    expect(stored(slug).beforeAfter).toBeUndefined();
+    expect(R2().data.size).toBe(0);
+  });
+
+  it("adds a pair with both photos and the tick", async () => {
+    const { slug, key } = await made();
+    const res = await save(slug, key, { baAttest: "yes" }, { ba1Before: jpeg("b.jpg"), ba1After: jpeg("a.jpg") });
+    expect(res.status).toBe(200);
+    expect(stored(slug).beforeAfter).toHaveLength(1);
+  });
+
+  it("refuses an added pair without the tick, half a pair, a third pair, or a non-allowed trade", async () => {
+    const { slug, key } = await made({}, twoPairs());
+    const keepBoth = stored(slug).beforeAfter!.map((p) => p.before);
+    const pair = () => ({ ba1Before: jpeg("b.jpg"), ba1After: jpeg("a.jpg") });
+    const noTick = await save(slug, key, { keepPair: keepBoth.slice(0, 1) }, pair());
+    expect(noTick.status).toBe(400);
+    expect((await errs(noTick)).baAttest).toBeTruthy();
+    const half = await save(slug, key, { keepPair: keepBoth.slice(0, 1), baAttest: "yes" }, { ba1Before: jpeg("b.jpg") });
+    expect((await errs(half)).beforeAfter).toMatch(/both a before and an after/);
+    const third = await save(slug, key, { keepPair: keepBoth, baAttest: "yes" }, pair());
+    expect((await errs(third)).beforeAfter).toMatch(/Up to 2/);
+    const salon = await save(slug, key, { category: "salon", keepPair: [], baAttest: "yes" }, pair());
+    expect((await errs(salon)).beforeAfter).toMatch(/not available/);
+    expect(stored(slug).beforeAfter).toHaveLength(2);
+    expect(R2().data.size).toBe(4);
+  });
+
+  it("a rename keeps the pairs served from the new address", async () => {
+    const { slug, key } = await made({}, { ba1Before: jpeg("1b.jpg"), ba1After: jpeg("1a.jpg") });
+    const [p] = stored(slug).beforeAfter!;
+    const res = await save(slug, key, { slug: "green-lawns-new", keepPair: [p!.before] });
+    expect(res.status).toBe(200);
+    expect(stored("green-lawns-new").beforeAfter).toEqual([p]);
+    expect((await call(`https://green-lawns-new.3pandasite.test/p/${p!.before}`)).status).toBe(200);
   });
 });
