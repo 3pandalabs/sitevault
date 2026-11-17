@@ -38,14 +38,33 @@ export type RenderContext = {
 // First-party, no-network motion for customer sites. Progressive: adds `.js` to
 // <html> so reveal styles only apply when this runs; honours reduced motion.
 const SITE_JS = `(function(){
-  var d=document,root=d.documentElement;root.className+=(root.className?' ':'')+'js';
-  var reduce=matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var d=document,root=d.documentElement,w=window;root.className+=(root.className?' ':'')+'js';
+  var reduce=w.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   var rev=[].slice.call(d.querySelectorAll('.reveal'));
-  if(reduce||!('IntersectionObserver' in window)){rev.forEach(function(e){e.classList.add('in');});}
+  if(reduce||!('IntersectionObserver' in w)){rev.forEach(function(e){e.classList.add('in');});}
   else{var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{rootMargin:'0px 0px -8% 0px',threshold:.08});rev.forEach(function(e){io.observe(e);});}
-  var hdr=d.querySelector('header.top');if(hdr){var s=function(){hdr.classList.toggle('scrolled',(window.scrollY||window.pageYOffset)>8);};addEventListener('scroll',s,{passive:true});s();}
+  var hdr=d.querySelector('header.top');
+  var pb=d.createElement('div');pb.className='progress';d.body.appendChild(pb);
+  var tt=d.createElement('button');tt.type='button';tt.className='totop';tt.setAttribute('aria-label','Back to top');tt.innerHTML='\\u2191';d.body.appendChild(tt);
+  tt.addEventListener('click',function(){w.scrollTo({top:0,behavior:reduce?'auto':'smooth'});});
+  var onScroll=function(){var st=w.scrollY||w.pageYOffset,h=d.documentElement.scrollHeight-w.innerHeight;pb.style.width=(h>0?Math.min(100,st/h*100):0)+'%';tt.classList.toggle('show',st>600);if(hdr)hdr.classList.toggle('scrolled',st>8);};
+  w.addEventListener('scroll',onScroll,{passive:true});onScroll();
   var imgs=[].slice.call(d.querySelectorAll('.gallery img'));
-  if(imgs.length){var box=d.createElement('div');box.className='lightbox';box.hidden=true;box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label','Photo');var big=d.createElement('img');big.alt='';box.appendChild(big);d.body.appendChild(box);var close=function(){box.hidden=true;big.removeAttribute('src');};box.addEventListener('click',close);addEventListener('keydown',function(e){if(e.key==='Escape'&&!box.hidden)close();});imgs.forEach(function(im){im.style.cursor='zoom-in';im.addEventListener('click',function(){big.src=im.currentSrc||im.src;big.alt=im.alt;box.hidden=false;});});}
+  if(imgs.length){
+    var box=d.createElement('div');box.className='lightbox';box.hidden=true;box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label','Photo');
+    var big=d.createElement('img');big.alt='';
+    var prev=d.createElement('button');prev.type='button';prev.className='lb-nav lb-prev';prev.setAttribute('aria-label','Previous photo');prev.innerHTML='\\u2039';
+    var next=d.createElement('button');next.type='button';next.className='lb-nav lb-next';next.setAttribute('aria-label','Next photo');next.innerHTML='\\u203a';
+    box.appendChild(big);box.appendChild(prev);box.appendChild(next);d.body.appendChild(box);
+    var idx=0,show=function(i){idx=(i+imgs.length)%imgs.length;big.src=imgs[idx].currentSrc||imgs[idx].src;big.alt=imgs[idx].alt;};
+    var open=function(i){show(i);box.hidden=false;requestAnimationFrame(function(){box.classList.add('open');});};
+    var close=function(){box.classList.remove('open');setTimeout(function(){box.hidden=true;big.removeAttribute('src');},240);};
+    imgs.forEach(function(im,i){im.addEventListener('click',function(){open(i);});});
+    prev.addEventListener('click',function(e){e.stopPropagation();show(idx-1);});
+    next.addEventListener('click',function(e){e.stopPropagation();show(idx+1);});
+    box.addEventListener('click',function(e){if(e.target===box||e.target===big)close();});
+    w.addEventListener('keydown',function(e){if(box.hidden)return;if(e.key==='Escape')close();else if(e.key==='ArrowLeft')show(idx-1);else if(e.key==='ArrowRight')show(idx+1);});
+  }
 })();`;
 
 export function photoUrl(ctx: RenderContext, key: string): string {
@@ -140,7 +159,31 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 @media(prefers-reduced-motion:no-preference){.hero.spotlight img,.hero.split .hero-img img,.hero-band img{animation:kenburns 20s ease-out both}}
 @keyframes kenburns{from{transform:scale(1.08)}to{transform:scale(1)}}
 .hero.spotlight,.hero.split .hero-img{overflow:hidden}
-@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}}
+:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+.reveal.in .services li,.reveal.in .gallery li{opacity:1;transform:none}
+.reveal.in .services li:nth-child(2),.reveal.in .gallery li:nth-child(2){transition-delay:.06s}
+.reveal.in .services li:nth-child(3),.reveal.in .gallery li:nth-child(3){transition-delay:.12s}
+.reveal.in .services li:nth-child(4),.reveal.in .gallery li:nth-child(4){transition-delay:.18s}
+.reveal.in .services li:nth-child(5),.reveal.in .gallery li:nth-child(5){transition-delay:.24s}
+.reveal.in .services li:nth-child(n+6),.reveal.in .gallery li:nth-child(n+6){transition-delay:.3s}
+:root.js .reveal h2::after{width:0;transition:width .6s ease .15s}
+.reveal.in h2::after{width:48px}
+.t-editorial .reveal.in h2::after{width:56px}
+.gallery li{overflow:hidden;border-radius:14px}
+.gallery li img{transition:transform .5s ease}
+.gallery li:hover img{transform:scale(1.06)}
+.btn{position:relative;overflow:hidden}
+.btn.primary::after{content:"";position:absolute;top:0;left:-70%;width:45%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-18deg);transition:left .6s ease;pointer-events:none}
+.btn.primary:hover::after{left:130%}
+.progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:70;transition:width .08s linear}
+.totop{position:fixed;right:16px;bottom:88px;width:48px;height:48px;border-radius:50%;background:var(--primary);color:#fff;border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.3rem;opacity:0;transform:translateY(10px) scale(.92);pointer-events:none;transition:opacity .25s,transform .25s;z-index:45;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.totop.show{opacity:1;transform:none;pointer-events:auto}
+.lightbox{opacity:0;transition:opacity .24s ease}
+.lightbox.open{opacity:1}
+.lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.16);border:0;color:#fff;cursor:pointer;font-size:1.6rem;line-height:1;display:flex;align-items:center;justify-content:center}
+.lightbox .lb-nav:hover{background:rgba(255,255,255,.28)}
+.lightbox .lb-prev{left:14px}.lightbox .lb-next{right:14px}
+@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;padding-bottom:12px}
 .name{font-weight:800;font-size:1.1rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
