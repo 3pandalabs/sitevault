@@ -185,7 +185,10 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox .lb-prev{left:14px}.lightbox .lb-next{right:14px}
 @media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
-header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;padding-bottom:12px}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;padding-bottom:10px}
+.hactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn.small{min-height:38px;padding:7px 14px;font-size:.9rem;gap:5px;border-width:1.5px}
+.btn.small svg{width:16px;height:16px}
 .name{font-weight:800;font-size:1.1rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:11px 20px;border-radius:var(--btn-radius);font-weight:700;text-decoration:none;border:2px solid var(--primary);transition:transform .12s ease,box-shadow .12s ease,background .12s ease}
 .btn.primary{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 82%,#000));color:#fff;box-shadow:0 2px 6px rgba(15,23,42,.18)}
@@ -445,18 +448,16 @@ ${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=
 <header class="top">
   <div class="wrap">
     <a class="name" href="${esc(ctx.siteUrl)}">${esc(site.businessName)}</a>
-    <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>${icon("phone")}Call ${esc(site.phone)}</a>
+    <div class="hactions">
+      <a class="btn primary small" href="${esc(telHref(site.phone))}"${ping("call")}>${icon("phone")}Call</a>
+      <a class="btn ghost small" href="${esc(smsHref(site.phone))}">${icon("chat")}Text</a>
+      ${where ? `<a class="btn ghost small" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>${icon("pin")}Directions</a>` : ""}
+    </div>
   </div>
 </header>
 <main id="main">
 ${buildHero(template, { eyebrow: cat.label, name: site.businessName, headline: headline(site), hero, phone: site.phone, pingCall: ping("call") })}
 ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
-<div class="wrap actions">
-  <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>${icon("phone")}Call now</a>
-  <a class="btn ghost" href="${esc(smsHref(site.phone))}">${icon("chat")}Send a text</a>
-  ${site.email ? `<a class="btn ghost" href="mailto:${esc(site.email)}">${icon("mail")}Email us</a>` : ""}
-  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>${icon("pin")}Get directions</a>` : ""}
-</div>
 ${video}
 ${services}
 ${about}
@@ -484,6 +485,7 @@ ${visit}
 <nav class="callbar" aria-label="Quick contact">
   <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call</a>
   <a class="btn ghost" href="${esc(smsHref(site.phone))}">Text</a>
+  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>Directions</a>` : ""}
 </nav>
 ${ctx.nonce ? `<script nonce="${ctx.nonce}">${SITE_JS}</script>` : ""}
 </body>
