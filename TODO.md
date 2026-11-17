@@ -86,7 +86,10 @@ problem hits every customer (and every AdVault ad pointing at them).
       card ••3861, reimbursable). Keep auto-renew on; consider renewing
       several years ahead. If the domain lapses, every site goes down.
 - [ ] **"Report this site" link** in every customer site's footer, wired to
-      the admin takedown route. Answer abuse reports fast: an unanswered
+      the admin takedown route. (2026-11-16: the mailto "Report this page"
+      link and "This page sets no cookies." were removed from the footer at
+      Anil's request; abuse reports now only reach us via the main site.
+      Bring back a report link with a role address, not 3pandas@.) Answer abuse reports fast: an unanswered
       complaint can get the whole domain suspended.
 - [ ] **Submit 3pandasite.com to the Public Suffix List**
       (github.com/publicsuffix/list, private section). Browsers and Google

@@ -158,6 +158,7 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .gallery img{cursor:zoom-in}
 @media(prefers-reduced-motion:no-preference){.hero.spotlight img,.hero.split .hero-img img,.hero-band img{animation:kenburns 20s ease-out both}}
 @keyframes kenburns{from{transform:scale(1.08)}to{transform:scale(1)}}
+.hero.spotlight,.hero.split .hero-img{overflow:hidden}
 :root.js .reveal .services li,:root.js .reveal .gallery li{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
 .reveal.in .services li,.reveal.in .gallery li{opacity:1;transform:none}
 .reveal.in .services li:nth-child(2),.reveal.in .gallery li:nth-child(2){transition-delay:.06s}
@@ -446,7 +447,7 @@ ${visit}
 <footer>
   <div class="wrap">
     <p>&copy; ${new Date().getUTCFullYear()} ${esc(site.businessName)}.${realEstate ? " Equal Housing Opportunity." : ""}</p>
-    <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs. This page sets no cookies. <a href="mailto:3pandas@3pandalabs.com?subject=${encodeURIComponent(`Report site ${site.slug}`)}">Report this page</a></p>
+    <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs.</p>
   </div>
 </footer>
 <nav class="callbar" aria-label="Quick contact">

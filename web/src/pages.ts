@@ -7,6 +7,7 @@ import { CATEGORIES, HOURS_TEMPLATE, MAX_PHOTOS, SERVICE_TEMPLATES, servicesToTe
 import { DEFAULT_TEMPLATE, TEMPLATES } from "./templates.js";
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
+import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
 import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
 import type { SiteStats } from "./stats.js";
 
@@ -98,6 +99,9 @@ input[type=text],input[type=tel],input[type=email],input[type=password],input[ty
 select option{background:#18181b}
 input::placeholder,textarea::placeholder{color:var(--dim)}
 textarea{min-height:110px;resize:vertical}
+.suggest{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.suggest:empty{display:none}
+.suggest-chip{max-width:100%;min-height:44px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);color:#bae6fd;border-radius:999px;padding:8px 14px;font:inherit;font-size:.875rem;cursor:pointer;touch-action:manipulation}
+.suggest-chip:hover{background:rgba(56,189,248,.16)}.suggest-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .err{color:var(--err);font-size:.9rem;margin-top:4px}
 .err:empty{display:none}
 .row{display:grid;gap:0 16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
@@ -500,6 +504,15 @@ export function builderPage(
   const site = mode.kind === "edit" ? mode.site : null;
   const v = (k: string, fallback = "") => esc(values[k] ?? fallback);
   const e = (k: string) => `<div class="err" id="err-${k}" role="alert">${esc(errors[k] ?? "")}</div>`;
+  // One-tap suggestion chips, from what the form already knows (name, type, town).
+  const sctx: SuggestContext = {
+    businessName: values.businessName ?? site?.businessName ?? "",
+    category: values.category ?? site?.category ?? "",
+    city: values.city ?? site?.city ?? "",
+    address: values.address ?? site?.address ?? "",
+    serviceArea: values.serviceArea ?? site?.serviceArea ?? "",
+  };
+  const sg = (f: Parameters<typeof suggestChips>[0]) => suggestChips(f, sctx);
   const action = mode.kind === "edit" ? `/api/sites/${encodeURIComponent(mode.site.slug)}` : "/api/sites";
   const selectedCat = values.category ?? site?.category ?? "";
   const renamesLeft = site ? Math.max(0, MAX_RENAMES - (site.renames ?? 0)) : MAX_RENAMES;
@@ -532,11 +545,11 @@ export function builderPage(
 <form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate>
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
 <fieldset><legend>Your business</legend>
-  <div class="field"><label for="businessName">Business name</label><input type="text" id="businessName" name="businessName" maxlength="80" required value="${v("businessName", site?.businessName)}" autocomplete="organization">${e("businessName")}</div>
+  <div class="field"><label for="businessName">Business name</label><input type="text" id="businessName" name="businessName" maxlength="80" required value="${v("businessName", site?.businessName)}" autocomplete="organization">${sg("businessName")}${e("businessName")}</div>
   ${addressField}
   <div class="row">
     <div class="field"><label for="phone">Phone</label><input type="tel" id="phone" name="phone" maxlength="24" required value="${v("phone", site?.phone)}" autocomplete="tel" placeholder="(201) 555-0100">${e("phone")}</div>
-    <div class="field"><label for="city">Town or city <span class="hint">Needed unless you add a street address below.</span></label><input type="text" id="city" name="city" maxlength="60" value="${v("city", site?.city)}" placeholder="Secaucus, NJ">${e("city")}</div>
+    <div class="field"><label for="city">Town or city <span class="hint">Needed unless you add a street address below.</span></label><input type="text" id="city" name="city" maxlength="60" value="${v("city", site?.city)}" placeholder="Secaucus, NJ">${sg("city")}${e("city")}</div>
   </div>
   <div class="row">
     <div class="field"><label for="category">Type of business</label><select id="category" name="category" required>
@@ -549,7 +562,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   </div>
   <div class="row">
     <div class="field"><label for="address">Street address <span class="hint">Optional. Leave blank if you go to customers.</span></label><input type="text" id="address" name="address" maxlength="160" value="${v("address", site?.address ?? "")}" autocomplete="street-address">${e("address")}</div>
-    <div class="field"><label for="serviceArea">Areas you serve <span class="hint">Optional</span></label><input type="text" id="serviceArea" name="serviceArea" maxlength="160" value="${v("serviceArea", site?.serviceArea ?? "")}" placeholder="Secaucus, Hoboken, Jersey City">${e("serviceArea")}</div>
+    <div class="field"><label for="serviceArea">Areas you serve <span class="hint">Optional</span></label><input type="text" id="serviceArea" name="serviceArea" maxlength="160" value="${v("serviceArea", site?.serviceArea ?? "")}" placeholder="Secaucus, Hoboken, Jersey City">${sg("serviceArea")}${e("serviceArea")}</div>
   </div>
 </fieldset>
 <fieldset><legend>Website style</legend>
@@ -566,15 +579,15 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   </div>
 </fieldset>
 <fieldset><legend>What you offer</legend>
-  <div class="field"><label for="tagline">One line about you <span class="hint">Optional. Shown under your name.</span></label><input type="text" id="tagline" name="tagline" maxlength="120" value="${v("tagline", site?.tagline)}" placeholder="Family-owned lawn care since 2009">${e("tagline")}</div>
+  <div class="field"><label for="tagline">One line about you <span class="hint">Optional. Shown under your name.</span></label><input type="text" id="tagline" name="tagline" maxlength="120" value="${v("tagline", site?.tagline)}" placeholder="Family-owned lawn care since 2009">${sg("tagline")}${e("tagline")}</div>
   <div class="field"><label for="offer">Current special <span class="hint">Optional. Shown in a banner.${
     mode.kind === "edit" && mode.billing
       ? ` Changing it uses 1 credit (${mode.billing.billing.credits} left). Clearing it is free.`
       : ""
-  }</span></label><input type="text" id="offer" name="offer" maxlength="160" value="${v("offer", site?.offer ?? "")}" placeholder="Spring cleanup from $149, this month only">${e("offer")}${mode.kind === "edit" ? advaultOfferLink(mode.site) : ""}</div>
-  <div class="field"><label for="services">Services and prices <span class="hint">Optional. One per line, price after a dash.</span></label><textarea id="services" name="services" placeholder="Lawn mowing - from $35&#10;Spring cleanup - $149&#10;Hedge trimming">${v("services", site ? servicesToText(site.services) : "")}</textarea>${e("services")}</div>
-  <div class="field"><label for="hours">Opening hours <span class="hint">Optional</span></label><textarea id="hours" name="hours" placeholder="Mon-Fri 8am-6pm&#10;Sat 9am-2pm&#10;Sun closed">${v("hours", site?.hours ?? "")}</textarea>${e("hours")}</div>
-  <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${e("about")}</div>
+  }</span></label><input type="text" id="offer" name="offer" maxlength="160" value="${v("offer", site?.offer ?? "")}" placeholder="Spring cleanup from $149, this month only">${sg("offer")}${e("offer")}${mode.kind === "edit" ? advaultOfferLink(mode.site) : ""}</div>
+  <div class="field"><label for="services">Services and prices <span class="hint">Optional. One per line, price after a dash.</span></label><textarea id="services" name="services" placeholder="Lawn mowing - from $35&#10;Spring cleanup - $149&#10;Hedge trimming">${v("services", site ? servicesToText(site.services) : "")}</textarea>${sg("services")}${e("services")}</div>
+  <div class="field"><label for="hours">Opening hours <span class="hint">Optional</span></label><textarea id="hours" name="hours" placeholder="Mon-Fri 8am-6pm&#10;Sat 9am-2pm&#10;Sun closed">${v("hours", site?.hours ?? "")}</textarea>${sg("hours")}${e("hours")}</div>
+  <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${sg("about")}${e("about")}</div>
 </fieldset>
 <fieldset><legend>Photos</legend>
   ${mode.kind === "edit" && mode.site.video ? `<label class="check"><input type="checkbox" name="keepVideo" value="yes" checked> <span>Keep the video ad on my website</span></label>` : ""}
@@ -607,7 +620,7 @@ ${
     owner: mode.kind === "edit",
     signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
     noindex: mode.kind === "edit",
-    script: BUILDER_SCRIPT,
+    script: SUGGEST_SCRIPT + BUILDER_SCRIPT,
   });
 }
 
