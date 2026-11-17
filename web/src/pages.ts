@@ -3,7 +3,18 @@
 // that shrinks photos in the browser before upload, so a 12 MB phone photo
 // arrives as ~300 KB; without JavaScript the form still posts normally.
 
-import { CATEGORIES, HOURS_TEMPLATE, MAX_PHOTOS, SERVICE_TEMPLATES, servicesToText, type FieldErrors, type Site } from "./site.js";
+import {
+  BEFORE_AFTER_FIELDS,
+  CATEGORIES,
+  HOURS_TEMPLATE,
+  MAX_BEFORE_AFTER,
+  MAX_PHOTOS,
+  SERVICE_TEMPLATES,
+  beforeAfterAllowed,
+  servicesToText,
+  type FieldErrors,
+  type Site,
+} from "./site.js";
 import { DEFAULT_TEMPLATE, TEMPLATES } from "./templates.js";
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
@@ -123,7 +134,8 @@ legend{font-weight:600;padding:0 6px}
 .photo-ctl{display:flex;align-items:center;gap:6px}
 .pmove{width:28px;height:28px;border-radius:7px;border:1px solid var(--line2);background:var(--panel);color:var(--fg2);cursor:pointer;font-size:.95rem;line-height:1;padding:0}
 .pmove:hover{color:var(--fg);border-color:var(--fg2)}
-.pkeep{display:flex;align-items:center;gap:4px;font-weight:400}
+.pkeep{display:flex;align-items:center;gap:4px;font-weight:400;min-height:44px}
+.ba-thumbs{display:flex;gap:4px}
 .check{display:flex;gap:10px;align-items:flex-start;font-weight:400;color:var(--fg2)}
 .check input{margin-top:5px;width:18px;height:18px;accent-color:var(--accent)}
 .notice{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
@@ -483,6 +495,8 @@ const FIELD_ORDER = [
   "about",
   "photos",
   "video",
+  "beforeAfter",
+  "baAttest",
   "acct_email",
   "acct_password",
   "attest",
@@ -500,6 +514,46 @@ export function advaultOfferLink(site: Pick<Site, "slug" | "source">): string {
   return site.source === "advault"
     ? `<a${style} href="${esc(`${ADVAULT_ORIGIN}/dashboard?siteOffer=${encodeURIComponent(site.slug)}`)}">Also run this offer as a YouTube ad with AdVault →</a>`
     : `<a${style} href="${esc(ADVAULT_ORIGIN)}">Turn this offer into a video ad</a>`;
+}
+
+/**
+ * The edit page's "Before & after" fieldset: untick a pair to remove it, and
+ * (only for trades where before & after fits) add pairs up to the limit, with
+ * the "real photos of our own work" tick. Empty when there's nothing to show.
+ */
+export function beforeAfterFields(site: Site, photoUrl: (k: string) => string, e: (k: string) => string): string {
+  const pairs = site.beforeAfter ?? [];
+  const canAdd = beforeAfterAllowed(site.category);
+  if (!pairs.length && !canAdd) return "";
+  const current = pairs.length
+    ? `<p class="hint">Current pairs. Untick a pair to remove it from your website.</p>
+<div class="photos">${pairs
+        .map(
+          (p, i) =>
+            `<div class="photo"><div class="ba-thumbs"><img src="${esc(photoUrl(p.before))}" alt="Before, pair ${i + 1}"><img src="${esc(photoUrl(p.after))}" alt="After, pair ${i + 1}"></div><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepPair" value="${esc(p.before)}" checked> Keep pair ${i + 1}</label></div></div>`,
+        )
+        .join("")}</div>`
+    : "";
+  const free = canAdd ? Math.max(0, MAX_BEFORE_AFTER - pairs.length) : 0;
+  const slots = BEFORE_AFTER_FIELDS.slice(0, free)
+    .map(
+      ([b, a], i) =>
+        `<div class="row">
+    <div class="field"><label for="${b}">New pair ${i + 1}: before photo</label><input type="file" id="${b}" name="${b}" accept="image/*"></div>
+    <div class="field"><label for="${a}">New pair ${i + 1}: after photo</label><input type="file" id="${a}" name="${a}" accept="image/*"></div>
+  </div>`,
+    )
+    .join("\n  ");
+  const add = free
+    ? `<p class="hint">Optional. Up to ${MAX_BEFORE_AFTER} pairs, each a before and an after photo of the same job. Shown in a "Before &amp; after" section.</p>
+  ${slots}
+  <div class="field"><label class="check"><input type="checkbox" name="baAttest" value="yes"> <span>These are real photos of our own work.</span></label>${e("baAttest")}</div>`
+    : "";
+  return `<fieldset><legend>Before &amp; after</legend>
+  ${current}
+  ${add}
+  ${e("beforeAfter")}
+</fieldset>`;
 }
 
 export function builderPage(
@@ -546,6 +600,8 @@ export function builderPage(
           )
           .join("")}</div>`
       : "";
+
+  const beforeAfter = mode.kind === "edit" ? beforeAfterFields(mode.site, mode.photoUrl, e) : "";
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -604,6 +660,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   <div class="field"><label for="photos">Add photos <span class="hint">Up to ${MAX_PHOTOS} in total. Straight from your phone is fine — we resize them. Use photos you took or have the right to use.</span></label><input type="file" id="photos" name="photos" accept="image/*" multiple>${e("photos")}</div>
   <div class="field"><label for="video">Add a video <span class="hint">Optional. One MP4, up to 40 MB${mode.kind === "edit" && mode.site.video ? " — uploading a new one replaces the current video" : ""}. Shown in a "See us in action" section.</span></label><input type="file" id="video" name="video" accept="video/mp4">${e("video")}</div>
 </fieldset>
+${beforeAfter}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
@@ -755,8 +812,12 @@ const BUILDER_SCRIPT = `
     var btn=document.getElementById('submit'); btn.disabled=true; var label=btn.textContent; btn.textContent='Working…';
     FIELDS.concat(['form']).forEach(function(f){ var el=document.getElementById('err-'+f); if(el) el.textContent=''; });
     var fd=new FormData(form); var files=fd.getAll('photos').filter(function(f){ return f && f.size; }); fd.delete('photos');
+    var BA=${JSON.stringify(BEFORE_AFTER_FIELDS.flat())};
+    var baDone=Promise.all(BA.map(function(n){ var f=fd.get(n); return f && f.size ? shrink(f).then(function(s){ fd.set(n, s); }) : null; }));
     Promise.all(files.map(shrink)).then(function(small){
       small.forEach(function(f){ fd.append('photos', f); });
+      return baDone;
+    }).then(function(){
       return fetch(form.action,{method:'POST',body:fd,headers:{accept:'application/json'}});
     }).then(function(r){ return r.json().catch(function(){ return {ok:false,errors:{form:'Something went wrong. Please try again.'}}; }); })
     .then(function(res){
@@ -991,7 +1052,8 @@ export function privacyPage(): string {
 <h2>What we store</h2>
 <ul>
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
-  <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
+  <li><strong>Before &amp; after photos</strong>, if the business provides them (on its edit page, or from AdVault): pairs of photos of the business's own work, shown in a "Before &amp; after" section on its website and stored and resized like its other photos. The owner can remove them at any time on the edit page, which deletes them.</li>
+  <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos, any before &amp; after photos you added there and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
   <li><strong>Your account is one 3PandaLabs account, shared with <a href="https://advault.3pandalabs.com">AdVault</a></strong> (our video-ad app, also by 3PandaLabs): the same email and password sign you in to both, whichever you signed up on. Your sign-in (email and a scrambled, hashed copy of your password, which can't be turned back into the password) is stored by AdVault for both apps; when you sign in here we send AdVault the email and password you typed to check them. SiteVault stores your email, your 3PandaLabs account ID and which websites are yours. Accounts made on SiteVault before 16 November 2026 kept their hashed password here; it moves to the shared account the next time you sign in. While you're signed in we keep a session record that expires after 30 days or when you sign out.</li>
   <li><strong>Which apps you use</strong>: with your account we record which app you created it on (SiteVault or AdVault) and when you first used each one (your first website here, your first ad campaign in AdVault), so we know whether you use SiteVault, AdVault or both and can offer benefits that depend on it, for example to customers who use only SiteVault.</li>
@@ -1024,7 +1086,7 @@ export function termsPage(): string {
 <h2>Your account</h2>
 <p>Your SiteVault account is a single 3PandaLabs account shared with AdVault: the same email and password sign you in to both, whichever you created it on, and it is stored by AdVault. Keep your password to yourself; you're responsible for what's done with your account. Deleting the account ends your sign-in on both apps. Each app's own terms apply to what you do in it, and SiteVault plans are billed separately from AdVault.</p>
 <h2>Your content</h2>
-<p>You must own or run the business, or have its permission. Everything you publish must be true and lawful, and you must have the right to use every photo. You keep ownership of your content and give us permission to host and display it on your website.</p>
+<p>You must own or run the business, or have its permission. Everything you publish must be true and lawful, and you must have the right to use every photo. Before &amp; after photos must be real photos of your own business's work, not altered to mislead. You keep ownership of your content and give us permission to host and display it on your website.</p>
 <h2>Not allowed</h2>
 <p>Impersonating another business, misleading claims or prices, collecting passwords or payments, illegal goods or services, adult content, hate, or anything that breaks the law. Links to other websites can't be added to page text. We may remove any site that breaks these rules, without notice.</p>
 <h2>Real estate</h2>
