@@ -3,8 +3,16 @@
 // that shrinks photos in the browser before upload, so a 12 MB phone photo
 // arrives as ~300 KB; without JavaScript the form still posts normally.
 
-import { CATEGORIES, HOURS_TEMPLATE, MAX_PHOTOS, SERVICE_TEMPLATES, servicesToText, type FieldErrors, type Site } from "./site.js";
-import { DEFAULT_TEMPLATE, TEMPLATES } from "./templates.js";
+import { CATEGORIES, HOURS_TEMPLATE, MAX_PHOTOS, SERVICE_TEMPLATES, servicesToText, type CategoryKey, type FieldErrors, type Site } from "./site.js";
+import { DEFAULT_TEMPLATE, TEMPLATES, themeFor } from "./templates.js";
+
+/** Category -> picker-thumbnail colours (primary + light band), so the style previews match the business type. */
+const CAT_THUMB_COLORS: Record<string, { p: string; b: string }> = Object.fromEntries(
+  Object.entries(CATEGORIES).map(([k, c]) => {
+    const t = themeFor(k as CategoryKey, c.brand);
+    return [k, { p: t.primary, b: t.band }];
+  }),
+);
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
@@ -171,10 +179,11 @@ details.section .section-body{padding:14px 18px 4px}
 .tpl input{position:absolute;opacity:0;width:0;height:0}
 .tpl:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .tpl-thumb{position:relative;display:block;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px}
-.tpl-spotlight{background:linear-gradient(180deg,#8ea3b8 62%,#273442 62%)}
-.tpl-split{background:linear-gradient(90deg,#273442 46%,#8ea3b8 46%)}
-.tpl-editorial{background:linear-gradient(180deg,#f4f4f5 66%,#8ea3b8 66%)}
-.tpl-editorial::before{content:"";position:absolute;top:20px;left:50%;transform:translateX(-50%);width:58%;height:6px;background:#3f3f46;border-radius:3px;box-shadow:0 12px 0 #a1a1aa}
+.templates{--tp:#64748b;--tb:#cbd5e1}
+.tpl-spotlight{background:linear-gradient(180deg,var(--tb) 58%,var(--tp) 58%)}
+.tpl-split{background:linear-gradient(90deg,var(--tp) 46%,var(--tb) 46%)}
+.tpl-editorial{background:linear-gradient(180deg,#fff 66%,var(--tp) 66%)}
+.tpl-editorial::before{content:"";position:absolute;top:20px;left:50%;transform:translateX(-50%);width:58%;height:6px;background:var(--tp);border-radius:3px;box-shadow:0 12px 0 color-mix(in srgb,var(--tp) 42%,#fff)}
 .tpl-name{display:block;font-weight:700}
 .tpl-blurb{display:block;color:var(--fg2);font-size:.85rem;margin-top:2px;line-height:1.35}
 .buttons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}
@@ -574,8 +583,8 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   </div>
 </fieldset>
 <fieldset><legend>Website style</legend>
-  <p class="hint">Your website's look. Pick a style, then <strong>Save changes</strong> — it changes how your published website appears (open it in a new tab to see). You can switch anytime.</p>
-  <div class="templates">
+  <p class="hint">Your website's look, in your business type's colours. Pick a style, then <strong>Save changes</strong> — it changes how your published website appears (open it in a new tab to see). You can switch anytime.</p>
+  <div class="templates"${CAT_THUMB_COLORS[selectedCat] ? ` style="--tp:${CAT_THUMB_COLORS[selectedCat].p};--tb:${CAT_THUMB_COLORS[selectedCat].b}"` : ""}>
     ${(() => {
       const selTpl = values.template ?? site?.template ?? DEFAULT_TEMPLATE;
       const previewBase = mode.kind === "edit" ? mode.siteUrl : undefined;
@@ -675,6 +684,11 @@ const BUILDER_SCRIPT = `
       var t=SERVICE_TEMPLATES[catSel.value]||'';
       if(t && (svc.value.trim()==='' || svc.value===lastFill)){ svc.value=t; lastFill=t; }
     };
+    // Recolour the style thumbnails to the chosen business type's palette.
+    var CAT_THUMB=${JSON.stringify(CAT_THUMB_COLORS)};
+    var tplBox=document.querySelector('.templates');
+    var paintThumbs=function(){ var c=CAT_THUMB[catSel.value]; if(tplBox&&c){ tplBox.style.setProperty('--tp',c.p); tplBox.style.setProperty('--tb',c.b); } };
+    catSel.addEventListener('change',paintThumbs); paintThumbs();
     catSel.addEventListener('change',fillServices);
     if(svc.value.trim()==='') fillServices();
   }
