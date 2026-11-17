@@ -241,6 +241,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (m) return paidInternal(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/owner$/);
     if (m) return ownerInternal(request, env, m[1]!);
+    m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/video$/);
+    if (m) return videoInternal(request, env, m[1]!);
     m = path.match(/^\/api\/admin\/sites\/([a-z0-9-]+)\/remove$/);
     if (m) return adminRemove(request, env, m[1]!);
   }
@@ -461,6 +463,28 @@ async function ownerInternal(request: Request, env: Env, slug: string): Promise<
   if (site.ownerId && site.ownerId !== account.id) return json({ ok: false, error: "owned_by_another_account" }, 409);
   if (!site.ownerId) await saveSite(env, { ...site, ownerId: account.id, updatedAt: new Date().toISOString() });
   await addSiteToAccount(env.SITES, account, site.slug);
+  return json({ ok: true, slug: site.slug });
+}
+
+// POST /api/internal/sites/<slug>/video  multipart field "video" (MP4, <= 40 MB)
+// AdVault puts the ad on an AdVault-made site when the ad launches (it no
+// longer sends it when the site is made). Replaces any earlier video; the old
+// file is deleted after the site points at the new one.
+async function videoInternal(request: Request, env: Env, slug: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const form = await readForm(request);
+  const video = form?.video ?? null;
+  if (!video || video.type !== "video/mp4" || video.size > MAX_VIDEO_BYTES) return json({ ok: false, error: "invalid_video" }, 400);
+  const site = await liveSiteFollowingAliases(env, slug);
+  if (!site) return json({ ok: false, error: "not_found" }, 404);
+  if (site.source !== "advault") return json({ ok: false, error: "not_an_advault_site" }, 409);
+  const key = await storeVideo(env, site.slug, video);
+  // Re-read right before saving so a concurrent edit isn't clobbered.
+  const fresh = (await loadSite(env, site.slug)) ?? site;
+  await saveSite(env, { ...fresh, video: key, updatedAt: new Date().toISOString() });
+  if (fresh.video && fresh.video !== key) await deletePhotos(env, [fresh.video]);
+  console.log("site_video_set", { slug: site.slug });
   return json({ ok: true, slug: site.slug });
 }
 
