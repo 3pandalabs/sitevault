@@ -208,14 +208,15 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
       const cfg = billingConfig(env);
       const me = await currentAccount(env.SITES, request);
       const owner = me ? (await accountSites(env, me)).length > 0 : false;
-      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me)));
+      const admin = me ? isAdminEmail(env, me.email) : false;
+      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me), admin));
     }
     if (path === "/new") {
       const me = await currentAccount(env.SITES, request);
       // One website per account (admins excepted): an owner who has one goes to it.
       if (me && !isAdminEmail(env, me.email) && (await accountSites(env, me)).length > 0)
         return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
-      return builder(env, { kind: "new", account: me });
+      return builder(env, { kind: "new", account: me, admin: me ? isAdminEmail(env, me.email) : false });
     }
     if (path === "/login" || path === "/signup") {
       if (await currentAccount(env.SITES, request)) return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
@@ -712,6 +713,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false): Pr
       console.warn("stats read failed", String(err));
     }
   }
+  const owner = site.ownerId ? await loadAccount(env.SITES, site.ownerId) : null;
   return {
     kind: "edit",
     site,
@@ -720,6 +722,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false): Pr
     billing,
     visitors: stats ? { stats, full: statsVisible(site, cfg, now) } : undefined,
     siteUrl: siteUrl(env, site.slug),
+    admin: isAdminEmail(env, owner?.email),
   };
 }
 
