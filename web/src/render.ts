@@ -160,15 +160,15 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 @keyframes kenburns{from{transform:scale(1.08)}to{transform:scale(1)}}
 .hero.spotlight,.hero.split .hero-img{overflow:hidden}
 :root.js .reveal .services li,:root.js .reveal .gallery li{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
-.reveal.in .services li,.reveal.in .gallery li{opacity:1;transform:none}
+:root.js .reveal.in .services li,:root.js .reveal.in .gallery li{opacity:1;transform:none}
 .reveal.in .services li:nth-child(2),.reveal.in .gallery li:nth-child(2){transition-delay:.06s}
 .reveal.in .services li:nth-child(3),.reveal.in .gallery li:nth-child(3){transition-delay:.12s}
 .reveal.in .services li:nth-child(4),.reveal.in .gallery li:nth-child(4){transition-delay:.18s}
 .reveal.in .services li:nth-child(5),.reveal.in .gallery li:nth-child(5){transition-delay:.24s}
 .reveal.in .services li:nth-child(n+6),.reveal.in .gallery li:nth-child(n+6){transition-delay:.3s}
 :root.js .reveal h2::after{width:0;transition:width .6s ease .15s}
-.reveal.in h2::after{width:48px}
-.t-editorial .reveal.in h2::after{width:56px}
+:root.js .reveal.in h2::after{width:48px}
+:root.js .t-editorial .reveal.in h2::after{width:56px}
 .gallery li{overflow:hidden;border-radius:14px}
 .gallery li img{transition:transform .5s ease}
 .gallery li:hover img{transform:scale(1.06)}
