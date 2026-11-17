@@ -744,15 +744,17 @@ const BUILDER_SCRIPT = `
     b.addEventListener('click',function(){ ta.value=''; try{ta.dispatchEvent(new Event('input',{bubbles:true}));}catch(_){} ta.focus(); });
     if(ta.parentNode) ta.parentNode.insertBefore(b,ta.nextSibling);
   });
-  // Clear a not-yet-saved photo selection.
-  var photoInput=document.getElementById('photos');
-  if(photoInput){
+  // Clear a not-yet-saved photo or video selection.
+  var fileClear=function(input,label){
+    if(!input)return;
     var cb=document.createElement('button'); cb.type='button'; cb.className='clearfield'; cb.hidden=true;
-    if(photoInput.parentNode) photoInput.parentNode.insertBefore(cb,photoInput.nextSibling);
-    var sync=function(){ var n=photoInput.files?photoInput.files.length:0; cb.hidden=!n; if(n) cb.textContent='Clear '+n+' selected'; };
-    cb.addEventListener('click',function(){ photoInput.value=''; sync(); });
-    photoInput.addEventListener('change',sync); sync();
-  }
+    if(input.parentNode) input.parentNode.insertBefore(cb,input.nextSibling);
+    var sync=function(){ var n=input.files?input.files.length:0; cb.hidden=!n; if(n) cb.textContent=n>1?('Clear '+n+' selected'):('Clear '+label); };
+    cb.addEventListener('click',function(){ input.value=''; sync(); });
+    input.addEventListener('change',sync); sync();
+  };
+  fileClear(document.getElementById('photos'),'photo');
+  fileClear(document.getElementById('video'),'video');
   // Prefill "Services and prices" from the chosen business type. Only replaces
   // an empty box or an untouched earlier suggestion, so typed content is kept
   // (including if you just tab past it).

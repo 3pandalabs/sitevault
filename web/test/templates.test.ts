@@ -29,11 +29,24 @@ describe("templates", () => {
     expect(render("editorial")).toContain("--head-font:Georgia");
     expect(render("spotlight")).not.toContain("--head-font:Georgia");
   });
-  it("tuned categories have their own palette; untuned fall back to the brand", () => {
+  it("every category has its own tuned palette + family tokens", () => {
     expect(themeFor("landscaping", "#166534").primary).toBe("#143626");
     expect(themeFor("salon", "#9d174d").headFont).toContain("Georgia"); // beauty family = serif
     expect(themeFor("plumbing", "#1e40af").btnRadius).toBe("8px"); // trade family = squared
-    expect(themeFor("handyman", "#7c2d12").primary).toBe("#7c2d12"); // untuned -> brand
-    expect(render("spotlight", "handyman")).toContain("--primary:#7c2d12");
+    expect(themeFor("fitness", "#991b1b").btnRadius).toBe("6px"); // active family
+    expect(themeFor("dentist", "#0e7490").pad).toBe("56px"); // clinical family = airy
+    expect(themeFor("petcare", "#3f6212").btnRadius).toBe("999px"); // friendly = pill
+    expect(themeFor("realestate", "#1e3a5f").headFont).toContain("Georgia"); // premium = serif
+  });
+  it("themeFor still has a brand fallback for an unknown category", () => {
+    // @ts-expect-error — exercise the fallback path with a key not in THEMES
+    expect(themeFor("spaceship", "#123456").primary).toBe("#123456");
+  });
+  it("all 18 categories render a distinct-enough theme (unique primaries)", () => {
+    const keys = Object.keys(CATEGORIES) as (keyof typeof CATEGORIES)[];
+    const primaries = keys.map((k) => themeFor(k, CATEGORIES[k].brand).primary);
+    expect(new Set(primaries).size).toBeGreaterThanOrEqual(15);
   });
 });
+
+import { CATEGORIES } from "../src/site.js";
