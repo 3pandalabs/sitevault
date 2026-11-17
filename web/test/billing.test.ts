@@ -5,6 +5,7 @@ import {
   billingOf,
   checkoutItems,
   checkoutParams,
+  STATEMENT_DESCRIPTOR_SUFFIX,
   checkoutProblem,
   compBilling,
   countsVisits,
@@ -208,6 +209,8 @@ describe("checkout", () => {
     expect(p.get("subscription_data[metadata][app]")).toBe("sitevault");
     expect(p.get("subscription_data[metadata][slug]")).toBe("bellas");
     expect(p.get("subscription_data[metadata][plan]")).toBe("pro");
+    // Stripe 400s on payment_intent_data in subscription mode.
+    expect(r.params.some(([k]) => k.startsWith("payment_intent_data"))).toBe(false);
     expect(p.get("client_reference_id")).toBe("bellas");
     expect(p.get("success_url")).toBe("https://sv.test/edit/bellas?k=abc&paid=1");
     expect(p.get("cancel_url")).toBe("https://sv.test/edit/bellas?k=abc");
@@ -224,6 +227,8 @@ describe("checkout", () => {
     expect(p.get("customer")).toBe("cus_9");
     expect(p.get("metadata[app]")).toBe("sitevault");
     expect(p.has("subscription_data[metadata][app]")).toBe(false);
+    expect(p.get("payment_intent_data[statement_descriptor_suffix]")).toBe("SITEVAULT");
+    expect(STATEMENT_DESCRIPTOR_SUFFIX).toMatch(/^[A-Z0-9 ]{1,10}$/);
   });
 
   it("reports a missing price id instead of a half-built checkout", () => {
