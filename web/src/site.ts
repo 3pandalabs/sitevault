@@ -92,6 +92,8 @@ export type SiteContent = {
   offer: string | null;
   /** Which customer-site template (layout/style) to render. */
   template: TemplateKey;
+  /** Show the first photo as the big hero banner (else a coloured banner). Default true. */
+  heroPhoto: boolean;
 };
 
 export type Site = SiteContent & {
@@ -279,6 +281,7 @@ export function parseContent(
       services,
       offer: offer || null,
       template: asTemplate(get("template")),
+      heroPhoto: get("heroPhoto") !== "no",
     },
   };
 }
