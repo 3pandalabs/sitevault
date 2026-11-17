@@ -29,9 +29,11 @@ describe("templates", () => {
     expect(render("editorial")).toContain("--head-font:Georgia");
     expect(render("spotlight")).not.toContain("--head-font:Georgia");
   });
-  it("landscaping has a tuned palette; other categories fall back to the brand", () => {
+  it("tuned categories have their own palette; untuned fall back to the brand", () => {
     expect(themeFor("landscaping", "#166534").primary).toBe("#143626");
-    expect(themeFor("plumbing", "#1e40af").primary).toBe("#1e40af");
-    expect(render("spotlight", "plumbing")).toContain("--primary:#1e40af");
+    expect(themeFor("salon", "#9d174d").headFont).toContain("Georgia"); // beauty family = serif
+    expect(themeFor("plumbing", "#1e40af").btnRadius).toBe("8px"); // trade family = squared
+    expect(themeFor("handyman", "#7c2d12").primary).toBe("#7c2d12"); // untuned -> brand
+    expect(render("spotlight", "handyman")).toContain("--primary:#7c2d12");
   });
 });

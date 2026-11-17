@@ -35,7 +35,7 @@ one of 3 static layouts at build time (`site.template`, default `spotlight`):
 `spotlight` (full-bleed photo hero), `split` (text panel + image), `editorial`
 (centred, serif headings, image band). Still no JS, no web fonts, facts only —
 the template only changes the hero layout, typography (`--head-font`) and
-spacing; every section is shared. `themeFor(category, brand)` returns the
+spacing; every section is shared. Per category, `themeFor` returns a **design-family token bundle** — not just colour but `headFont` (system serif/sans), `radius`, `btnRadius` (pill for beauty), `pad` (spacing density), `revealDur` (motion speed) and heading weight/spacing — emitted as CSS vars the shared CSS reads. Families: TRADE (bold/squared/snappy), BEAUTY (serif/soft/airy/slow), FOOD (warm/editorial). Tuned so far: landscaping, plumbing (TRADE), salon (BEAUTY), restaurant (FOOD); the rest fall back to a brand-derived palette + BASE tokens (Phase 2 tunes each). `themeFor(category, brand)` returns the
 palette: `landscaping` is hand-tuned from the local-business blueprints, the
 other 17 fall back to a light palette derived from the category's brand colour
 (Phase 2 tunes each). `renderSite` dispatches on `asTemplate(site.template)`;
