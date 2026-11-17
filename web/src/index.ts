@@ -21,6 +21,7 @@
 //   POST /api/internal/sites/<slug>/offer          set the offer from AdVault's combo (INTERNAL_TOKEN)
 //   POST /api/internal/sites/<slug>/paid           AdVault took the $10: publish with a year of Pro (INTERNAL_TOKEN)
 //   GET  /api/internal/account-site?advaultUserId=&email=   the site that shared account owns (INTERNAL_TOKEN)
+//   DELETE /api/internal/sites/<slug>?advaultUserId=&email=  AdVault admin "delete and make a new one": gone for good, address freed (INTERNAL_TOKEN)
 //   HEAD on any GET route answers like the GET with no body and no side
 //        effects (no visit counted, a /done handoff isn't used up)
 //   POST /api/billing/checkout     Stripe Checkout (edit key in the form; BILLING on)
@@ -37,6 +38,8 @@ import {
   accountByEmail,
   accountForAdvault,
   findAccountForAdvault,
+  loadAccount,
+  saveAccount,
   verifyAdvaultLogin,
   markSitevaultUsed,
   moveToSharedAccount,
@@ -273,6 +276,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (m) return videoInternal(request, env, m[1]!);
     m = path.match(/^\/api\/admin\/sites\/([a-z0-9-]+)\/remove$/);
     if (m) return adminRemove(request, env, m[1]!);
+  }
+
+  if (method === "DELETE") {
+    const m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)$/);
+    if (m) return deleteInternal(request, env, url, m[1]!);
   }
 
   return html(messagePage("Page not found", "There's nothing at this address."), 404);
@@ -544,6 +552,55 @@ async function paidInternal(request: Request, env: Env, slug: string): Promise<R
   await env.SITES.put(paidRefKey(ref), "1", { expirationTtl: 400 * 24 * 60 * 60 });
   console.log("advault_paid", { slug: site.slug, ref });
   return json(done);
+}
+
+// DELETE /api/internal/sites/<slug>?advaultUserId=&email=  (INTERNAL_TOKEN)
+// AdVault's admin-only "Delete it and make a new one" (AdVault checks the
+// REAL admin role; this route trusts the token). Unlike the ops takedown
+// (removeSite keeps a `removed` record so the slug is never reused), this
+// deletes the site for good: photos, video and before & after files, the
+// site record, every old address (alias), the phone and name/town index, the
+// account link and its visit stats, so the address, the phone and the
+// account's one-website slot are all free for a new site. Idempotent: an
+// unknown address answers ok with deleted false. Refuses a site owned by
+// another account (403 not_your_site) and one with a renewing Stripe
+// subscription (409 has_subscription: cancel it first). An ops takedown
+// (status removed) is left alone (abuse trail).
+async function deleteInternal(request: Request, env: Env, url: URL, slug: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const advaultUserId = url.searchParams.get("advaultUserId") ?? "";
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(advaultUserId)) return json({ ok: false, error: "invalid" }, 400);
+  const current = (await env.SITES.get(siteKey(slug))) ? slug : await aliasTarget(env, slug);
+  const site = current ? await loadSite(env, current) : null;
+  if (!site) return json({ ok: true, slug, deleted: false });
+  if (site.status === "removed") return json({ ok: true, slug: site.slug, deleted: false, removed: true });
+  const account = await findAccountForAdvault(env.SITES, { advaultUserId, email: url.searchParams.get("email") });
+  // Owned: only by this account. Unowned: only an AdVault-made site (older
+  // sites made before accounts; AdVault only sends its own campaign's link).
+  const allowed = site.ownerId ? site.ownerId === account?.id : site.source === "advault";
+  if (!allowed) return json({ ok: false, error: "not_your_site" }, 403);
+  if (site.billing?.subscriptionId && site.billing.renewing) return json({ ok: false, error: "has_subscription" }, 409);
+
+  await deletePhotos(env, siteFileKeys(site));
+  await unindexSite(env, site);
+  const old = site.aliases ?? [];
+  for (const a of old) if ((await env.SITES.get(aliasKey(a))) === site.slug) await env.SITES.delete(aliasKey(a));
+  await env.SITES.delete(siteKey(site.slug));
+  const owner = site.ownerId ? await loadAccount(env.SITES, site.ownerId) : null;
+  if (owner) {
+    const gone = new Set([site.slug, slug, ...old]);
+    await saveAccount(env.SITES, { ...owner, sites: owner.sites.filter((s) => !gone.has(s)) });
+  }
+  if (env.STATS) {
+    try {
+      await env.STATS.prepare("DELETE FROM daily WHERE slug = ?").bind(site.slug).run();
+    } catch (err) {
+      console.warn("stats delete failed", String(err));
+    }
+  }
+  console.log("site_deleted_internal", { slug: site.slug, aliases: old.length, advaultUserId });
+  return json({ ok: true, slug: site.slug, deleted: true });
 }
 
 function renderCtx(env: Env, slug: string): RenderContext {
