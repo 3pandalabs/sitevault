@@ -49,7 +49,7 @@ const SITE_JS = `(function(){
   tt.addEventListener('click',function(){w.scrollTo({top:0,behavior:reduce?'auto':'smooth'});});
   var onScroll=function(){var st=w.scrollY||w.pageYOffset,h=d.documentElement.scrollHeight-w.innerHeight;pb.style.width=(h>0?Math.min(100,st/h*100):0)+'%';tt.classList.toggle('show',st>600);if(hdr)hdr.classList.toggle('scrolled',st>8);};
   w.addEventListener('scroll',onScroll,{passive:true});onScroll();
-  var imgs=[].slice.call(d.querySelectorAll('.gallery img'));
+  var imgs=[].slice.call(d.querySelectorAll('.gallery img,.ba img'));
   if(imgs.length){
     var box=d.createElement('div');box.className='lightbox';box.hidden=true;box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label','Photo');
     var big=d.createElement('img');big.alt='';
@@ -157,7 +157,7 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox{position:fixed;inset:0;background:rgba(5,8,12,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;cursor:zoom-out}
 .lightbox[hidden]{display:none}
 .lightbox img{max-width:100%;max-height:100%;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
-.gallery img{cursor:zoom-in}
+.gallery img,:root.js .ba img{cursor:zoom-in}
 .hero.spotlight,.hero.split .hero-img{overflow:hidden}
 :root.js .reveal .services li,:root.js .reveal .gallery li{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
 :root.js .reveal.in .services li,:root.js .reveal.in .gallery li{opacity:1;transform:none}
@@ -205,8 +205,8 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .services li{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:0 1px 3px rgba(15,23,42,.05);transition:transform .12s ease,box-shadow .12s ease}
 .services li:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(15,23,42,.09)}
 .svc{font-weight:600}.price{color:var(--primary);font-weight:700;white-space:nowrap}
-.gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-.gallery img{width:100%;height:220px;object-fit:cover;border-radius:var(--radius);display:block}
+.gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.gallery img{width:100%;height:160px;object-fit:cover;border-radius:var(--radius);display:block}
 .ba{list-style:none;margin:0;padding:0;display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
 .ba-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .ba figure{margin:0;position:relative}
@@ -348,7 +348,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
         <h2>Our Location</h2>
         <p class="visit-sub">Find us on the map</p>
         <address class="visit-addr">${esc(where)}</address>
-        <a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>Get directions</a>
+        <a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>Get directions</a>
       </div>`
     : "";
   const hoursBlock = site.hours
@@ -451,7 +451,7 @@ ${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=
     <div class="hactions">
       <a class="btn primary small" href="${esc(telHref(site.phone))}"${ping("call")}>${icon("phone")}Call</a>
       <a class="btn ghost small" href="${esc(smsHref(site.phone))}">${icon("chat")}Text</a>
-      ${where ? `<a class="btn ghost small" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>${icon("pin")}Directions</a>` : ""}
+      ${where ? `<a class="btn ghost small" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>${icon("pin")}Directions</a>` : ""}
     </div>
   </div>
 </header>
@@ -485,7 +485,7 @@ ${visit}
 <nav class="callbar" aria-label="Quick contact">
   <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call</a>
   <a class="btn ghost" href="${esc(smsHref(site.phone))}">Text</a>
-  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" rel="noopener"${ping("directions")}>Directions</a>` : ""}
+  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>Directions</a>` : ""}
 </nav>
 ${ctx.nonce ? `<script nonce="${ctx.nonce}">${SITE_JS}</script>` : ""}
 </body>
