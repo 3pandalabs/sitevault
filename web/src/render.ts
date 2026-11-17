@@ -273,8 +273,11 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   const title = `${site.businessName} | ${cat.label}${site.city ? ` in ${site.city}` : ""}`;
   const description = (site.about || headline(site)).slice(0, 160);
   const photos = site.photos.map((k) => photoUrl(ctx, k));
-  const hero = photos[0];
-  const gallery = photos.slice(1);
+  // The owner chooses whether the first photo is the big hero banner. If not,
+  // a coloured banner shows and every photo goes to the gallery instead.
+  const useHeroPhoto = site.heroPhoto && photos.length > 0;
+  const hero = useHeroPhoto ? photos[0] : undefined;
+  const gallery = useHeroPhoto ? photos.slice(1) : photos;
   const where = [site.address, site.city].filter(Boolean).join(", ");
   const realEstate = site.category === "realestate";
   const ping = (kind: "call" | "directions") => (ctx.ping ? ` ping="/t/${kind}"` : "");

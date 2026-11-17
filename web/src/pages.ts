@@ -598,6 +598,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${sg("about")}${e("about")}</div>
 </fieldset>
 <fieldset><legend>Photos &amp; video</legend>
+  <label class="check"><input type="hidden" name="heroPhoto" value="no"><input type="checkbox" name="heroPhoto" value="yes"${mode.kind === "new" || mode.site.heroPhoto ? " checked" : ""}> <span>Use my first photo as the big banner at the top. Unticked, the top is a clean coloured banner and every photo goes in the gallery.</span></label>
   ${mode.kind === "edit" && mode.site.video ? `<label class="check"><input type="checkbox" name="keepVideo" value="yes" checked> <span>Keep the current video on my website</span></label>` : ""}
   ${existing}
   <div class="field"><label for="photos">Add photos <span class="hint">Up to ${MAX_PHOTOS} in total. Straight from your phone is fine — we resize them. Use photos you took or have the right to use.</span></label><input type="file" id="photos" name="photos" accept="image/*" multiple>${e("photos")}</div>
