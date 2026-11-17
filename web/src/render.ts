@@ -404,7 +404,7 @@ ${visit}
 <footer>
   <div class="wrap">
     <p>&copy; ${new Date().getUTCFullYear()} ${esc(site.businessName)}.${realEstate ? " Equal Housing Opportunity." : ""}</p>
-    <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs. This page sets no cookies. <a href="mailto:3pandas@3pandalabs.com?subject=${encodeURIComponent(`Report site ${site.slug}`)}">Report this page</a></p>
+    <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs.</p>
   </div>
 </footer>
 <nav class="callbar" aria-label="Quick contact">
