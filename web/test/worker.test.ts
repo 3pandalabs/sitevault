@@ -447,3 +447,87 @@ describe("edit page: before & after", () => {
     expect((await call(`https://green-lawns-new.3pandasite.test/p/${p!.before}`)).status).toBe(200);
   });
 });
+
+// ---------------------------------------------------------------------------
+// AdVault admin "Delete it and make a new one" (2026-11-17)
+
+describe("DELETE /api/internal/sites/<slug>", () => {
+  const owner = { ownerAdvaultUserId: ADV_ID, ownerEmail: "owner@example.com" };
+  const del = (slug: string, q = `advaultUserId=${ADV_ID}&email=owner@example.com`, headers: Record<string, string> = auth) =>
+    call(`${ORIGIN}/api/internal/sites/${slug}?${q}`, { method: "DELETE", headers });
+
+  it("needs the internal token and an AdVault user id", async () => {
+    const { slug } = await makeSite(owner);
+    expect((await del(slug, `advaultUserId=${ADV_ID}`, {})).status).toBe(401);
+    expect((await del(slug, "advaultUserId=x")).status).toBe(400);
+    expect(kv.data.has(`site:${slug}`)).toBe(true);
+  });
+
+  it("deletes the site, its photos, before & after and video, and frees the address, phone, aliases and account slot", async () => {
+    const form = { ...owner, slug: "green-lawns" };
+    const res = await internalCreateWith(form, { photos: jpeg("p.jpg"), ...twoPairs() });
+    expect(res.status).toBe(201);
+    const video = new FormData();
+    video.set("video", new File([new Uint8Array(10)], "ad.mp4", { type: "video/mp4" }));
+    expect((await call(`${ORIGIN}/api/internal/sites/green-lawns/video`, { method: "POST", headers: auth, body: video })).status).toBe(200);
+    expect(R2().data.size).toBe(6);
+    // An old address (rename) points here too.
+    await kv.put("alias:old-lawns", "green-lawns");
+    const site = JSON.parse(kv.data.get("site:green-lawns")!.value);
+    await kv.put("site:green-lawns", JSON.stringify({ ...site, aliases: ["old-lawns"] }));
+
+    const gone = await del("old-lawns");
+    expect(gone.status).toBe(200);
+    expect(await gone.json()).toMatchObject({ ok: true, slug: "green-lawns", deleted: true });
+    expect(R2().data.size).toBe(0);
+    for (const k of ["site:green-lawns", "alias:old-lawns", "phone:5552010000"]) expect(kv.data.has(k)).toBe(false);
+    expect([...kv.data.keys()].some((k) => k.startsWith("nt:"))).toBe(false);
+    const acct = JSON.parse(kv.data.get(`acct:${kv.data.get(`acctadv:${ADV_ID}`)!.value}`)!.value) as { sites: string[] };
+    expect(acct.sites).toEqual([]);
+    expect((await call(`https://green-lawns.3pandasite.test/`)).status).toBe(404);
+
+    // A new site for the same account, phone and address is made as new.
+    const again = await internalCreate(form);
+    expect(again.status).toBe(201);
+    expect(await again.json()).toMatchObject({ slug: "green-lawns" });
+  });
+
+  it("is idempotent: an unknown or already-deleted address is ok, deleted false", async () => {
+    const { slug } = await makeSite(owner);
+    expect((await del(slug)).status).toBe(200);
+    const twice = await del(slug);
+    expect(twice.status).toBe(200);
+    expect(await twice.json()).toMatchObject({ ok: true, deleted: false });
+  });
+
+  it("deletes a site the account built on SiteVault itself", async () => {
+    await sitevaultBuiltSite();
+    expect(await (await del("lawn-pros")).json()).toMatchObject({ deleted: true });
+    expect(kv.data.has("site:lawn-pros")).toBe(false);
+  });
+
+  it("refuses another account's site (403) and leaves it alone", async () => {
+    await sitevaultBuiltSite();
+    const other = "99999999-2222-3333-4444-555555555555";
+    const res = await del("lawn-pros", `advaultUserId=${other}&email=someone@example.com`);
+    expect(res.status).toBe(403);
+    expect(kv.data.has("site:lawn-pros")).toBe(true);
+  });
+
+  it("refuses a site with a renewing SiteVault subscription (409 has_subscription)", async () => {
+    await sitevaultBuiltSite();
+    const site = JSON.parse(kv.data.get("site:lawn-pros")!.value);
+    await kv.put("site:lawn-pros", JSON.stringify({ ...site, billing: { status: "active", plan: "pro", buildPaid: true, paidUntil: null, renewing: true, credits: 2, subscriptionId: "sub_1" } }));
+    const res = await del("lawn-pros");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "has_subscription" });
+  });
+
+  it("leaves an ops takedown record (status removed) in place", async () => {
+    const { slug } = await makeSite(owner);
+    env.ADMIN_TOKEN = "admin-token";
+    await call(`${ORIGIN}/api/admin/sites/${slug}/remove`, { method: "POST", headers: { authorization: "Bearer admin-token" } });
+    expect(await (await del(slug)).json()).toMatchObject({ ok: true, deleted: false, removed: true });
+    expect(kv.data.has(`site:${slug}`)).toBe(true);
+  });
+});
