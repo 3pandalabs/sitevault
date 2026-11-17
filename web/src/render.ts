@@ -119,18 +119,20 @@ function buildHero(
   const eyebrow = `<p class="eyebrow">${esc(o.eyebrow)}</p>`;
   const h1 = `<h1>${esc(o.name)}</h1>`;
   const p = o.headline ? `<p class="lede">${esc(o.headline)}</p>` : "";
+  // The same photo, softly blurred, fills the banner behind the sharp (contained) one.
+  const bg = o.hero ? ` style="--photo:url('${o.hero}')"` : "";
   if (template === "split") {
     const cta = `<a class="btn primary hero-cta" href="${esc(telHref(o.phone))}"${o.pingCall}>Call ${esc(o.phone)}</a>`;
     return `<div class="hero split${o.hero ? "" : " noimg"}">
   <div class="hero-text">${eyebrow}${h1}${p}${cta}</div>
-  ${o.hero ? `<div class="hero-img">${heroImg(o.hero, o.name)}</div>` : ""}
+  ${o.hero ? `<div class="hero-img"${bg}>${heroImg(o.hero, o.name)}</div>` : ""}
 </div>`;
   }
   if (template === "editorial") {
     return `<div class="hero editorial"><div class="wrap">${eyebrow}${h1}${p}</div></div>
-${o.hero ? `<div class="hero-band">${heroImg(o.hero, o.name)}</div>` : ""}`;
+${o.hero ? `<div class="hero-band"${bg}>${heroImg(o.hero, o.name)}</div>` : ""}`;
   }
-  return `<div class="hero spotlight${o.hero ? "" : " noimg"}">
+  return `<div class="hero spotlight${o.hero ? "" : " noimg"}"${bg}>
   ${o.hero ? `${heroImg(o.hero, o.name)}\n  <div class="shade"></div>` : ""}
   <div class="copy"><div class="wrap">${eyebrow}${h1}${p}</div></div>
 </div>`;
@@ -229,10 +231,11 @@ footer a{color:var(--muted)}
 @media (max-width:640px){.callbar{display:flex}body{padding-bottom:72px}header.top .btn{display:none}}`;
 
 const TEMPLATE_CSS: Record<TemplateKey, string> = {
-  spotlight: `.hero.spotlight{position:relative;background:var(--primary);color:#fff}
-.hero.spotlight img{display:block;width:100%;height:clamp(220px,42vw,380px);object-fit:contain}
-.hero.spotlight .shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.34) 45%,rgba(0,0,0,.80) 100%)}
-.hero.spotlight .copy{position:absolute;left:0;right:0;bottom:0;padding:40px 0}
+  spotlight: `.hero.spotlight{position:relative;background:var(--primary);color:#fff;overflow:hidden}
+.hero.spotlight::before{content:"";position:absolute;inset:0;z-index:0;background-image:var(--photo);background-size:cover;background-position:center;filter:blur(30px) brightness(.72);transform:scale(1.15)}
+.hero.spotlight img{position:relative;z-index:1;display:block;width:100%;height:clamp(220px,42vw,380px);object-fit:contain}
+.hero.spotlight .shade{position:absolute;inset:0;z-index:2;background:linear-gradient(180deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.34) 45%,rgba(0,0,0,.80) 100%)}
+.hero.spotlight .copy{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:40px 0}
 .hero.spotlight.noimg{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 68%,#000))}
 .hero.spotlight.noimg .copy{position:static;padding:72px 0}
 .hero.spotlight .eyebrow{display:inline-block;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);padding:6px 14px;border-radius:999px;backdrop-filter:blur(4px)}
@@ -245,8 +248,9 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.split .lede{margin:0 0 24px;font-size:1.15rem;opacity:.95;max-width:40ch}
 .hero.split .hero-cta{background:#fff;color:var(--primary);border-color:#fff}
 .hero.split .hero-cta:hover{background:var(--band)}
-.hero.split .hero-img{clip-path:polygon(7% 0,100% 0,100% 100%,0% 100%)}
-.hero.split .hero-img img{display:block;width:100%;height:clamp(220px,42vw,380px);object-fit:contain;background:var(--primary)}
+.hero.split .hero-img{position:relative;clip-path:polygon(7% 0,100% 0,100% 100%,0% 100%)}
+.hero.split .hero-img::before{content:"";position:absolute;inset:0;z-index:0;background-image:var(--photo);background-size:cover;background-position:center;filter:blur(26px) brightness(.82);transform:scale(1.15)}
+.hero.split .hero-img img{position:relative;z-index:1;display:block;width:100%;height:clamp(220px,42vw,380px);object-fit:contain}
 .hero.split.noimg{display:block}
 @media(max-width:720px){.hero.split{grid-template-columns:1fr}.hero.split .hero-img{clip-path:none}.hero.split .hero-img img{min-height:240px}}`,
   editorial: `:root{--head-font:Georgia,Cambria,"Times New Roman",serif}
@@ -255,8 +259,9 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.editorial h1{font-family:var(--head-font);margin:0 0 14px;font-size:clamp(2.2rem,6.4vw,3.4rem);line-height:1.08;letter-spacing:-.015em}
 .hero.editorial .lede{margin:0 auto;max-width:44ch;color:var(--muted);font-size:1.2rem}
 .hero.editorial .eyebrow::before,.hero.editorial .eyebrow::after{content:"";display:inline-block;width:30px;height:1px;background:var(--primary);opacity:.55;vertical-align:middle;margin:0 12px}
-.hero-band{padding:44px 16px;background:var(--band)}
-.hero-band img{display:block;width:100%;max-width:960px;margin:0 auto;height:clamp(220px,42vw,380px);object-fit:contain;background:var(--card);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.14)}
+.hero-band{position:relative;overflow:hidden;padding:44px 16px;background:var(--band)}
+.hero-band::before{content:"";position:absolute;inset:0;z-index:0;background-image:var(--photo);background-size:cover;background-position:center;filter:blur(24px) brightness(.9);transform:scale(1.15)}
+.hero-band img{position:relative;z-index:1;display:block;width:100%;max-width:960px;margin:0 auto;height:clamp(220px,42vw,380px);object-fit:contain;border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.14)}
 .t-editorial .kicker{text-align:center}
 .t-editorial .kicker::before,.t-editorial .kicker::after{content:"";display:inline-block;width:26px;height:1px;background:var(--accent);vertical-align:middle;margin:0 10px}
 .t-editorial h2{text-align:center;padding-bottom:16px}
