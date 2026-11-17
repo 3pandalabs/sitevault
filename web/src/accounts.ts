@@ -142,6 +142,18 @@ export async function accountForAdvault(kv: KVNamespace, user: { advaultUserId: 
   return made === "exists" ? ((await accountByEmail(kv, email)) as Account) : made;
 }
 
+/**
+ * Read-only twin of accountForAdvault: the linked account (by AdVault user id,
+ * else by the same email), or null. Never creates or links anything.
+ */
+export async function findAccountForAdvault(kv: KVNamespace, user: { advaultUserId: string; email?: string | null }): Promise<Account | null> {
+  const byAdv = await kv.get(advKey(user.advaultUserId));
+  const linked = byAdv ? await loadAccount(kv, byAdv) : null;
+  if (linked) return linked;
+  const email = normaliseEmail(user.email ?? "");
+  return email && !emailProblem(email) ? accountByEmail(kv, email) : null;
+}
+
 /** Ask AdVault whether this is a valid AdVault login (server to server). */
 export async function verifyAdvaultLogin(
   apiUrl: string | undefined,

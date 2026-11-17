@@ -20,6 +20,9 @@
 //   GET  /api/internal/sites/<slug>/offer-status   offer, credits, billing (INTERNAL_TOKEN)
 //   POST /api/internal/sites/<slug>/offer          set the offer from AdVault's combo (INTERNAL_TOKEN)
 //   POST /api/internal/sites/<slug>/paid           AdVault took the $10: publish with a year of Pro (INTERNAL_TOKEN)
+//   GET  /api/internal/account-site?advaultUserId=&email=   the site that shared account owns (INTERNAL_TOKEN)
+//   HEAD on any GET route answers like the GET with no body and no side
+//        effects (no visit counted, a /done handoff isn't used up)
 //   POST /api/billing/checkout     Stripe Checkout (edit key in the form; BILLING on)
 //   POST /api/billing/portal       Stripe billing portal (edit key in the form)
 //   POST /webhooks/stripe          Stripe events (signature-checked; metadata.app = sitevault only)
@@ -33,6 +36,7 @@ import { accountPage, adminPage, authPage, builderPage, donePage, homePage, mess
 import {
   accountByEmail,
   accountForAdvault,
+  findAccountForAdvault,
   verifyAdvaultLogin,
   markSitevaultUsed,
   moveToSharedAccount,
@@ -119,14 +123,19 @@ export interface Env {
   STRIPE_PRICE_CREDITS?: string;
 }
 
-const bootedAt = Date.now();
-
 /** Tab icon: an "S" in SiteVault sky on the dark rounded square AdVault's "A" uses. */
 const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#09090b"/><path d="M21.5 10.5C20 8.6 17.9 8 16 8c-3 0-5.5 1.7-5.5 4.2 0 5.6 11 3.3 11 9 0 2.4-2.4 4.3-5.6 4.3-2.3 0-4.4-.8-5.9-2.6" stroke="#38bdf8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
+      // HEAD = GET without a body (monitors, link checkers and ad crawlers send
+      // it). Routed as a GET with `head` set, so nothing is counted or used
+      // up, then the body is dropped; status and headers are the GET's.
+      if (request.method === "HEAD") {
+        const res = await route(new Request(request, { method: "GET" }), env, ctx, true);
+        return new Response(null, { status: res.status, statusText: res.statusText, headers: res.headers });
+      }
       return await route(request, env, ctx);
     } catch (err) {
       console.error("unhandled", err instanceof Error ? err.stack : err);
@@ -135,7 +144,7 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function route(request: Request, env: Env, ctx: ExecutionContext, head = false): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
@@ -155,7 +164,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
     const tap = path.match(/^\/t\/([a-z]+)$/);
     if (method === "POST" && tap) return countTap(request, env, ctx, slug, tap[1]!);
-    if (method !== "GET") return Response.redirect(`https://${url.hostname}/`, 302);
+    // Any other method: 405, never a redirect. A 302 to "/" keeps the method,
+    // so a HEAD (before HEAD was routed as GET) looped on itself forever.
+    if (method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
     const site = await loadSite(env, slug);
     if (!site) {
       // A renamed site: the old address keeps working, permanently.
@@ -170,7 +181,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       return new Response("Not found", { status: 404 });
     }
     if (path !== "/") return Response.redirect(`https://${url.hostname}/`, 302);
-    return serveSite(env, slug, site, { request, ctx, ping: true });
+    return serveSite(env, slug, site, { request, ctx, ping: true, count: !head });
   }
 
   if (method === "GET") {
@@ -204,13 +215,14 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (path === "/api/admin/sites") return adminList(request, env);
     if (path === "/api/address") return addressCheck(env, url);
     if (path === "/api/internal/resolve") return resolveInternal(request, env, url);
+    if (path === "/api/internal/account-site") return accountSiteInternal(request, env, url);
     let m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer-status$/);
     if (m) return offerStatusInternal(request, env, m[1]!);
     m = path.match(/^\/s\/([a-z0-9-]+)\/?$/);
     // Old path links (before the customer-site domain) move to the subdomain.
     if (m) {
       const current = (await aliasTarget(env, m[1]!)) ?? m[1]!;
-      return env.SITES_DOMAIN ? Response.redirect(siteUrl(env, current), 301) : serveSite(env, current, undefined, { request, ctx, ping: false });
+      return env.SITES_DOMAIN ? Response.redirect(siteUrl(env, current), 301) : serveSite(env, current, undefined, { request, ctx, ping: false, count: !head });
     }
     m = path.match(/^\/edit\/([a-z0-9-]+)$/);
     if (m) {
@@ -221,7 +233,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
     if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
     m = path.match(/^\/done\/([A-Za-z0-9_-]+)$/);
-    if (m) return done(request, env, m[1]!);
+    if (m) return done(request, env, m[1]!, !head);
   }
 
   if (method === "POST") {
@@ -538,7 +550,7 @@ async function serveSite(
   env: Env,
   slug: string,
   preloaded: Site | null | undefined,
-  visit: { request: Request; ctx: ExecutionContext; ping: boolean },
+  visit: { request: Request; ctx: ExecutionContext; ping: boolean; count?: boolean },
 ): Promise<Response> {
   const site = preloaded !== undefined ? preloaded : await loadSite(env, slug);
   if (!site || site.status !== "live") {
@@ -555,7 +567,7 @@ async function serveSite(
   }
   // Preview a style without saving (owner clicks "Preview" on the edit page).
   const style = new URL(visit.request.url).searchParams.get("style") ?? undefined;
-  if (countsVisits(site, cfg, now) && !style) countView(env, visit.ctx, visit.request, site);
+  if (visit.count !== false && countsVisits(site, cfg, now) && !style) countView(env, visit.ctx, visit.request, site);
   const n = nonce();
   const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) && !style, previewTemplate: style, nonce: n }), 200, n);
   if (style) {
@@ -569,13 +581,17 @@ async function serveSite(
   return res;
 }
 
-/** The "your site is live" page after a script-driven create (10-minute handoff). */
-async function done(request: Request, env: Env, handoff: string): Promise<Response> {
-  const data = await env.SITES.get<{ siteUrl: string; editUrl: string; publish?: Parameters<typeof donePage>[0]["publish"] }>(
-    `done:${handoff}`,
-    "json",
-  );
+/**
+ * The "your site is live" page after a script-driven create (10-minute
+ * handoff). ONE-TIME: it carries the only copy of the edit key, so the
+ * handoff is deleted on the first read (a HEAD doesn't use it up); a reload
+ * gets the expired page.
+ */
+async function done(request: Request, env: Env, handoff: string, consume = true): Promise<Response> {
+  const key = `done:${handoff}`;
+  const data = await env.SITES.get<{ siteUrl: string; editUrl: string; publish?: Parameters<typeof donePage>[0]["publish"] }>(key, "json");
   if (!data) return html(messagePage("This page has expired", "Open your website or your edit link directly.", "Expired"), 404);
+  if (consume) await env.SITES.delete(key);
   const account = await currentAccount(env.SITES, request);
   const n = nonce();
   const res = html(donePage({ ...data, nonce: n, signedIn: Boolean(account), admin: isAdminEmail(env, account?.email) }), 200, n);
@@ -819,8 +835,8 @@ function advaultApi(env: Env) {
 async function firstSiteAt(env: Env, account: Account): Promise<string | undefined> {
   let first: string | undefined;
   for (const slug of account.sites) {
-    const site = await loadSite(env, slug);
-    if (!site || site.status !== "live" || site.ownerId !== account.id) continue;
+    const site = await ownedSite(env, account, slug);
+    if (!site) continue;
     if (!first || site.createdAt < first) first = site.createdAt;
   }
   return first;
@@ -878,16 +894,46 @@ async function logout(request: Request, env: Env): Promise<Response> {
   return redirectTo(env, "/", clearCookie);
 }
 
+/**
+ * One of an account's sites by the slug it was added under. A rename doesn't
+ * update `account.sites`, so an old slug is followed through its alias.
+ */
+async function ownedSite(env: Env, account: Account, slug: string): Promise<Site | null> {
+  const site = (await loadSite(env, slug)) ?? (await aliasTarget(env, slug).then((t) => (t ? loadSite(env, t) : null)));
+  return site && site.status === "live" && site.ownerId === account.id ? site : null;
+}
+
 async function accountSites(env: Env, account: Account): Promise<AccountSite[]> {
   const cfg = billingConfig(env);
   const now = new Date();
   const out: AccountSite[] = [];
+  const seen = new Set<string>();
   for (const slug of account.sites) {
-    const site = await loadSite(env, slug);
-    if (!site || site.status !== "live" || site.ownerId !== account.id) continue;
+    const site = await ownedSite(env, account, slug);
+    if (!site || seen.has(site.slug)) continue;
+    seen.add(site.slug);
     out.push({ slug: site.slug, name: site.businessName, siteUrl: siteUrl(env, site.slug), state: siteState(site, cfg, now) });
   }
   return out;
+}
+
+// GET /api/internal/account-site?advaultUserId=&email=  (INTERNAL_TOKEN)
+// The website owned by the shared 3PandaLabs account (AdVault user id, else
+// the same email, as accountForAdvault links them; read-only, links nothing).
+// AdVault calls it so a campaign can use a site built here instead of making
+// a second one. Renames are followed. 404 no_site when there is none.
+async function accountSiteInternal(request: Request, env: Env, url: URL): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const advaultUserId = url.searchParams.get("advaultUserId") ?? "";
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(advaultUserId)) return json({ ok: false, error: "invalid" }, 400);
+  const account = await findAccountForAdvault(env.SITES, { advaultUserId, email: url.searchParams.get("email") });
+  const sites = account ? await accountSites(env, account) : [];
+  // Several only for admins (exempt from one per account): prefer a live one.
+  const site = sites.find((s) => s.state === "live" || s.state === "grace") ?? sites[0];
+  if (!site) return json({ ok: false, error: "no_site" }, 404);
+  const full = await loadSite(env, site.slug);
+  return json({ ok: true, slug: site.slug, siteUrl: site.siteUrl, state: site.state, source: full?.source ?? null, count: sites.length });
 }
 
 // Admin-only dashboard: every live site, with status totals and per-category stats.
@@ -1149,13 +1195,21 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   }
   // AdVault admins (ownerAdmin=1, sent by AdVault for role 'admin') make test sites: any number of them, phone reuse allowed.
   const adminTest = form.fields.ownerAdmin === "1" || isAdminEmail(env, form.fields.ownerEmail);
+  const advId = form.fields.ownerAdvaultUserId ?? "";
+  const advEmail = normaliseEmail(form.fields.ownerEmail ?? "");
+  // One website per account, here too (admins exempt): the account may have
+  // built one on SiteVault itself. Checked before the phone so the reply
+  // names the real reason; AdVault offers "Use my website" on this code.
+  if (!adminTest && /^[A-Za-z0-9-]{8,64}$/.test(advId)) {
+    const existing = await findAccountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail });
+    const has = existing ? (await accountSites(env, existing))[0] : undefined;
+    if (has) return json({ ok: false, error: "account_has_site", slug: has.slug, siteUrl: has.siteUrl }, 409);
+  }
   if (!adminTest && parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
   if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
   // "1": AdVault charges $10 first; the site waits unpublished until /paid.
   const awaiting = form.fields.awaitingPayment === "1";
   // Same login: the site goes to the AdVault user's SiteVault account.
-  const advId = form.fields.ownerAdvaultUserId ?? "";
-  const advEmail = normaliseEmail(form.fields.ownerEmail ?? "");
   const owner = /^[A-Za-z0-9-]{8,64}$/.test(advId) && !emailProblem(advEmail) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
   const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting, owner?.id ?? null, false, adminTest);
   if (owner) await addSiteToAccount(env.SITES, owner, made.slug);
@@ -1416,7 +1470,10 @@ async function metrics(request: Request, env: Env): Promise<Response> {
   return json({
     app: "sitevault",
     collectedAt: new Date().toISOString(),
-    uptimeSeconds: Math.round((Date.now() - bootedAt) / 1000),
+    // null: a Worker has no long-lived process, and Date.now() at module
+    // scope is 0 in Workers, so "now - start" reported ~56 years. The admin
+    // page shows null as "—".
+    uptimeSeconds: null,
     counts: {
       sites: keys.length,
       sitesLive: meta.filter((m) => m.status === "live").length,
