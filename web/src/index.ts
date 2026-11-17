@@ -1018,7 +1018,7 @@ async function readForm(request: Request): Promise<Parsed | null> {
 function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES): string | null {
   if (existing + files.length > MAX_PHOTOS) return `Up to ${MAX_PHOTOS} photos in total.`;
   for (const f of files) {
-    if (!PHOTO_TYPES.includes(f.type)) return "Photos must be JPG, PNG or WebP.";
+    if (!PHOTO_TYPES.includes(f.type)) return "That file isn't a photo we can use. Add a JPG, PNG, WebP or HEIC image.";
     if (f.size > maxBytes) return `Each photo must be under ${Math.round(maxBytes / 1024 / 1024)} MB.`;
   }
   return null;
