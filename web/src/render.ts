@@ -204,6 +204,12 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .svc{font-weight:600}.price{color:var(--primary);font-weight:700;white-space:nowrap}
 .gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
 .gallery img{width:100%;height:220px;object-fit:cover;border-radius:var(--radius);display:block}
+.ba{list-style:none;margin:0;padding:0;display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+.ba-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ba figure{margin:0;position:relative}
+.ba img{width:100%;aspect-ratio:4/3;height:auto;object-fit:cover;border-radius:var(--radius);display:block;background:var(--band)}
+.ba figcaption{position:absolute;left:8px;top:8px;background:rgba(15,23,42,.82);color:#fff;font-size:.8rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
+.ba figure.after figcaption{background:var(--primary)}
 video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:#000}
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .facts h3{margin:0 0 4px;font-size:1rem;display:flex;align-items:center;gap:8px}
@@ -392,6 +398,24 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  const pairs = site.beforeAfter ?? [];
+  const beforeAfterHtml = pairs.length
+    ? `<section aria-labelledby="ba-h" class="reveal">
+  <div class="wrap">
+    <p class="kicker">Real jobs</p>
+    <h2 id="ba-h">Before &amp; after</h2>
+    <ul class="ba">
+      ${pairs
+        .map(
+          (p, i) =>
+            `<li><div class="ba-pair"><figure class="before"><img src="${esc(photoUrl(ctx, p.before))}" alt="${esc(`Before: ${site.businessName} job ${i + 1}`)}" loading="lazy" decoding="async"><figcaption>Before</figcaption></figure><figure class="after"><img src="${esc(photoUrl(ctx, p.after))}" alt="${esc(`After: ${site.businessName} job ${i + 1}`)}" loading="lazy" decoding="async"><figcaption>After</figcaption></figure></div></li>`,
+        )
+        .join("\n      ")}
+    </ul>
+  </div>
+</section>`
+    : "";
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -434,6 +458,7 @@ ${video}
 ${services}
 ${about}
 ${galleryHtml}
+${beforeAfterHtml}
 ${visit}
 <section aria-labelledby="contact-h" class="reveal">
   <div class="wrap">

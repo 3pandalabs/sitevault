@@ -11,7 +11,7 @@
 //                                  once that domain exists (SITES_DOMAIN unset = off)
 //   GET  /edit/<slug>?k=<key>      builder, prefilled
 //   POST /api/sites/<slug>         update (key in the form)
-//   GET  /p/<key>                  photo from R2
+//   GET  /p/<key>                  photo (or before & after photo) from R2
 //   GET  /privacy, /terms
 //   GET  /metrics                  ops envelope for admin.3pandalabs.com (METRICS_TOKEN)
 //   GET  /api/admin/sites          list (ADMIN_TOKEN)
@@ -82,7 +82,23 @@ import {
 } from "./billing.js";
 import { cancelSubscription, createCheckoutSession, createPortalSession, verifyStripeSignature } from "./stripe.js";
 import { TAP_KINDS, classifySource, hitFor, isBot, isPrefetch, readStats, recordHit, tapSource, type TapKind } from "./stats.js";
-import { MAX_PHOTO_BYTES, MAX_PHOTOS, PHOTO_TYPES, parseContent, parseInternalOffer, type FieldErrors, type Site, type SiteContent } from "./site.js";
+import {
+  BEFORE_AFTER_FIELDS,
+  INTERNAL_BEFORE_AFTER_TYPES,
+  MAX_PHOTO_BYTES,
+  MAX_PHOTOS,
+  PHOTO_TYPES,
+  beforeAfterAllowed,
+  pickBeforeAfter,
+  siteFileKeys,
+  type BeforeAfter,
+  type BeforeAfterField,
+  parseContent,
+  parseInternalOffer,
+  type FieldErrors,
+  type Site,
+  type SiteContent,
+} from "./site.js";
 import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
@@ -177,7 +193,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     // nothing from another origin (CSP 'self'), and only this site's files.
     if (path.startsWith("/p/")) {
       const key = decodeURIComponent(path.slice(3));
-      if (site?.status === "live" && (site.photos.includes(key) || site.video === key)) return photo(env, key, request);
+      if (site?.status === "live" && siteFileKeys(site).includes(key)) return photo(env, key, request);
       return new Response("Not found", { status: 404 });
     }
     if (path !== "/") return Response.redirect(`https://${url.hostname}/`, 302);
@@ -1038,7 +1054,18 @@ function parseRange(h: string | null): { offset: number; length?: number } | { s
 // ---------------------------------------------------------------------------
 // Create / update / delete
 
-type Parsed = { fields: Record<string, string>; files: File[]; keep: string[]; video: File | null };
+type Parsed = {
+  fields: Record<string, string>;
+  files: File[];
+  keep: string[];
+  video: File | null;
+  /** Before & after upload slots (ba1Before ... ba2After), non-empty files only. */
+  ba: Partial<Record<BeforeAfterField, File>>;
+  /** Existing before & after pairs to keep, by their "before" key (edit page). */
+  keepPair: string[];
+};
+
+const BA_FIELD_NAMES: readonly string[] = BEFORE_AFTER_FIELDS.flat();
 
 async function readForm(request: Request): Promise<Parsed | null> {
   const type = request.headers.get("content-type") ?? "";
@@ -1047,18 +1074,23 @@ async function readForm(request: Request): Promise<Parsed | null> {
   const fields: Record<string, string> = {};
   const files: File[] = [];
   const keep: string[] = [];
+  const keepPair: string[] = [];
+  const ba: Partial<Record<BeforeAfterField, File>> = {};
   let video: File | null = null;
   for (const [k, v] of form as unknown as Iterable<[string, string | File]>) {
     if (typeof v === "string") {
       if (k === "keep") keep.push(v);
+      else if (k === "keepPair") keepPair.push(v);
       else fields[k] = v;
     } else if (k === "photos" && v.size > 0) {
       files.push(v);
     } else if (k === "video" && v.size > 0) {
       video = v;
+    } else if (BA_FIELD_NAMES.includes(k) && v.size > 0) {
+      ba[k as BeforeAfterField] = v;
     }
   }
-  return { fields, files, keep, video };
+  return { fields, files, keep, video, ba, keepPair };
 }
 
 function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES): string | null {
@@ -1139,6 +1171,7 @@ async function insertSite(
   ownerId: string | null = null,
   comp = false,
   adminTest = false,
+  pairFiles: [File, File][] = [],
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
@@ -1156,6 +1189,7 @@ async function insertSite(
     slug,
     photos: await storePhotos(env, slug, files),
     video: await storeVideo(env, slug, videoFile),
+    ...(pairFiles.length ? { beforeAfter: await storePairs(env, slug, pairFiles) } : {}),
     status: "live",
     source,
     editKeyHash: await sha256Hex(key),
@@ -1183,6 +1217,10 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
   const photoErr = checkPhotos(form.files, 0, 8 * 1024 * 1024);
   if (photoErr) errors.photos = photoErr;
+  // Optional before & after pairs (AdVault sends only complete pairs, only for
+  // trades where they fit, with the owner's "real photos of our own work").
+  const pairs = pickBeforeAfter(form.ba, { existing: 0, types: INTERNAL_BEFORE_AFTER_TYPES, maxBytes: 8 * 1024 * 1024 });
+  if (!pairs.ok) errors.beforeAfter = pairs.error;
   // Only the internal path takes a video (AdVault's finished ad); the public
   // form doesn't, so a stranger can't host arbitrary video on our domain.
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
@@ -1211,7 +1249,7 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   const awaiting = form.fields.awaitingPayment === "1";
   // Same login: the site goes to the AdVault user's SiteVault account.
   const owner = /^[A-Za-z0-9-]{8,64}$/.test(advId) && !emailProblem(advEmail) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
-  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting, owner?.id ?? null, false, adminTest);
+  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting, owner?.id ?? null, false, adminTest, pairs.ok ? pairs.pairs : []);
   if (owner) await addSiteToAccount(env.SITES, owner, made.slug);
   return json({ ok: true, slug: made.slug, siteUrl: made.siteUrl, editUrl: made.editUrl }, 201);
 }
@@ -1245,6 +1283,16 @@ async function storePhotos(env: Env, slug: string, files: File[]): Promise<strin
     keys.push(key);
   }
   return keys;
+}
+
+/** Store before & after pairs: web-sized like photos, same key scheme. */
+async function storePairs(env: Env, slug: string, pairs: [File, File][]): Promise<BeforeAfter[]> {
+  const out: BeforeAfter[] = [];
+  for (const [b, a] of pairs) {
+    const [before, after] = await storePhotos(env, slug, [b, a]);
+    out.push({ before: before!, after: after! });
+  }
+  return out;
 }
 
 const MAX_VIDEO_BYTES = 40 * 1024 * 1024;
@@ -1391,9 +1439,22 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
     errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
   }
+  // Before & after: untick to remove a pair; add new ones only for trades
+  // where they fit, with both photos and the "our own work" tick.
+  const pairsNow = site.beforeAfter ?? [];
+  const keptPairs = pairsNow.filter((p) => form.keepPair.includes(p.before));
+  const newPairs = pickBeforeAfter(form.ba, { existing: keptPairs.length, types: PHOTO_TYPES, maxBytes: MAX_PHOTO_BYTES });
+  if (!newPairs.ok) errors.beforeAfter = newPairs.error;
+  else if (newPairs.pairs.length) {
+    if (parsed.ok && !beforeAfterAllowed(parsed.value.category)) errors.beforeAfter = "Before & after photos are not available for this type of business.";
+    else if (form.fields.baAttest !== "yes") errors.baAttest = "Please confirm these are real photos of your own work.";
+  }
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
   const removed = site.photos.filter((k) => !kept.includes(k));
+  for (const p of pairsNow) if (!keptPairs.includes(p)) removed.push(p.before, p.after);
+  const addedPairs = newPairs.ok ? await storePairs(env, slug, newPairs.pairs) : [];
+  const beforeAfter = [...keptPairs, ...addedPairs];
   const added = await storePhotos(env, slug, form.files);
   // A new upload replaces the current video; otherwise keep it unless "keep" was unticked.
   let video = site.video ?? null;
@@ -1421,6 +1482,8 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     video,
     updatedAt: new Date().toISOString(),
   };
+  if (beforeAfter.length) next.beforeAfter = beforeAfter;
+  else delete next.beforeAfter;
   if (renaming) {
     const aliases = [...new Set([...(site.aliases ?? []), site.slug])].filter((a) => a !== wanted);
     next.slug = wanted;
@@ -1449,8 +1512,9 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
 async function removeSite(env: Env, site: Site): Promise<void> {
   // Keep the record (status removed) so the slug isn't handed to someone else
   // and an abuse report can still be traced; the content is the photos.
-  await deletePhotos(env, site.video ? [...site.photos, site.video] : site.photos);
-  await saveSite(env, { ...site, photos: [], video: null, status: "removed", updatedAt: new Date().toISOString() });
+  await deletePhotos(env, siteFileKeys(site));
+  const { beforeAfter: _pairs, ...rest } = site;
+  await saveSite(env, { ...rest, photos: [], video: null, status: "removed", updatedAt: new Date().toISOString() });
   await unindexSite(env, site);
 }
 
