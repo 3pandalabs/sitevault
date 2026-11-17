@@ -1237,6 +1237,9 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
   if (fields.attest !== "yes") errors.attest = "Please confirm this.";
   const photoErr = checkPhotos(files, 0);
   if (photoErr) errors.photos = photoErr;
+  if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
+    errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
+  }
   const requested = fields.slug ? normaliseAddress(fields.slug) : null;
   if (requested) {
     const problem = await requestedAddressProblem(env, requested);
@@ -1269,7 +1272,7 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     owner = made;
     console.log("account_created", { id: made.id });
   }
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", null, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email));
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email));
   await addSiteToAccount(env.SITES, owner, slug);
   reportSitevaultUse(env, ctx, owner);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
@@ -1329,12 +1332,22 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     if (errors.slug === "") delete errors.slug;
   }
   if (!site.adminTest && parsed.ok && (await phoneOwner(env, parsed.value.phone, site.slug))) errors.phone = PHONE_TAKEN;
+  if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
+    errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
+  }
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
   const removed = site.photos.filter((k) => !kept.includes(k));
-  const dropVideo = Boolean(site.video) && form.fields.keepVideo !== "yes";
-  if (dropVideo && site.video) removed.push(site.video);
   const added = await storePhotos(env, slug, form.files);
+  // A new upload replaces the current video; otherwise keep it unless "keep" was unticked.
+  let video = site.video ?? null;
+  if (form.video) {
+    video = await storeVideo(env, slug, form.video);
+    if (site.video) removed.push(site.video);
+  } else if (site.video && form.fields.keepVideo !== "yes") {
+    removed.push(site.video);
+    video = null;
+  }
   // Billing may have changed while the owner was editing (a webhook landed):
   // start from the freshest copy so a save never undoes a payment.
   const fresh = (await loadSite(env, slug))?.billing ?? site.billing;
@@ -1349,7 +1362,7 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     ...parsed.value,
     ...(billing ? { billing } : {}),
     photos: [...kept, ...added],
-    video: dropVideo ? null : (site.video ?? null),
+    video,
     updatedAt: new Date().toISOString(),
   };
   if (renaming) {

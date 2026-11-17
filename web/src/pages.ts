@@ -475,6 +475,7 @@ const FIELD_ORDER = [
   "hours",
   "about",
   "photos",
+  "video",
   "acct_email",
   "acct_password",
   "attest",
@@ -589,10 +590,11 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   <div class="field"><label for="hours">Opening hours <span class="hint">Optional</span></label><textarea id="hours" name="hours" placeholder="Mon-Fri 8am-6pm&#10;Sat 9am-2pm&#10;Sun closed">${v("hours", site?.hours ?? "")}</textarea>${sg("hours")}${e("hours")}</div>
   <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${sg("about")}${e("about")}</div>
 </fieldset>
-<fieldset><legend>Photos</legend>
-  ${mode.kind === "edit" && mode.site.video ? `<label class="check"><input type="checkbox" name="keepVideo" value="yes" checked> <span>Keep the video ad on my website</span></label>` : ""}
+<fieldset><legend>Photos &amp; video</legend>
+  ${mode.kind === "edit" && mode.site.video ? `<label class="check"><input type="checkbox" name="keepVideo" value="yes" checked> <span>Keep the current video on my website</span></label>` : ""}
   ${existing}
   <div class="field"><label for="photos">Add photos <span class="hint">Up to ${MAX_PHOTOS} in total. JPG, PNG or WebP. Use photos you took or have the right to use.</span></label><input type="file" id="photos" name="photos" accept="image/jpeg,image/png,image/webp" multiple>${e("photos")}</div>
+  <div class="field"><label for="video">Add a video <span class="hint">Optional. One MP4, up to 40 MB${mode.kind === "edit" && mode.site.video ? " — uploading a new one replaces the current video" : ""}. Shown in a "See us in action" section.</span></label><input type="file" id="video" name="video" accept="video/mp4">${e("video")}</div>
 </fieldset>
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
