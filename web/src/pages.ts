@@ -975,7 +975,7 @@ export function forgotPasswordPage(opts: { error?: string; email?: string; sent?
   const body = opts.sent
     ? `<section class="narrow" style="max-width:440px">
 <h1>Check your email</h1>
-<p class="notice ok" role="status">If that email has a 3PandaLabs account, we've sent a link to choose a new password. It works once and expires in 30 minutes.</p>
+<p class="notice ok" role="status">We've sent a link to choose a new password. It works once and expires in 30 minutes.</p>
 <p class="hint" style="margin-top:20px">Didn't get it? Check your spam folder, or <a href="/forgot-password">try again</a>. Still stuck? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.</p>
 <p class="hint"><a href="/login">Back to sign in</a></p>
 </section>`
