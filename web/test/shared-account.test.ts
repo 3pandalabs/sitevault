@@ -6,10 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   accountByEmail,
   accountForAdvault,
+  changePassword,
+  confirmPasswordReset,
   createAccount,
   hashPassword,
   markSitevaultUsed,
   moveToSharedAccount,
+  requestPasswordReset,
   signUpShared,
   verifyPassword,
   type Account,
@@ -170,5 +173,35 @@ describe("markSitevaultUsed", () => {
       throw new Error("down");
     };
     expect(await markSitevaultUsed(api, ADV_ID)).toBe(false);
+  });
+});
+
+describe("password reset proxy to AdVault", () => {
+  it("requestPasswordReset posts the email, reset-link base and SiteVault branding", async () => {
+    reply = () => new Response(null, { status: 204 });
+    await requestPasswordReset(api, "owner@x.test", "https://sitevault.test/reset-password");
+    expect(calls[0]!.url).toBe("https://api-internal.advault.test/internal/sitevault/password-reset/request");
+    expect(calls[0]!.body).toEqual({
+      email: "owner@x.test",
+      resetUrlBase: "https://sitevault.test/reset-password",
+      productName: "SiteVault",
+      fromName: "SiteVault",
+    });
+  });
+
+  it("confirmPasswordReset is true only on a 200", async () => {
+    reply = () => json({ ok: true }, 200);
+    expect(await confirmPasswordReset(api, "id.secret", "a new password")).toBe(true);
+    reply = () => json({ ok: false, error: "invalid_or_expired_token" }, 400);
+    expect(await confirmPasswordReset(api, "bad.token", "a new password")).toBe(false);
+  });
+
+  it("changePassword maps 200/401/other to ok/wrong/error", async () => {
+    reply = () => json({ ok: true }, 200);
+    expect(await changePassword(api, "o@x.test", "cur", "a new password")).toBe("ok");
+    reply = () => json({ ok: false, error: "invalid_credentials" }, 401);
+    expect(await changePassword(api, "o@x.test", "wrong", "a new password")).toBe("wrong");
+    reply = () => json({ ok: false }, 500);
+    expect(await changePassword(api, "o@x.test", "cur", "a new password")).toBe("error");
   });
 });

@@ -223,6 +223,34 @@ export async function markSitevaultUsed(api: AdvaultApi, advaultUserId: string |
   return r?.status === 200;
 }
 
+// Password reset for the shared 3PandaLabs login. The password lives in AdVault,
+// so AdVault mints/validates the token, sends the (SiteVault-branded) email and
+// sets the new password; SiteVault only owns the two pages and proxies here.
+
+/**
+ * Ask AdVault to email a reset link. Enumeration-safe on AdVault's side (it
+ * always answers 204 and only mails an account it actually has), so the caller
+ * shows the same confirmation whatever happens — including AdVault being down.
+ */
+export async function requestPasswordReset(api: AdvaultApi, email: string, resetUrlBase: string): Promise<void> {
+  await advaultPost(api, "/internal/sitevault/password-reset/request", { email, resetUrlBase, productName: "SiteVault", fromName: "SiteVault" });
+}
+
+/** Finish a reset. true only on AdVault's 200; false for a bad/expired token or AdVault being unreachable. */
+export async function confirmPasswordReset(api: AdvaultApi, token: string, password: string): Promise<boolean> {
+  const r = await advaultPost(api, "/internal/sitevault/password-reset/confirm", { token, password });
+  return r?.status === 200;
+}
+
+/** Change a signed-in account's password: "ok", "wrong" (current password wrong), or "error" (AdVault unreachable). */
+export async function changePassword(api: AdvaultApi, email: string, currentPassword: string, newPassword: string): Promise<"ok" | "wrong" | "error"> {
+  const r = await advaultPost(api, "/internal/sitevault/change-password", { email, currentPassword, newPassword });
+  if (!r) return "error";
+  if (r.status === 200) return "ok";
+  if (r.status === 401) return "wrong";
+  return "error";
+}
+
 /**
  * Sign up with the shared 3PandaLabs account. "exists" when the email already
  * has a SiteVault account or a 3PandaLabs (AdVault) account: sign in instead.

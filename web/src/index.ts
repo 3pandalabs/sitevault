@@ -33,12 +33,15 @@
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
 import { renderHold, renderSite, type RenderContext } from "./render.js";
-import { accountPage, adminPage, authPage, builderPage, donePage, homePage, messagePage, privacyPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
+import { accountPage, adminPage, authPage, builderPage, donePage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
   accountForAdvault,
+  changePassword,
+  confirmPasswordReset,
   findAccountForAdvault,
   loadAccount,
+  requestPasswordReset,
   saveAccount,
   verifyAdvaultLogin,
   markSitevaultUsed,
@@ -220,8 +223,13 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     }
     if (path === "/login" || path === "/signup") {
       if (await currentAccount(env.SITES, request)) return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
-      return html(authPage(path === "/login" ? "login" : "signup", { next: url.searchParams.get("next") ?? undefined }));
+      return html(authPage(path === "/login" ? "login" : "signup", { next: url.searchParams.get("next") ?? undefined, reset: url.searchParams.get("reset") === "1" }));
     }
+    if (path === "/forgot-password") {
+      if (await currentAccount(env.SITES, request)) return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
+      return html(forgotPasswordPage());
+    }
+    if (path === "/reset-password") return html(resetPasswordPage({ token: url.searchParams.get("token") ?? undefined }));
     if (path === "/account") return accountHome(request, env, url);
     if (path === "/admin") return adminDashboard(request, env);
     if (path === "/privacy") return html(privacyPage());
@@ -260,6 +268,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/api/sites") return createSite(request, env, ctx);
     if (path === "/login" || path === "/signup") return authSubmit(request, env, ctx, path === "/login" ? "login" : "signup");
     if (path === "/logout") return logout(request, env);
+    if (path === "/forgot-password") return forgotPasswordSubmit(request, env);
+    if (path === "/reset-password") return resetPasswordSubmit(request, env);
+    if (path === "/account/change-password") return changePasswordSubmit(request, env);
     if (path === "/account/claim") return claimSite(request, env, ctx);
     if (path === "/api/internal/sites") return createInternal(request, env);
     if (path === "/api/billing/checkout") return billingCheckout(request, env);
@@ -970,6 +981,49 @@ async function logout(request: Request, env: Env): Promise<Response> {
   return redirectTo(env, "/", clearCookie);
 }
 
+// Forgot password: AdVault emails the reset link (the shared login lives there).
+// Always the same confirmation, so this never reveals whether an email has an
+// account — nor whether AdVault was reachable.
+async function forgotPasswordSubmit(request: Request, env: Env): Promise<Response> {
+  const form = await readForm(request);
+  const email = normaliseEmail(form?.fields.email ?? "");
+  if (!sameOrigin(request, env.PUBLIC_ORIGIN)) return html(forgotPasswordPage({ error: "Please use the form on this page.", email }), 403);
+  if (await authRateLimited(request, env)) return html(forgotPasswordPage({ error: "Too many tries. Wait 15 minutes and try again.", email }), 429);
+  if (email) await requestPasswordReset(advaultApi(env), email, `${env.PUBLIC_ORIGIN}/reset-password`);
+  return html(forgotPasswordPage({ sent: true }));
+}
+
+// Reset password: the token from the email link plus a new password, proxied to
+// AdVault which validates the token once and sets the password.
+async function resetPasswordSubmit(request: Request, env: Env): Promise<Response> {
+  const form = await readForm(request);
+  const token = form?.fields.token ?? "";
+  const password = form?.fields.password ?? "";
+  const back = (error: string, status = 400) => html(resetPasswordPage({ token, error }), status);
+  if (!sameOrigin(request, env.PUBLIC_ORIGIN)) return back("Please use the form on this page.", 403);
+  if (await authRateLimited(request, env)) return back("Too many tries. Wait 15 minutes and try again.", 429);
+  if (!token) return html(resetPasswordPage({}), 400);
+  const problem = passwordProblem(password);
+  if (problem) return back(problem);
+  if (!(await confirmPasswordReset(advaultApi(env), token, password))) {
+    return back("That reset link is invalid or has expired. Request a new one.", 400);
+  }
+  return redirectTo(env, "/login?reset=1");
+}
+
+// Change password for a signed-in owner: AdVault verifies the current one and
+// sets the new one. Result is carried back to /account via a ?pw= code.
+async function changePasswordSubmit(request: Request, env: Env): Promise<Response> {
+  const account = await currentAccount(env.SITES, request);
+  if (!account || !sameOrigin(request, env.PUBLIC_ORIGIN)) return redirectTo(env, "/login");
+  const form = await readForm(request);
+  const currentPassword = form?.fields.currentPassword ?? "";
+  const newPassword = form?.fields.newPassword ?? "";
+  if (passwordProblem(newPassword)) return redirectTo(env, "/account?pw=weak");
+  const r = await changePassword(advaultApi(env), account.email, currentPassword, newPassword);
+  return redirectTo(env, `/account?pw=${r === "ok" ? "1" : r}`);
+}
+
 /**
  * One of an account's sites by the slug it was added under. A rename doesn't
  * update `account.sites`, so an old slug is followed through its alias.
@@ -1035,13 +1089,24 @@ async function adminDashboard(request: Request, env: Env): Promise<Response> {
 async function accountHome(request: Request, env: Env, url: URL, claimError?: string): Promise<Response> {
   const account = await currentAccount(env.SITES, request);
   if (!account) return Response.redirect(`${env.PUBLIC_ORIGIN}/login`, 302);
+  const pw = url.searchParams.get("pw");
+  const pwError =
+    pw === "wrong"
+      ? "Your current password is incorrect."
+      : pw === "weak"
+        ? "Your new password needs 10–200 characters."
+        : pw === "error"
+          ? "Couldn't update your password right now. Please try again."
+          : undefined;
   return html(
     accountPage(account.email, await accountSites(env, account), {
       claimError,
       claimed: url.searchParams.get("claimed") === "1",
       admin: isAdminEmail(env, account.email),
+      pwChanged: pw === "1",
+      pwError,
     }),
-    claimError ? 400 : 200,
+    claimError || pwError ? 400 : 200,
   );
 }
 

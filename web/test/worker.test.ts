@@ -531,3 +531,46 @@ describe("DELETE /api/internal/sites/<slug>", () => {
     expect(kv.data.has(`site:${slug}`)).toBe(true);
   });
 });
+
+describe("password reset pages", () => {
+  const originH = { origin: ORIGIN };
+  const formPost = (path: string, fields: Record<string, string>, headers: Record<string, string> = {}) =>
+    call(`${ORIGIN}${path}`, { method: "POST", headers, body: new URLSearchParams(fields) });
+
+  it("GET /forgot-password renders the email form", async () => {
+    const res = await call(`${ORIGIN}/forgot-password`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Reset your password");
+  });
+
+  it("POST /forgot-password always confirms (enumeration-safe) and requires same-origin", async () => {
+    expect((await formPost("/forgot-password", { email: "whoever@x.test" })).status).toBe(403); // no Origin header
+    const ok = await formPost("/forgot-password", { email: "whoever@x.test" }, originH);
+    expect(ok.status).toBe(200);
+    expect(await ok.text()).toContain("Check your email");
+  });
+
+  it("GET /reset-password shows the form with a token, or 'invalid' without one", async () => {
+    expect(await (await call(`${ORIGIN}/reset-password?token=abc.def`)).text()).toContain('name="token" value="abc.def"');
+    expect(await (await call(`${ORIGIN}/reset-password`)).text()).toContain("missing or invalid");
+  });
+
+  it("POST /reset-password needs a token and a valid password", async () => {
+    // valid-looking password but AdVault is unconfigured here, so the token can't verify
+    const bad = await formPost("/reset-password", { token: "abc.def", password: "a brand new password" }, originH);
+    expect(bad.status).toBe(400);
+    expect(await bad.text()).toContain("invalid or has expired");
+    // too-short password is rejected before any call
+    expect((await formPost("/reset-password", { token: "abc.def", password: "short" }, originH)).status).toBe(400);
+  });
+
+  it("GET /login?reset=1 shows the password-changed notice", async () => {
+    expect(await (await call(`${ORIGIN}/login?reset=1`)).text()).toContain("password has been changed");
+  });
+
+  it("POST /account/change-password with no session redirects to sign in", async () => {
+    const res = await formPost("/account/change-password", { currentPassword: "x", newPassword: "a new password" }, originH);
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(`${ORIGIN}/login`);
+  });
+});
