@@ -958,11 +958,12 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
   <input type="hidden" name="next" value="${esc(next)}">
   <div class="field"><label for="email">Email</label><input type="email" id="email" name="email" autocomplete="email" required maxlength="200" value="${esc(opts.email ?? "")}"></div>
   <div class="field"><label for="password">Password${login ? "" : ` <span class="hint">At least 10 characters</span>`}</label><input type="password" id="password" name="password" autocomplete="${login ? "current-password" : "new-password"}" required minlength="${login ? 1 : 10}" maxlength="200"></div>
+  ${login ? `<p style="margin:-6px 0 16px;text-align:right"><a href="/forgot-password">Forgot your password?</a></p>` : ""}
   <button class="btn" type="submit">${login ? "Sign in" : "Create account"}</button>
 </form>
 <p class="hint" style="margin-top:20px">${
       login
-        ? `<strong>One 3PandaLabs login:</strong> the same email and password work on SiteVault and <a href="https://advault.3pandalabs.com">AdVault</a>, whichever you signed up on.<br>New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>. <a href="/forgot-password">Forgot your password?</a>`
+        ? `<strong>One 3PandaLabs login:</strong> the same email and password work on SiteVault and <a href="https://advault.3pandalabs.com">AdVault</a>, whichever you signed up on.<br>New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>.`
         : `This is your 3PandaLabs account: it also signs you in to <a href="https://advault.3pandalabs.com">AdVault</a>. Already have one (from SiteVault or AdVault)? <a href="/login">Sign in</a>.`
     }</p>
 </section>`,
