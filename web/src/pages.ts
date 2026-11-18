@@ -944,7 +944,7 @@ function accountFields(
 }
 
 /** Sign in, or create an account without building a website first. */
-export function authPage(kind: "login" | "signup", opts: { error?: string; email?: string; next?: string } = {}): string {
+export function authPage(kind: "login" | "signup", opts: { error?: string; email?: string; next?: string; reset?: boolean } = {}): string {
   const login = kind === "login";
   const next = opts.next && /^\/[a-z0-9/_?=&-]*$/i.test(opts.next) ? opts.next : "/account";
   return layout({
@@ -952,6 +952,7 @@ export function authPage(kind: "login" | "signup", opts: { error?: string; email
     noindex: true,
     body: `<section class="narrow" style="max-width:440px">
 <h1>${login ? "Sign in" : "Create your account"}</h1>
+${login && opts.reset ? `<p class="notice ok" role="status">Your password has been changed. Sign in with your new password.</p>` : ""}
 ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""}
 <form method="post" action="/${login ? "login" : "signup"}">
   <input type="hidden" name="next" value="${esc(next)}">
@@ -961,11 +962,52 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
 </form>
 <p class="hint" style="margin-top:20px">${
       login
-        ? `<strong>One 3PandaLabs login:</strong> the same email and password work on SiteVault and <a href="https://advault.3pandalabs.com">AdVault</a>, whichever you signed up on.<br>New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>. Forgot your password? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.`
+        ? `<strong>One 3PandaLabs login:</strong> the same email and password work on SiteVault and <a href="https://advault.3pandalabs.com">AdVault</a>, whichever you signed up on.<br>New here? <a href="/signup">Create an account</a> or <a href="/new">build your website</a>. <a href="/forgot-password">Forgot your password?</a>`
         : `This is your 3PandaLabs account: it also signs you in to <a href="https://advault.3pandalabs.com">AdVault</a>. Already have one (from SiteVault or AdVault)? <a href="/login">Sign in</a>.`
     }</p>
 </section>`,
   });
+}
+
+/** "Forgot password": ask for an email, then a check-your-email confirmation. */
+export function forgotPasswordPage(opts: { error?: string; email?: string; sent?: boolean } = {}): string {
+  const body = opts.sent
+    ? `<section class="narrow" style="max-width:440px">
+<h1>Check your email</h1>
+<p class="notice ok" role="status">If that email has a 3PandaLabs account, we've sent a link to choose a new password. It works once and expires in 30 minutes.</p>
+<p class="hint" style="margin-top:20px">Didn't get it? Check your spam folder, or <a href="/forgot-password">try again</a>. Still stuck? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.</p>
+<p class="hint"><a href="/login">Back to sign in</a></p>
+</section>`
+    : `<section class="narrow" style="max-width:440px">
+<h1>Reset your password</h1>
+<p class="hint">Enter your email and we'll send a link to choose a new one.</p>
+${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""}
+<form method="post" action="/forgot-password">
+  <div class="field"><label for="email">Email</label><input type="email" id="email" name="email" autocomplete="email" required maxlength="200" value="${esc(opts.email ?? "")}"></div>
+  <button class="btn" type="submit">Email me a link</button>
+</form>
+<p class="hint" style="margin-top:20px"><a href="/login">Back to sign in</a></p>
+</section>`;
+  return layout({ title: "Reset your password | SiteVault", noindex: true, body });
+}
+
+/** "Choose a new password": the reset form, keyed by the token from the email link. */
+export function resetPasswordPage(opts: { token?: string; error?: string } = {}): string {
+  const body = !opts.token
+    ? `<section class="narrow" style="max-width:440px">
+<h1>Choose a new password</h1>
+<p class="notice warn" role="alert">This reset link is missing or invalid. <a href="/forgot-password">Request a new one</a>.</p>
+</section>`
+    : `<section class="narrow" style="max-width:440px">
+<h1>Choose a new password</h1>
+${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""}
+<form method="post" action="/reset-password">
+  <input type="hidden" name="token" value="${esc(opts.token)}">
+  <div class="field"><label for="password">New password <span class="hint">At least 10 characters</span></label><input type="password" id="password" name="password" autocomplete="new-password" required minlength="10" maxlength="200"></div>
+  <button class="btn" type="submit">Save new password</button>
+</form>
+</section>`;
+  return layout({ title: "Choose a new password | SiteVault", noindex: true, body });
 }
 
 export type AccountSite = { slug: string; name: string; siteUrl: string; state: string };
@@ -974,8 +1016,16 @@ export type AccountSite = { slug: string; name: string; siteUrl: string; state: 
 export function accountPage(
   email: string,
   sites: AccountSite[],
-  opts: { claimError?: string; claimed?: boolean; admin?: boolean } = {},
+  opts: { claimError?: string; claimed?: boolean; admin?: boolean; pwChanged?: boolean; pwError?: string } = {},
 ): string {
+  const changePw = `<details class="notice" style="margin-top:28px"${opts.pwError ? " open" : ""}><summary><strong>Change your password</strong></summary>
+  ${opts.pwError ? `<p class="err" role="alert" style="margin-top:10px">${esc(opts.pwError)}</p>` : ""}
+  <form method="post" action="/account/change-password" style="margin-top:12px">
+    <div class="field"><label for="currentPassword">Current password</label><input type="password" id="currentPassword" name="currentPassword" autocomplete="current-password" required maxlength="200"></div>
+    <div class="field"><label for="newPassword">New password <span class="hint">At least 10 characters</span></label><input type="password" id="newPassword" name="newPassword" autocomplete="new-password" required minlength="10" maxlength="200"></div>
+    <button class="btn ghost" type="submit">Update password</button>
+  </form>
+</details>`;
   const STATE: Record<string, string> = { live: "Live", unpublished: "Not published yet", grace: "Payment overdue", paused: "Paused" };
   const claimForm = `<form method="post" action="/account/claim" class="notice" style="margin-top:28px">
   <p><strong>Made a website before accounts existed?</strong> Paste its private edit link to add it here.</p>
@@ -1008,8 +1058,10 @@ export function accountPage(
 <p class="hint">Signed in as ${esc(email)}${opts.admin ? " · admin (unlimited websites, published free)" : ""}</p>
 ${opts.admin ? `<div class="buttons" style="margin:14px 0 26px"><a class="btn" href="/admin">Admin dashboard</a></div>` : ""}
 ${opts.claimed ? `<p class="notice ok" role="status">Added to your account.</p>` : ""}
+${opts.pwChanged ? `<p class="notice ok" role="status">Your password has been changed.</p>` : ""}
 ${rows}
 ${footer}
+${changePw}
 </section>`,
   });
 }
