@@ -115,6 +115,8 @@ export type SiteContent = {
   template: TemplateKey;
   /** Show the first photo as the big hero banner (else a coloured banner). Default true. */
   heroPhoto: boolean;
+  /** Dentist/clinic: insurance plans accepted, one per line. Empty = not shown. */
+  insurance: string | null;
 };
 
 /** The legal/policy pages every customer site carries (copy in policies.ts). */
@@ -264,6 +266,16 @@ export function scheduleAllowed(category: string): boolean {
   return (SCHEDULE_CATEGORIES as readonly string[]).includes(category);
 }
 
+// ---------------------------------------------------------------------------
+// Insurance accepted (dentist, medical clinic).
+
+/** Categories that get an "Insurance accepted" section. */
+export const INSURANCE_CATEGORIES: readonly CategoryKey[] = ["dentist", "clinic"];
+
+export function insuranceAllowed(category: string): boolean {
+  return (INSURANCE_CATEGORIES as readonly string[]).includes(category);
+}
+
 /** Validate the single uploaded schedule file (same types/size as a menu). */
 export function checkScheduleFile(file: { type: string; size: number } | null): string | null {
   if (!file) return null;
@@ -314,6 +326,7 @@ const LIMITS = {
   serviceArea: 160,
   hours: 400,
   offer: 160,
+  insurance: 400,
   serviceName: 60,
   servicePrice: 24,
   testimonialName: 60,
@@ -466,6 +479,7 @@ export function parseContent(
   const serviceArea = get("serviceArea");
   const hours = get("hours");
   const offer = get("offer");
+  const insurance = get("insurance");
   const services = parseServices(get("services"));
   const testimonials = parseTestimonials(get("testimonials"));
   const locations = parseLocations(get("locations"));
@@ -491,6 +505,7 @@ export function parseContent(
     ["serviceArea", serviceArea],
     ["hours", hours],
     ["offer", offer],
+    ["insurance", insurance],
   ];
   for (const [k, v] of lengths) {
     const problem = fieldProblem(k, v);
@@ -547,6 +562,7 @@ export function parseContent(
       offer: offer || null,
       template: asTemplate(get("template")),
       heroPhoto: get("heroPhoto") !== "no",
+      insurance: insurance || null,
     },
   };
 }

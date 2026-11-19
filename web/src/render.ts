@@ -12,7 +12,7 @@
 // alt text, visible focus, 4.5:1 contrast (every theme's primary is dark
 // enough for white text), and nothing that only works with a mouse.
 
-import { CATEGORIES, headline, isMenuPdf, menuAllowed, reviewStats, scheduleAllowed, type PolicyKind, type Site } from "./site.js";
+import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, menuAllowed, reviewStats, scheduleAllowed, type PolicyKind, type Site } from "./site.js";
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
 import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
@@ -238,6 +238,10 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .gallery img{width:100%;height:160px;object-fit:cover;border-radius:var(--radius);display:block}
 .menu-pdf-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:160px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--primary);font-weight:700;text-decoration:none;text-align:center;padding:10px}
 .menu-pdf-badge{font-size:.7rem;letter-spacing:.12em;background:var(--primary);color:#fff;border-radius:6px;padding:3px 9px}
+.creds{list-style:none;margin:0;padding:0;display:grid;gap:10px;max-width:640px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.creds li{display:flex;gap:12px;align-items:center;color:var(--ink);font-weight:600}
+.creds .ck{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;border-radius:50%;background:var(--band);color:var(--primary);font-weight:800;font-size:.8rem}
+.ins-note{margin:16px 0 0;color:var(--muted)}
 .ba{list-style:none;margin:0;padding:0;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
 .ba-cmp{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--band);--pos:50%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .ba-cmp img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
@@ -546,6 +550,21 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // Dentist/clinic: the insurance plans they accept, one per line.
+  const insuranceItems = insuranceAllowed(site.category) ? (site.insurance ?? "").split("\n").map((l) => l.trim()).filter(Boolean) : [];
+  const insuranceHtml = insuranceItems.length
+    ? `<section aria-labelledby="ins-h" class="band reveal">
+  <div class="wrap">
+    <p class="kicker">Before you visit</p>
+    <h2 id="ins-h">Insurance accepted</h2>
+    <ul class="creds">
+      ${insuranceItems.map((item) => `<li><span class="ck" aria-hidden="true">✓</span>${esc(item)}</li>`).join("\n      ")}
+    </ul>
+    <p class="ins-note">Not sure if we take your plan? Give us a call and we'll check.</p>
+  </div>
+</section>`
+    : "";
+
   const pairs = site.beforeAfter ?? [];
   const beforeAfterHtml = pairs.length
     ? `<section aria-labelledby="ba-h" class="reveal">
@@ -677,6 +696,7 @@ ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
 ${video}
 ${services}
 ${about}
+${insuranceHtml}
 ${menuHtml}
 ${scheduleHtml}
 ${galleryHtml}

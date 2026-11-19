@@ -1005,3 +1005,51 @@ describe("fitness class schedule", () => {
     expect(schedOf(l.slug)).toBeUndefined();
   });
 });
+
+describe("insurance accepted (dentist/clinic)", () => {
+  async function dentist() {
+    const res = await internalCreate({ category: "dentist", businessName: "Bright Smiles", phone: "(555) 700-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string>) {
+    const form = new FormData();
+    const base = { businessName: "Bright Smiles", category: "dentist", phone: "(555) 700-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+
+  it("shows the Insurance fieldset for a dentist (gated), hidden for a landscaper", async () => {
+    const { slug, key } = await dentist();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="insurance-fieldset"');
+    expect(page).toContain('data-show-cats="dentist,clinic"');
+    expect(page).not.toMatch(/<fieldset id="insurance-fieldset"[^>]*\shidden/);
+    const lawn = await internalCreate({ slug: "lawns-ins", businessName: "Lawns I", phone: "(555) 700-2000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const lkey = new URL(l.editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${l.slug}?k=${lkey}`)).text()).toMatch(/<fieldset id="insurance-fieldset"[^>]*\shidden/);
+  });
+
+  it("renders the accepted plans on the site", async () => {
+    const { slug, key } = await dentist();
+    expect((await save(slug, key, { insurance: "Delta Dental\nCigna\nAetna" })).status).toBe(303);
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="ins-h"');
+    expect(page).toContain("Delta Dental");
+    expect(page).toContain("Cigna");
+    expect(page).toContain("Aetna");
+  });
+
+  it("does not render the section for a non-medical business even if the field is sent", async () => {
+    const lawn = await internalCreate({ slug: "lawns-ins2", businessName: "Lawns I2", phone: "(555) 700-3000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const key = new URL(l.editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Lawns I2", category: "landscaping", phone: "(555) 700-3000", city: "Edison", key, insurance: "Delta Dental" })) form.set(k, v);
+    expect((await call(`${ORIGIN}/api/sites/${l.slug}`, { method: "POST", body: form })).status).toBe(303);
+    const page = await (await call(`https://${l.slug}.3pandasite.test/`)).text();
+    expect(page).not.toContain('id="ins-h"');
+  });
+});

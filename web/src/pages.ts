@@ -9,12 +9,14 @@ import {
   HOURS_TEMPLATE,
   MAX_BEFORE_AFTER,
   MAX_LOCATIONS,
+  INSURANCE_CATEGORIES,
   MAX_MENU,
   MAX_PHOTOS,
   MENU_CATEGORIES,
   SCHEDULE_CATEGORIES,
   SERVICE_TEMPLATES,
   beforeAfterAllowed,
+  insuranceAllowed,
   isMenuPdf,
   locationsToText,
   menuAllowed,
@@ -664,6 +666,17 @@ function scheduleFields(category: string, current: string | null, photoUrl: ((k:
 </fieldset>`;
 }
 
+/**
+ * The "Insurance accepted" section for dentists & clinics: the plans they take,
+ * one per line. Category-gated like the others via data-show-cats.
+ */
+function insuranceFields(category: string, value: string, e: (k: string) => string): string {
+  return `<fieldset id="insurance-fieldset" data-show-cats="${esc(INSURANCE_CATEGORIES.join(","))}"${insuranceAllowed(category) ? "" : " hidden"}><legend>Insurance accepted</legend>
+  <p class="hint">List the insurance plans you accept, one per line, so patients know before they call.</p>
+  <div class="field"><label for="insurance">Insurance plans <span class="hint">Optional. One per line.</span></label><textarea id="insurance" name="insurance" placeholder="Delta Dental&#10;Cigna&#10;Aetna&#10;MetLife&#10;UnitedHealthcare">${value}</textarea>${e("insurance")}</div>
+</fieldset>`;
+}
+
 export function builderPage(
   mode: FormMode,
   nonce: string,
@@ -712,6 +725,7 @@ export function builderPage(
   const beforeAfter = mode.kind === "edit" ? beforeAfterFields(mode.site, mode.photoUrl, e) : "";
   const menu = menuFields(selectedCat, mode.kind === "edit" ? mode.site.menu ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
   const schedule = scheduleFields(selectedCat, mode.kind === "edit" ? mode.site.schedule ?? null : null, mode.kind === "edit" ? mode.photoUrl : null, e);
+  const insurance = insuranceFields(selectedCat, v("insurance", site?.insurance ?? ""), e);
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -777,6 +791,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
 ${beforeAfter}
 ${menu}
 ${schedule}
+${insurance}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
