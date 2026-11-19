@@ -5,7 +5,9 @@ import {
   INTERNAL_BEFORE_AFTER_TYPES,
   beforeAfterAllowed,
   headline,
+  locationsToText,
   parseContent,
+  parseLocations,
   parseReviewSubmission,
   parseServices,
   pickBeforeAfter,
@@ -118,6 +120,24 @@ describe("customer reviews", () => {
   });
 });
 
+describe("multiple locations", () => {
+  it("parses Name | Address | Phone lines, drops incomplete ones, round-trips", () => {
+    const locs = parseLocations(
+      "Downtown | 123 Main St | (555) 111-2222\n456 Oak Ave | (555) 333-4444\nJust an address, no phone",
+    );
+    expect(locs).toEqual([
+      { name: "Downtown", address: "123 Main St", phone: "(555) 111-2222" },
+      { name: "", address: "456 Oak Ave", phone: "(555) 333-4444" },
+    ]);
+    expect(parseLocations(locationsToText(locs))).toEqual(locs);
+  });
+  it("validates each location's phone and rejects links", () => {
+    expect(parseContent({ ...base, locations: "Downtown | 123 Main St | (555) 111-2222" }).ok).toBe(true);
+    expect(parseContent({ ...base, locations: "Downtown | 123 Main St | call-us-now" }).ok).toBe(false);
+    expect(parseContent({ ...base, locations: "Downtown | visit evil.com | (555) 111-2222" }).ok).toBe(false);
+  });
+});
+
 describe("services", () => {
   it("splits name and price on a dash and round-trips", () => {
     const s = parseServices("Lawn mowing - from $35\nSpring cleanup — $149\nHedge trimming");
@@ -220,6 +240,15 @@ describe("renderSite", () => {
       expect(out).toContain('<p class="qby">Bob &lt;b&gt;D&lt;/b&gt;</p>');
       expect(out).not.toContain("<b>D</b>");
     }
+  });
+  it("shows a Locations popup + trigger only when there are extra locations", () => {
+    expect(html).not.toContain('id="locations"');
+    const ctx = { siteUrl: "https://x/s/a", assetOrigin: "https://x", homeUrl: "https://x" };
+    const multi = renderSite({ ...site, locations: [{ name: "Westside", address: "456 Oak Ave", phone: "(555) 333-4444" }] }, ctx);
+    expect(multi).toContain('<div id="locations" class="loc-popup"');
+    expect(multi).toContain("Westside");
+    expect(multi).toContain('href="tel:+15553334444"');
+    expect(multi).toContain('href="#locations"');
   });
   it("always shows the Reviews section with a leave-a-review form; lists approved reviews", () => {
     expect(html).toContain('action="/review"');

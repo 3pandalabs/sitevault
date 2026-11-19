@@ -88,6 +88,13 @@ export type Testimonial = { name: string; quote: string };
  */
 export type Review = { id: string; name: string; rating: number; text: string; createdAt: string };
 
+/**
+ * An extra business location beyond the primary one (address/city/phone). A
+ * gym chain, say, lists each branch with its own address and phone; the site
+ * shows a "Locations" button that opens a popup of all of them.
+ */
+export type Location = { name: string; address: string; phone: string };
+
 export type SiteContent = {
   businessName: string;
   category: CategoryKey;
@@ -101,6 +108,8 @@ export type SiteContent = {
   hours: string | null;
   services: Service[];
   testimonials: Testimonial[];
+  /** Extra locations beyond the primary address/city/phone. Empty = single location. */
+  locations: Location[];
   offer: string | null;
   /** Which customer-site template (layout/style) to render. */
   template: TemplateKey;
@@ -157,6 +166,9 @@ export const MAX_PENDING_REVIEWS = 30; // queued awaiting moderation, per site
 export const REVIEWS_PER_IP_PER_DAY = 3; // a visitor can leave at most this many
 const MAX_REVIEW_NAME = 60;
 const MAX_REVIEW_TEXT = 600;
+export const MAX_LOCATIONS = 8; // extra locations beyond the primary
+const MAX_LOCATION_NAME = 60;
+const MAX_LOCATION_ADDRESS = 160;
 
 /** One before & after pair: R2 keys of the two photos. */
 export type BeforeAfter = { before: string; after: string };
@@ -343,6 +355,30 @@ export function reviewStats(reviews: Review[]): { count: number; average: number
   return { count: reviews.length, average: Math.round((sum / reviews.length) * 10) / 10 };
 }
 
+/**
+ * Extra locations, one per line: "Name | Address | Phone". The name is
+ * optional ("Address | Phone" works); lines without both an address and a
+ * phone are dropped. Caps at MAX_LOCATIONS.
+ */
+export function parseLocations(raw: string): Location[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, MAX_LOCATIONS)
+    .map((line) => {
+      const parts = line.split("|").map((p) => p.trim());
+      if (parts.length >= 3) return { name: parts[0]!, address: parts[1]!, phone: parts.slice(2).join(" ").trim() };
+      if (parts.length === 2) return { name: "", address: parts[0]!, phone: parts[1]! };
+      return { name: "", address: parts[0] ?? "", phone: "" };
+    })
+    .filter((l) => l.address && l.phone);
+}
+
+export function locationsToText(locations: Location[]): string {
+  return locations.map((l) => [l.name, l.address, l.phone].filter(Boolean).join(" | ")).join("\n");
+}
+
 /** Validate form fields into SiteContent, or field-level errors. */
 export function parseContent(
   fields: Record<string, unknown>,
@@ -363,6 +399,7 @@ export function parseContent(
   const offer = get("offer");
   const services = parseServices(get("services"));
   const testimonials = parseTestimonials(get("testimonials"));
+  const locations = parseLocations(get("locations"));
 
   const required: [string, string][] = [
     ["businessName", businessName],
@@ -404,6 +441,16 @@ export function parseContent(
       errors.testimonials = "Links aren't allowed here.";
     }
   }
+  for (const loc of locations) {
+    const d = loc.phone.replace(/\D/g, "");
+    if (loc.name.length > MAX_LOCATION_NAME || loc.address.length > MAX_LOCATION_ADDRESS) {
+      errors.locations = `Keep each location's name under ${MAX_LOCATION_NAME} and address under ${MAX_LOCATION_ADDRESS} characters.`;
+    } else if (d.length < 7 || d.length > 15 || /[^\d\s()+.-]/.test(loc.phone)) {
+      errors.locations = "Give each location a valid phone, like (201) 555-0100.";
+    } else if (LINK_PATTERN.test(loc.name) || LINK_PATTERN.test(loc.address)) {
+      errors.locations = "Links aren't allowed here.";
+    }
+  }
 
   const digits = phone.replace(/\D/g, "");
   if (phone && (digits.length < 7 || digits.length > 15 || /[^\d\s()+.-]/.test(phone))) {
@@ -427,6 +474,7 @@ export function parseContent(
       hours: hours || null,
       services,
       testimonials,
+      locations,
       offer: offer || null,
       template: asTemplate(get("template")),
       heroPhoto: get("heroPhoto") !== "no",
