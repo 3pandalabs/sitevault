@@ -753,13 +753,17 @@ describe("restaurant/bakery menu upload", () => {
   const menuOf = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { menu?: string[] }).menu;
   const pdf = (name = "menu.pdf", bytes = 10) => jpeg(name, bytes, "application/pdf");
 
-  it("shows the Menu fieldset on the edit page for a restaurant, not a landscaper", async () => {
+  it("shows the Menu fieldset on the edit page for a restaurant, hidden for a landscaper", async () => {
     const r = await made();
-    expect(await (await call(`${ORIGIN}/edit/${r.slug}?k=${r.key}`)).text()).toContain("Add menu files");
+    const rest = await (await call(`${ORIGIN}/edit/${r.slug}?k=${r.key}`)).text();
+    expect(rest).toContain("Add menu files");
+    // Restaurant: the fieldset is visible (not hidden).
+    expect(rest).not.toMatch(/<fieldset id="menu-fieldset"[^>]*\shidden/);
     const lawn = await internalCreate({ slug: "lawns-x", businessName: "Lawns X", phone: "(555) 300-2000" });
     const { slug, editUrl } = (await lawn.json()) as { slug: string; editUrl: string };
     const key = new URL(editUrl).searchParams.get("k")!;
-    expect(await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text()).not.toContain("Add menu files");
+    // Landscaper: present but hidden, so a non-food business never sees it.
+    expect(await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text()).toMatch(/<fieldset id="menu-fieldset"[^>]*\shidden/);
   });
 
   it("stores an uploaded PDF menu and shows a View menu button linking to it", async () => {
@@ -825,5 +829,50 @@ describe("restaurant/bakery menu upload", () => {
     expect((await save(slug, key)).status).toBe(303);
     expect(menuOf(slug)).toBeUndefined();
     expect(R2().data.has(k0)).toBe(false);
+  });
+});
+
+describe("menu in the builder (create flow)", () => {
+  it("renders the Menu fieldset on the builder, hidden until a food category is picked", async () => {
+    const page = await (await call(`${ORIGIN}/new`)).text();
+    expect(page).toContain('id="menu-fieldset"');
+    expect(page).toContain('data-menu-cats="restaurant,bakery"');
+    // No category chosen yet on a fresh builder -> starts hidden (JS reveals it).
+    expect(page).toMatch(/<fieldset id="menu-fieldset"[^>]*\shidden/);
+  });
+
+  async function publicCreate(fields: Record<string, string>, files: Record<string, File> = {}) {
+    const form = new FormData();
+    const base = {
+      businessName: "Tony's Pizza",
+      category: "restaurant",
+      phone: "(555) 400-1000",
+      city: "Edison",
+      attest: "yes",
+      acct_email: "owner-menu@example.test",
+      acct_password: "supersecret1",
+    };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    for (const [k, f] of Object.entries(files)) form.set(k, f);
+    return call(`${ORIGIN}/api/sites`, { method: "POST", headers: { accept: "application/json" }, body: form });
+  }
+  const storedBySlug = (slug: string) => JSON.parse(kv.data.get(`site:${slug}`)!.value) as { menu?: string[]; category: string };
+  const onlySlug = () => [...kv.data.keys()].find((k) => k.startsWith("site:"))!.slice("site:".length);
+
+  it("stores a menu uploaded while building a restaurant site", async () => {
+    const res = await publicCreate({}, { menu: jpeg("menu.pdf", 10, "application/pdf") });
+    expect(res.status).toBe(200);
+    const slug = onlySlug();
+    const menu = storedBySlug(slug).menu!;
+    expect(menu).toHaveLength(1);
+    expect(menu[0]!.endsWith(".pdf")).toBe(true);
+    expect(await (await call(`https://${slug}.3pandasite.test/`)).text()).toContain("View our menu (PDF)");
+  });
+
+  it("rejects a menu at build time for a non-food business", async () => {
+    const res = await publicCreate({ category: "plumbing", businessName: "Pipe Co" }, { menu: jpeg("menu.pdf", 10, "application/pdf") });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.menu).toBeTruthy();
+    expect([...kv.data.keys()].some((k) => k.startsWith("site:"))).toBe(false);
   });
 });

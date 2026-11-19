@@ -1423,6 +1423,7 @@ async function insertSite(
   comp = false,
   adminTest = false,
   pairFiles: [File, File][] = [],
+  menuFiles: File[] = [],
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
@@ -1441,6 +1442,7 @@ async function insertSite(
     photos: await storePhotos(env, slug, files),
     video: await storeVideo(env, slug, videoFile),
     ...(pairFiles.length ? { beforeAfter: await storePairs(env, slug, pairFiles) } : {}),
+    ...(menuFiles.length ? { menu: await storeMenu(env, slug, menuFiles) } : {}),
     status: "live",
     source,
     editKeyHash: await sha256Hex(key),
@@ -1607,6 +1609,12 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
     errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
   }
+  // Menu files (restaurants/bakeries can add one while building).
+  if (form.menu.length && parsed.ok && !menuAllowed(parsed.value.category)) errors.menu = "A menu can't be added for this type of business.";
+  else {
+    const menuProblem = checkMenu(form.menu, 0);
+    if (menuProblem) errors.menu = menuProblem;
+  }
   const requested = fields.slug ? normaliseAddress(fields.slug) : null;
   if (requested) {
     const problem = await requestedAddressProblem(env, requested);
@@ -1639,7 +1647,7 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     owner = made;
     console.log("account_created", { id: made.id });
   }
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email));
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), [], form.menu);
   await addSiteToAccount(env.SITES, owner, slug);
   reportSitevaultUse(env, ctx, owner);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
