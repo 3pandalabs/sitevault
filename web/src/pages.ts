@@ -33,7 +33,6 @@ const CAT_THUMB_COLORS: Record<string, { p: string; b: string }> = Object.fromEn
   }),
 );
 import { MAX_RENAMES } from "./address.js";
-import { POLICY_KINDS, POLICY_META, policyDefault, policyData } from "./policies.js";
 import { esc } from "./util.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
 import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
@@ -605,25 +604,6 @@ export function beforeAfterFields(site: Site, photoUrl: (k: string) => string, e
 }
 
 /**
- * The edit-only "Legal & policy pages" section: one textarea per page,
- * prefilled with the owner's text or the version generated from the business's
- * details. Clearing a box restores the automatic version (parsePolicies stores
- * nothing when a submission matches the prefilled default).
- */
-function policyFields(site: Site, siteUrl: string, v: (k: string, fallback?: string) => string, e: (k: string) => string): string {
-  const data = policyData(site, siteUrl || `https://${site.slug}/`);
-  const fields = POLICY_KINDS.map((kind) => {
-    const prefill = site.policies?.[kind] ?? policyDefault(kind, data);
-    return `<div class="field"><label for="policy_${kind}">${esc(POLICY_META[kind].title)} <span class="hint">Shows at ${esc(POLICY_META[kind].path)}. Edit to customise, or clear the box to use the automatic version.</span></label>
-  <textarea id="policy_${kind}" name="policy_${kind}" rows="12" maxlength="20000">${v(`policy_${kind}`, prefill)}</textarea>${e(`policy_${kind}`)}</div>`;
-  }).join("\n  ");
-  return `<fieldset><legend>Legal &amp; policy pages</legend>
-  <p class="hint">Every website comes with these four pages, linked in your footer and prepopulated from the details above. They're plain-language starters, <strong>not legal advice</strong> — if your business is regulated, or you serve customers in the EU, UK or California, have a lawyer review them.</p>
-  ${fields}
-</fieldset>`;
-}
-
-/**
  * The "Menu" section for restaurants & bakeries: upload a PDF or a photo of the
  * menu (up to MAX_MENU), with keep-boxes for existing files (edit page). Shown
  * on both the builder and the edit page, but only for food categories — it
@@ -645,7 +625,7 @@ function menuFields(category: string, files: string[], photoUrl: ((k: string) =>
       : "";
   const free = Math.max(0, MAX_MENU - files.length);
   const add = free
-    ? `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. A PDF shows as a "View menu" button; a photo shows on the page.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${e("menu")}</div>`
+    ? `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. Each appears as a thumbnail on your site — visitors tap a photo to enlarge it, or a PDF to open it.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${e("menu")}</div>`
     : e("menu");
   return `<fieldset id="menu-fieldset" data-menu-cats="${esc(MENU_CATEGORIES.join(","))}"${menuAllowed(category) ? "" : " hidden"}><legend>Menu</legend>
   <p class="hint">Show your menu on your website — upload a PDF or a clear photo of it.</p>
@@ -701,7 +681,6 @@ export function builderPage(
 
   const beforeAfter = mode.kind === "edit" ? beforeAfterFields(mode.site, mode.photoUrl, e) : "";
   const menu = menuFields(selectedCat, mode.kind === "edit" ? mode.site.menu ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
-  const policySection = mode.kind === "edit" ? policyFields(mode.site, mode.siteUrl ?? "", v, e) : "";
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -766,7 +745,6 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
 </fieldset>
 ${beforeAfter}
 ${menu}
-${policySection}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>

@@ -220,7 +220,7 @@ export function beforeAfterAllowed(category: string): boolean {
 // ---------------------------------------------------------------------------
 // Menu upload (restaurants & bakeries)
 
-export const MAX_MENU = 3; // menu files per site (e.g. food, drinks, specials)
+export const MAX_MENU = 6; // menu files per site (e.g. food, drinks, specials, pages)
 export const MAX_MENU_BYTES = 10 * 1024 * 1024;
 /** A menu file is an image or a PDF; stored as-is so the text stays legible. */
 export const MENU_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
