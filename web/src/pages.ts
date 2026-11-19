@@ -142,6 +142,7 @@ fieldset{border:1px solid var(--line);border-radius:16px;padding:18px 18px 4px;m
 legend{font-weight:600;padding:0 6px}
 #builder{margin-bottom:32px}
 .photos{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0}
+.menu-upload{margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .photo{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.85rem}
 .photo[draggable=true]{cursor:grab}
 .photo.dragging{opacity:.5;cursor:grabbing}
@@ -611,24 +612,28 @@ export function beforeAfterFields(site: Site, photoUrl: (k: string) => string, e
  * category (`data-menu-cats`); server-side it's visible when the category is
  * already food (e.g. a validation re-render, or the edit page).
  */
+/** One current-menu-file card (edit page): a thumbnail/PDF tile + a keep box. */
+export function menuCard(url: string, key: string, index: number, pdf: boolean): string {
+  const n = index + 1;
+  return pdf
+    ? `<div class="photo"><div class="menu-doc">PDF menu ${n}</div><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(key)}" checked> Keep</label><a class="tpl-preview" href="${esc(url)}" target="_blank" rel="noopener">View ↗</a></div></div>`
+    : `<div class="photo"><img src="${esc(url)}" alt="Menu ${n}"><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(key)}" checked> Keep menu ${n}</label></div></div>`;
+}
+
 function menuFields(category: string, files: string[], photoUrl: ((k: string) => string) | null, e: (k: string) => string): string {
-  const current =
-    files.length && photoUrl
-      ? `<p class="hint">Current menu files. Untick to remove one from your website.</p>
-<div class="photos">${files
-          .map((k, i) =>
-            isMenuPdf(k)
-              ? `<div class="photo"><div class="menu-doc">PDF menu ${i + 1}</div><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(k)}" checked> Keep</label><a class="tpl-preview" href="${esc(photoUrl(k))}" target="_blank" rel="noopener">View ↗</a></div></div>`
-              : `<div class="photo"><img src="${esc(photoUrl(k))}" alt="Menu ${i + 1}"><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(k)}" checked> Keep menu ${i + 1}</label></div></div>`,
-          )
-          .join("")}</div>`
-      : "";
-  const free = Math.max(0, MAX_MENU - files.length);
-  const add = free
-    ? `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. Each appears as a thumbnail on your site — visitors tap a photo to enlarge it, or a PDF to open it.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${e("menu")}</div>`
-    : e("menu");
+  const isEdit = photoUrl !== null;
+  const cards = files.map((k, i) => menuCard(photoUrl!(k), k, i, isMenuPdf(k))).join("");
+  // On the edit page the current list is a live region the Upload button updates.
+  const current = isEdit
+    ? `<p class="hint" id="menu-current-h"${files.length ? "" : " hidden"}>Current menu files. Untick to remove one when you save.</p>
+<div class="photos" id="menu-current">${cards}</div>`
+    : "";
+  const uploadBtn = isEdit
+    ? `<div class="menu-upload"><button type="button" class="btn ghost" id="menu-upload-btn">Upload menu</button> <span class="hint" id="menu-status" role="status" aria-live="polite"></span></div>`
+    : "";
+  const add = `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. Each appears as a thumbnail on your site — visitors tap a photo to enlarge it, or a PDF to open it.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${uploadBtn}${e("menu")}</div>`;
   return `<fieldset id="menu-fieldset" data-menu-cats="${esc(MENU_CATEGORIES.join(","))}"${menuAllowed(category) ? "" : " hidden"}><legend>Menu</legend>
-  <p class="hint">Show your menu on your website — upload a PDF or a clear photo of it.</p>
+  <p class="hint">Show your menu on your website — upload a PDF or a clear photo of it.${isEdit ? ` Choose a file, then click <strong>Upload menu</strong> to add it right away.` : ""}</p>
   ${current}
   ${add}
 </fieldset>`;
@@ -787,6 +792,40 @@ const BUILDER_SCRIPT = `
   // picks a matching category, hide it otherwise (data-menu-cats lists them).
   var catSel=document.getElementById('category'),menuFs=document.getElementById('menu-fieldset');
   if(catSel&&menuFs){ var mcats=(menuFs.getAttribute('data-menu-cats')||'').split(','); var updMenu=function(){ menuFs.hidden=mcats.indexOf(catSel.value)<0; }; catSel.addEventListener('change',updMenu); updMenu(); }
+  // Edit page: "Upload menu" uploads the chosen file(s) on their own and shows
+  // the thumbnail at once, without saving the whole form.
+  var upBtn=document.getElementById('menu-upload-btn');
+  if(upBtn){
+    var mInput=document.getElementById('menu'),mStatus=document.getElementById('menu-status'),mCur=document.getElementById('menu-current'),mCurH=document.getElementById('menu-current-h');
+    var renderMenu=function(list){
+      while(mCur.firstChild) mCur.removeChild(mCur.firstChild);
+      list.forEach(function(item,i){
+        var card=document.createElement('div');card.className='photo';
+        if(item.pdf){ var doc=document.createElement('div');doc.className='menu-doc';doc.textContent='PDF menu '+(i+1);card.appendChild(doc); }
+        else { var img=document.createElement('img');img.src=item.url;img.alt='Menu '+(i+1);card.appendChild(img); }
+        var ctl=document.createElement('div');ctl.className='photo-ctl';
+        var lab=document.createElement('label');lab.className='pkeep';
+        var cb=document.createElement('input');cb.type='checkbox';cb.name='keepMenu';cb.value=item.key;cb.checked=true;
+        lab.appendChild(cb);lab.appendChild(document.createTextNode(item.pdf?' Keep':' Keep menu '+(i+1)));
+        ctl.appendChild(lab);
+        if(item.pdf){ var a=document.createElement('a');a.className='tpl-preview';a.href=item.url;a.target='_blank';a.rel='noopener';a.textContent='View ↗';ctl.appendChild(a); }
+        card.appendChild(ctl);mCur.appendChild(card);
+      });
+      if(mCurH) mCurH.hidden=list.length===0;
+    };
+    upBtn.addEventListener('click',function(){
+      if(!mInput.files||!mInput.files.length){ mStatus.textContent='Choose a file first.'; return; }
+      mStatus.textContent='Uploading…';upBtn.disabled=true;
+      var fd=new FormData();var keyEl=form.querySelector('input[name=key]');if(keyEl)fd.append('key',keyEl.value);
+      for(var i=0;i<mInput.files.length;i++) fd.append('menu',mInput.files[i]);
+      fetch(form.action+'/menu',{method:'POST',body:fd,headers:{accept:'application/json'}})
+        .then(function(r){return r.json();})
+        .then(function(res){ upBtn.disabled=false;
+          if(res&&res.ok){ renderMenu(res.menu); mInput.value=''; mStatus.textContent='Uploaded.'; }
+          else { mStatus.textContent=(res&&res.error)||'Upload failed.'; }
+        }).catch(function(){ upBtn.disabled=false; mStatus.textContent='Upload failed. Try again.'; });
+    });
+  }
   // Reorder existing photos with the arrows; the "keep" inputs' DOM order is the saved order.
   var plist=document.getElementById('photolist');
   if(plist){

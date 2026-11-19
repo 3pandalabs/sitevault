@@ -871,3 +871,66 @@ describe("menu in the builder (create flow)", () => {
     expect([...kv.data.keys()].some((k) => k.startsWith("site:"))).toBe(false);
   });
 });
+
+describe("menu upload endpoint (Upload button)", () => {
+  async function made(fields: Record<string, string> = {}) {
+    const res = await internalCreate({ category: "restaurant", businessName: "Tony's Pizza", phone: "(555) 500-1000", ...fields });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function upload(slug: string, key: string | null, files: File[]) {
+    const form = new FormData();
+    if (key !== null) form.set("key", key);
+    for (const f of files) form.append("menu", f);
+    return call(`${ORIGIN}/api/sites/${slug}/menu`, { method: "POST", headers: { accept: "application/json" }, body: form });
+  }
+  const menuOf = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { menu?: string[] }).menu;
+  const pdf = (name = "menu.pdf", bytes = 10) => jpeg(name, bytes, "application/pdf");
+
+  it("renders an Upload menu button on a restaurant's edit page", async () => {
+    const { slug, key } = await made();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="menu-upload-btn"');
+    expect(page).toContain('id="menu-current"');
+  });
+
+  it("uploads a file on its own and returns the updated menu list", async () => {
+    const { slug, key } = await made();
+    const res = await upload(slug, key, [pdf()]);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; menu: { key: string; url: string; pdf: boolean }[] };
+    expect(body.ok).toBe(true);
+    expect(body.menu).toHaveLength(1);
+    expect(body.menu[0]!.pdf).toBe(true);
+    expect(body.menu[0]!.url).toContain(`/p/${menuOf(slug)![0]}`);
+    // Persisted without any full-form save.
+    expect(menuOf(slug)).toHaveLength(1);
+  });
+
+  it("appends to the existing menu", async () => {
+    const { slug, key } = await made();
+    await upload(slug, key, [jpeg("a.jpg")]);
+    await upload(slug, key, [jpeg("b.jpg")]);
+    expect(menuOf(slug)).toHaveLength(2);
+  });
+
+  it("rejects a bad key, a non-food site, and going over the cap", async () => {
+    const { slug, key } = await made();
+    expect((await upload(slug, "WRONGKEY", [pdf()])).status).toBe(403);
+    expect(menuOf(slug)).toBeUndefined();
+
+    const lawn = await internalCreate({ slug: "lawns-up", businessName: "Lawns Up", phone: "(555) 500-2000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const lkey = new URL(l.editUrl).searchParams.get("k")!;
+    const bad = await upload(l.slug, lkey, [pdf()]);
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { error: string }).error).toMatch(/can't be added/);
+
+    for (let i = 0; i < 6; i++) await upload(slug, key, [jpeg(`m${i}.jpg`)]);
+    expect(menuOf(slug)).toHaveLength(6);
+    const over = await upload(slug, key, [jpeg("x.jpg")]);
+    expect(over.status).toBe(400);
+    expect(((await over.json()) as { error: string }).error).toMatch(/Up to 6/);
+  });
+});

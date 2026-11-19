@@ -96,6 +96,7 @@ import {
   PHOTO_TYPES,
   beforeAfterAllowed,
   checkMenu,
+  isMenuPdf,
   menuAllowed,
   pickBeforeAfter,
   siteFileKeys,
@@ -292,6 +293,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/webhooks/stripe") return stripeWebhook(request, env);
     let m = path.match(/^\/api\/sites\/([a-z0-9-]+)$/);
     if (m) return updateSite(request, env, m[1]!);
+    m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/menu$/);
+    if (m) return uploadMenu(request, env, m[1]!);
     m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/reviews$/);
     if (m) return moderateReviews(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer$/);
@@ -1668,6 +1671,26 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
   }
   const res = html(page, 201, n);
   return sessionCookieFor ? withSession(res, sessionCookieFor) : res;
+}
+
+// Upload menu file(s) on their own from the edit page, without saving the whole
+// form — the owner clicks "Upload menu" and the thumbnail appears at once. The
+// edit key (or owner session) authorises; files are validated and appended.
+async function uploadMenu(request: Request, env: Env, slug: string): Promise<Response> {
+  const form = await readForm(request);
+  if (!form) return json({ ok: false, error: "Please use the form." }, 400);
+  const site = await authorize(env, slug, form.fields.key ?? "", request);
+  if (!site) return json({ ok: false, error: "Your edit link isn't valid any more. Reload it and try again." }, 403);
+  if (!form.menu.length) return json({ ok: false, error: "Choose a file first." }, 400);
+  if (!menuAllowed(site.category)) return json({ ok: false, error: "A menu can't be added for this type of business." }, 400);
+  const problem = checkMenu(form.menu, (site.menu ?? []).length);
+  if (problem) return json({ ok: false, error: problem }, 400);
+  const stored = await storeMenu(env, slug, form.menu);
+  // Re-read the freshest copy so a concurrent edit isn't clobbered.
+  const fresh = (await loadSite(env, slug)) ?? site;
+  const menu = [...(fresh.menu ?? []), ...stored];
+  await saveSite(env, { ...fresh, menu, updatedAt: new Date().toISOString() });
+  return json({ ok: true, menu: menu.map((k) => ({ key: k, url: `${env.PUBLIC_ORIGIN}/p/${k}`, pdf: isMenuPdf(k) })) });
 }
 
 async function updateSite(request: Request, env: Env, slug: string): Promise<Response> {
