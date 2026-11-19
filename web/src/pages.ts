@@ -1036,7 +1036,7 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
   return layout({ title: "Choose a new password | SiteVault", noindex: true, body });
 }
 
-export type AccountSite = { slug: string; name: string; siteUrl: string; state: string };
+export type AccountSite = { slug: string; name: string; siteUrl: string; state: string; pendingReviews?: number };
 
 /** "My websites": every site on the account, and a way to add one made before accounts. */
 export function accountPage(
@@ -1066,11 +1066,16 @@ export function accountPage(
       : claimForm;
   const rows = sites.length
     ? sites
-        .map(
-          (s) => `<div class="card" style="margin-bottom:12px"><h3 style="margin:0 0 4px">${esc(s.name)}</h3>
-  <p class="hint" style="margin:0 0 10px"><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">${esc(s.siteUrl)}</a> · ${esc(STATE[s.state] ?? s.state)}</p>
-  <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}">Edit, billing and visitors</a><a class="btn ghost" href="${esc(s.siteUrl)}" target="_blank" rel="noopener">View</a></div></div>`,
-        )
+        .map((s) => {
+          const n = s.pendingReviews ?? 0;
+          const label = `${n} review${n === 1 ? "" : "s"} pending approval`;
+          const bell = n
+            ? `<a href="/edit/${esc(s.slug)}#reviews" title="${label}" aria-label="${label}" style="position:relative;flex-shrink:0;text-decoration:none;font-size:1.35rem;line-height:1">🔔<span style="position:absolute;top:-6px;right:-9px;background:#ef4444;color:#fff;font-size:.66rem;font-weight:700;min-width:16px;height:16px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 3px">${n}</span></a>`
+            : "";
+          return `<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><h3 style="margin:0">${esc(s.name)}</h3>${bell}</div>
+  <p class="hint" style="margin:6px 0 10px"><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">${esc(s.siteUrl)}</a> · ${esc(STATE[s.state] ?? s.state)}</p>
+  <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}">Edit, billing and visitors</a><a class="btn ghost" href="${esc(s.siteUrl)}" target="_blank" rel="noopener">View</a></div></div>`;
+        })
         .join("")
     : `<p>No website on this account yet. <a href="/new">Build it</a>, or add one you already made below.</p>`;
   return layout({

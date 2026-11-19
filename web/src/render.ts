@@ -259,8 +259,13 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .rev-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .rev-name{font-weight:700;color:var(--ink)}
 .rev-text{margin:0;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
-.rev-form{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;max-width:520px}
-.rev-form h3{margin:0 0 16px;font-size:1.15rem}
+.rev-form{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);max-width:520px;overflow:hidden}
+.rev-form summary{cursor:pointer;font-weight:700;font-size:1.1rem;padding:15px 20px;list-style:none;user-select:none}
+.rev-form summary::-webkit-details-marker{display:none}
+.rev-form summary::after{content:"＋";float:right;color:var(--primary);font-weight:800}
+.rev-form[open] summary::after{content:"－"}
+.rev-form[open] summary{border-bottom:1px solid var(--line)}
+.rev-form>form{padding:18px 20px}
 .rev-field{margin-bottom:14px}
 .rev-field label,.rev-label{display:block;font-weight:600;font-size:.9rem;margin-bottom:5px;color:var(--ink)}
 .rev-form input[type=text],.rev-form textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--bg);color:var(--ink);box-sizing:border-box}
@@ -522,8 +527,9 @@ export function renderSite(site: Site, ctx: RenderContext): string {
     </ul>`
         : `<p class="rev-empty">No reviews yet — be the first to leave one.</p>`
     }
-    <form class="rev-form" method="post" action="/review">
-      <h3>Leave a review</h3>
+    <details class="rev-form">
+      <summary>Leave a review</summary>
+      <form method="post" action="/review">
       <input type="text" name="website" class="rev-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
       <div class="rev-field"><label for="rev-name">Your name</label><input id="rev-name" name="name" type="text" maxlength="60" required></div>
       <div class="rev-field"><span class="rev-label">Rating</span>
@@ -539,7 +545,8 @@ export function renderSite(site: Site, ctx: RenderContext): string {
       <div class="rev-field"><label for="rev-text">Your review</label><textarea id="rev-text" name="text" maxlength="600" rows="3" required></textarea></div>
       <button class="btn primary" type="submit">Submit review</button>
       <p class="rev-note">Reviews appear on the site once the owner approves them.</p>
-    </form>
+      </form>
+    </details>
   </div>
 </section>`;
 

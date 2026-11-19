@@ -1122,7 +1122,13 @@ async function accountSites(env: Env, account: Account): Promise<AccountSite[]> 
     const site = await ownedSite(env, account, slug);
     if (!site || seen.has(site.slug)) continue;
     seen.add(site.slug);
-    out.push({ slug: site.slug, name: site.businessName, siteUrl: siteUrl(env, site.slug), state: siteState(site, cfg, now) });
+    out.push({
+      slug: site.slug,
+      name: site.businessName,
+      siteUrl: siteUrl(env, site.slug),
+      state: siteState(site, cfg, now),
+      pendingReviews: (await listPendingReviews(env, site.slug)).length,
+    });
   }
   return out;
 }

@@ -42,6 +42,14 @@ describe("accounts", () => {
     expect(page).toContain('href="/edit/bellas"');
     expect(page).toContain("Sign out");
   });
+
+  it("shows a review-pending bell on the website card only when reviews await approval", () => {
+    const none = accountPage("o@x.test", [{ slug: "b", name: "B", siteUrl: "https://b.3pandasite.com/", state: "live", pendingReviews: 0 }]);
+    expect(none).not.toContain("pending approval");
+    const some = accountPage("o@x.test", [{ slug: "b", name: "B", siteUrl: "https://b.3pandasite.com/", state: "live", pendingReviews: 2 }]);
+    expect(some).toContain('title="2 reviews pending approval"');
+    expect(some).toContain('href="/edit/b#reviews"');
+  });
 });
 
 import { homePage } from "../src/pages.js";
