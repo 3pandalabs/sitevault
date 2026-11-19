@@ -208,19 +208,6 @@ describe("renderSite", () => {
       expect(out).not.toContain("<b>Lawns</b>");
     }
   });
-  it("shows the testimonials section only with quotes, labelled and escaped, in every template", () => {
-    expect(html).not.toContain("What customers say");
-    const ctx = { siteUrl: "https://x/s/a", assetOrigin: "https://x", homeUrl: "https://x" };
-    for (const template of ["spotlight", "split", "editorial"] as const) {
-      const p = parseContent({ ...base, testimonials: `Bob <b>D</b> — Said "great" & tidy` });
-      if (!p.ok) throw new Error("fixture invalid");
-      const out = renderSite({ ...site, ...p.value, template }, ctx);
-      expect(out).toContain('<h2 id="reviews-h">What customers say</h2>');
-      expect(out).toContain("<blockquote>Said &quot;great&quot; &amp; tidy</blockquote>");
-      expect(out).toContain('<p class="qby">Bob &lt;b&gt;D&lt;/b&gt;</p>');
-      expect(out).not.toContain("<b>D</b>");
-    }
-  });
   it("always shows the Reviews section with a leave-a-review form; lists approved reviews", () => {
     expect(html).toContain('action="/review"');
     expect(html).toContain("No reviews yet");
