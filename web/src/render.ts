@@ -12,7 +12,7 @@
 // alt text, visible focus, 4.5:1 contrast (every theme's primary is dark
 // enough for white text), and nothing that only works with a mouse.
 
-import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, menuAllowed, reviewStats, scheduleAllowed, teamAllowed, type PolicyKind, type Site } from "./site.js";
+import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, listingsAllowed, menuAllowed, reviewStats, scheduleAllowed, teamAllowed, type PolicyKind, type Site } from "./site.js";
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
 import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
@@ -255,6 +255,14 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .faq summary::after{content:"+";color:var(--primary);font-weight:800;font-size:1.3rem;line-height:1}
 .faq details[open] summary::after{content:"−"}
 .faq p{margin:0;padding:0 16px 16px;color:var(--muted);line-height:1.6}
+.listings{list-style:none;margin:0;padding:0;display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.listing{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.listing-img{position:relative}
+.listing-img img{width:100%;height:190px;object-fit:cover;display:block}
+.listing-status{position:absolute;top:10px;left:10px;background:var(--primary);color:#fff;font-size:.75rem;font-weight:700;letter-spacing:.04em;padding:4px 10px;border-radius:999px}
+.listing-body{padding:12px 14px}
+.listing-price{margin:0;font-weight:800;font-size:1.15rem;color:var(--ink)}
+.listing-details{margin:4px 0 0;color:var(--muted)}
 .ba{list-style:none;margin:0;padding:0;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
 .ba-cmp{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--band);--pos:50%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .ba-cmp img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
@@ -597,6 +605,25 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // Real estate: featured listings (photo + status + price + details).
+  const listings = listingsAllowed(site.category) ? site.listings ?? [] : [];
+  const listingsHtml = listings.length
+    ? `<section aria-labelledby="listings-h" class="band reveal">
+  <div class="wrap">
+    <p class="kicker">On the market</p>
+    <h2 id="listings-h">Featured listings</h2>
+    <ul class="listings">
+      ${listings
+        .map(
+          (l, i) =>
+            `<li class="listing"><div class="listing-img"><img src="${esc(photoUrl(ctx, l.photo))}" alt="${esc(`Listing ${i + 1}`)}" loading="lazy" decoding="async"><span class="listing-status">${esc(l.status)}</span></div><div class="listing-body">${l.price ? `<p class="listing-price">${esc(l.price)}</p>` : ""}${l.details ? `<p class="listing-details">${esc(l.details)}</p>` : ""}</div></li>`,
+        )
+        .join("\n      ")}
+    </ul>
+  </div>
+</section>`
+    : "";
+
   // FAQ (all categories): a native <details> accordion, no JavaScript.
   const faqItems = site.faq ?? [];
   const faqHtml = faqItems.length
@@ -746,6 +773,7 @@ ${teamHtml}
 ${insuranceHtml}
 ${menuHtml}
 ${scheduleHtml}
+${listingsHtml}
 ${galleryHtml}
 ${beforeAfterHtml}
 ${faqHtml}

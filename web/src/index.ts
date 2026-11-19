@@ -94,16 +94,21 @@ import {
   MAX_PHOTO_BYTES,
   MAX_PHOTOS,
   PHOTO_TYPES,
+  LISTING_PHOTO_FIELDS,
+  LISTING_SLOTS,
   beforeAfterAllowed,
   checkMenu,
   checkScheduleFile,
   isMenuPdf,
+  listingsAllowed,
   menuAllowed,
   scheduleAllowed,
   pickBeforeAfter,
+  pickListings,
   siteFileKeys,
   type BeforeAfter,
   type BeforeAfterField,
+  type Listing,
   parseContent,
   parseInternalOffer,
   parseReviewSubmission,
@@ -1315,7 +1320,13 @@ type Parsed = {
   keepMenu: string[];
   /** New class-schedule file (name="schedule"), if any. */
   schedule: File | null;
+  /** New listing photo slots (listing1Photo … listingNPhoto), non-empty only. */
+  listingPhotos: Partial<Record<string, File>>;
+  /** Existing listings to keep, by their photo key (edit page). */
+  keepListing: string[];
 };
+
+const LISTING_PHOTO_SET = new Set<string>(LISTING_PHOTO_FIELDS);
 
 const BA_FIELD_NAMES: readonly string[] = BEFORE_AFTER_FIELDS.flat();
 
@@ -1330,6 +1341,8 @@ async function readForm(request: Request): Promise<Parsed | null> {
   const keepMenu: string[] = [];
   const ba: Partial<Record<BeforeAfterField, File>> = {};
   const menu: File[] = [];
+  const listingPhotos: Partial<Record<string, File>> = {};
+  const keepListing: string[] = [];
   let video: File | null = null;
   let schedule: File | null = null;
   for (const [k, v] of form as unknown as Iterable<[string, string | File]>) {
@@ -1337,6 +1350,7 @@ async function readForm(request: Request): Promise<Parsed | null> {
       if (k === "keep") keep.push(v);
       else if (k === "keepPair") keepPair.push(v);
       else if (k === "keepMenu") keepMenu.push(v);
+      else if (k === "keepListing") keepListing.push(v);
       else fields[k] = v;
     } else if (k === "photos" && v.size > 0) {
       files.push(v);
@@ -1346,11 +1360,13 @@ async function readForm(request: Request): Promise<Parsed | null> {
       menu.push(v);
     } else if (k === "schedule" && v.size > 0) {
       schedule = v;
+    } else if (LISTING_PHOTO_SET.has(k) && v.size > 0) {
+      listingPhotos[k] = v;
     } else if (BA_FIELD_NAMES.includes(k) && v.size > 0) {
       ba[k as BeforeAfterField] = v;
     }
   }
-  return { fields, files, keep, video, ba, keepPair, menu, keepMenu, schedule };
+  return { fields, files, keep, video, ba, keepPair, menu, keepMenu, schedule, listingPhotos, keepListing };
 }
 
 function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES): string | null {
@@ -1434,6 +1450,7 @@ async function insertSite(
   pairFiles: [File, File][] = [],
   menuFiles: File[] = [],
   scheduleFile: File | null = null,
+  listingItems: { photo: File; price: string; details: string; status: Listing["status"] }[] = [],
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
@@ -1454,6 +1471,7 @@ async function insertSite(
     ...(pairFiles.length ? { beforeAfter: await storePairs(env, slug, pairFiles) } : {}),
     ...(menuFiles.length ? { menu: await storeMenu(env, slug, menuFiles) } : {}),
     ...(scheduleFile ? { schedule: (await storeMenu(env, slug, [scheduleFile]))[0] } : {}),
+    ...(listingItems.length ? { listings: await storeListings(env, slug, listingItems) } : {}),
     status: "live",
     source,
     editKeyHash: await sha256Hex(key),
@@ -1582,6 +1600,26 @@ async function storeMenu(env: Env, slug: string, files: File[]): Promise<string[
   return keys;
 }
 
+/** Read the per-slot listing fields (photo + text) out of a parsed form. */
+function listingSlots(form: Parsed): { photo: File | undefined; price: string; details: string; status: string }[] {
+  return LISTING_SLOTS.map((s) => ({
+    photo: form.listingPhotos[s.photo],
+    price: (form.fields[s.price] ?? "").trim(),
+    details: (form.fields[s.details] ?? "").trim(),
+    status: form.fields[s.status] ?? "",
+  }));
+}
+
+/** Store listing photos (web-sized like photos) and assemble the Listing records. */
+async function storeListings(env: Env, slug: string, items: { photo: File; price: string; details: string; status: Listing["status"] }[]): Promise<Listing[]> {
+  const out: Listing[] = [];
+  for (const it of items) {
+    const [photo] = await storePhotos(env, slug, [it.photo]);
+    out.push({ photo: photo!, price: it.price, details: it.details, status: it.status });
+  }
+  return out;
+}
+
 async function deletePhotos(env: Env, keys: string[]): Promise<void> {
   if (keys.length) await env.PHOTOS.delete(keys);
 }
@@ -1632,6 +1670,10 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     const schedProblem = checkScheduleFile(form.schedule);
     if (schedProblem) errors.schedule = schedProblem;
   }
+  // Featured listings (real estate).
+  const listingPick = pickListings(listingSlots(form), { existing: 0, types: PHOTO_TYPES, maxBytes: MAX_PHOTO_BYTES });
+  if (!listingPick.ok) errors.listings = listingPick.error;
+  else if (listingPick.items.length && parsed.ok && !listingsAllowed(parsed.value.category)) errors.listings = "Listings can't be added for this type of business.";
   const requested = fields.slug ? normaliseAddress(fields.slug) : null;
   if (requested) {
     const problem = await requestedAddressProblem(env, requested);
@@ -1664,7 +1706,7 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     owner = made;
     console.log("account_created", { id: made.id });
   }
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), [], form.menu, form.schedule);
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), [], form.menu, form.schedule, listingPick.ok ? listingPick.items : []);
   await addSiteToAccount(env.SITES, owner, slug);
   reportSitevaultUse(env, ctx, owner);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
@@ -1755,6 +1797,12 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     const schedProblem = checkScheduleFile(form.schedule);
     if (schedProblem) errors.schedule = schedProblem;
   }
+  // Featured listings (real estate): keep existing by photo key, add new slots.
+  const listingsNow = site.listings ?? [];
+  const keptListings = listingsNow.filter((l) => form.keepListing.includes(l.photo));
+  const listingPick = pickListings(listingSlots(form), { existing: keptListings.length, types: PHOTO_TYPES, maxBytes: MAX_PHOTO_BYTES });
+  if (!listingPick.ok) errors.listings = listingPick.error;
+  else if (listingPick.items.length && parsed.ok && !listingsAllowed(parsed.value.category)) errors.listings = "Listings can't be added for this type of business.";
   // Before & after: untick to remove a pair; add new ones only for trades
   // where they fit, with both photos and the "our own work" tick.
   const pairsNow = site.beforeAfter ?? [];
@@ -1781,6 +1829,9 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   for (const k of menuNow) if (!keptMenu.includes(k)) removed.push(k);
   const addedMenu = form.menu.length ? await storeMenu(env, slug, form.menu) : [];
   const menu = [...keptMenu, ...addedMenu];
+  for (const l of listingsNow) if (!keptListings.includes(l)) removed.push(l.photo);
+  const addedListings = listingPick.ok ? await storeListings(env, slug, listingPick.items) : [];
+  const listings = [...keptListings, ...addedListings];
   const addedPairs = newPairs.ok ? await storePairs(env, slug, newPairs.pairs) : [];
   const beforeAfter = [...keptPairs, ...addedPairs];
   const added = await storePhotos(env, slug, form.files);
@@ -1825,6 +1876,8 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   else delete next.menu;
   if (schedule) next.schedule = schedule;
   else delete next.schedule;
+  if (listings.length) next.listings = listings;
+  else delete next.listings;
   if (renaming) {
     const aliases = [...new Set([...(site.aliases ?? []), site.slug])].filter((a) => a !== wanted);
     next.slug = wanted;

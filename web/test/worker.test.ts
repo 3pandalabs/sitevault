@@ -1140,3 +1140,75 @@ describe("FAQ (all categories)", () => {
     expect(page).toContain("Real answer.");
   });
 });
+
+describe("featured listings (real estate)", () => {
+  async function realtor() {
+    const res = await internalCreate({ category: "realestate", businessName: "Keystone Realty", phone: "(555) 950-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string | string[]>, files: Record<string, File> = {}) {
+    const form = new FormData();
+    const base = { businessName: "Keystone Realty", category: "realestate", phone: "(555) 950-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) for (const x of Array.isArray(v) ? v : [v]) form.append(k, x);
+    for (const [k, f] of Object.entries(files)) form.set(k, f);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+  const listOf = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { listings?: { photo: string; price: string; details: string; status: string }[] }).listings;
+
+  it("shows the Listings fieldset for real estate (gated), hidden for a plumber", async () => {
+    const { slug, key } = await realtor();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="listings-fieldset"');
+    expect(page).toContain('data-show-cats="realestate"');
+    expect(page).toContain('name="listing1Photo"');
+    expect(page).not.toMatch(/<fieldset id="listings-fieldset"[^>]*\shidden/);
+    const plumb = await internalCreate({ slug: "pipe-list", category: "plumbing", businessName: "Pipe Co", phone: "(555) 950-2000" });
+    const p = (await plumb.json()) as { slug: string; editUrl: string };
+    const pkey = new URL(p.editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${p.slug}?k=${pkey}`)).text()).toMatch(/<fieldset id="listings-fieldset"[^>]*\shidden/);
+  });
+
+  it("stores a listing (photo + price + details + status) and renders it", async () => {
+    const { slug, key } = await realtor();
+    const res = await save(slug, key, { listing1Price: "$450,000", listing1Details: "3 bed · 2 bath", listing1Status: "For sale" }, { listing1Photo: jpeg("home.jpg") });
+    expect(res.status).toBe(303);
+    const items = listOf(slug)!;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ price: "$450,000", details: "3 bed · 2 bath", status: "For sale" });
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="listings-h"');
+    expect(page).toContain("$450,000");
+    expect(page).toContain("3 bed · 2 bath");
+    expect(page).toContain(`/p/${items[0]!.photo}`);
+  });
+
+  it("keeps or removes existing listings, and defaults a bad status", async () => {
+    const { slug, key } = await realtor();
+    await save(slug, key, { listing1Price: "$1", listing1Status: "nonsense" }, { listing1Photo: jpeg("a.jpg") });
+    const first = listOf(slug)!;
+    expect(first[0]!.status).toBe("For sale"); // bad status normalised
+    const k0 = first[0]!.photo;
+    // Save again keeping it -> still there.
+    expect((await save(slug, key, { keepListing: k0 })).status).toBe(303);
+    expect(listOf(slug)).toHaveLength(1);
+    // Save again without keepListing -> removed and photo deleted.
+    expect((await save(slug, key, {})).status).toBe(303);
+    expect(listOf(slug)).toBeUndefined();
+    expect(R2().data.has(k0)).toBe(false);
+  });
+
+  it("rejects listings for a non-realestate business", async () => {
+    const plumb = await internalCreate({ slug: "pipe-list2", category: "plumbing", businessName: "Pipe Co2", phone: "(555) 950-3000" });
+    const p = (await plumb.json()) as { slug: string; editUrl: string };
+    const key = new URL(p.editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Pipe Co2", category: "plumbing", phone: "(555) 950-3000", city: "Edison", key })) form.append(k, v);
+    form.set("listing1Photo", jpeg("x.jpg"));
+    const res = await call(`${ORIGIN}/api/sites/${p.slug}`, { method: "POST", headers: { accept: "application/json" }, body: form });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.listings).toBeTruthy();
+    expect(listOf(p.slug)).toBeUndefined();
+  });
+});

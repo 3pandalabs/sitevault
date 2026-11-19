@@ -101,6 +101,9 @@ export type TeamMember = { name: string; role: string };
 /** A frequently-asked question and its answer, shown in a native-HTML accordion. */
 export type FaqItem = { q: string; a: string };
 
+/** A real-estate featured listing: a photo (R2 key) plus facts the owner typed. */
+export type Listing = { photo: string; price: string; details: string; status: string };
+
 export type SiteContent = {
   businessName: string;
   category: CategoryKey;
@@ -152,6 +155,8 @@ export type Site = SiteContent & {
   menu?: string[];
   /** R2 key of a fitness business's uploaded class schedule (image or PDF). */
   schedule?: string;
+  /** Real-estate featured listings (photo + price + details + status). Absent = none. */
+  listings?: Listing[];
   /** Approved customer reviews (visitor-submitted, owner-moderated). Absent = none. */
   reviews?: Review[];
   /** R2 key of the business's video ad (AdVault sites only). */
@@ -343,6 +348,58 @@ export function faqToText(faq: FaqItem[]): string {
   return faq.map((f) => `${f.q} | ${f.a}`).join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Featured listings (real estate).
+
+export const MAX_LISTINGS = 6;
+export const LISTING_STATUSES = ["For sale", "For rent", "Sold", "Rented", "Under offer"] as const;
+export type ListingStatus = (typeof LISTING_STATUSES)[number];
+const MAX_LISTING_PRICE = 24;
+const MAX_LISTING_DETAILS = 120;
+
+/** Categories that get a "Featured listings" section. */
+export const LISTING_CATEGORIES: readonly CategoryKey[] = ["realestate"];
+
+export function listingsAllowed(category: string): boolean {
+  return (LISTING_CATEGORIES as readonly string[]).includes(category);
+}
+
+/** The per-slot form field names for new listings (photo + the three text fields). */
+export const LISTING_SLOTS = Array.from({ length: MAX_LISTINGS }, (_, i) => ({
+  photo: `listing${i + 1}Photo`,
+  price: `listing${i + 1}Price`,
+  details: `listing${i + 1}Details`,
+  status: `listing${i + 1}Status`,
+}));
+export const LISTING_PHOTO_FIELDS: readonly string[] = LISTING_SLOTS.map((s) => s.photo);
+
+export function normaliseListingStatus(raw: string): ListingStatus {
+  const found = LISTING_STATUSES.find((s) => s.toLowerCase() === raw.trim().toLowerCase());
+  return found ?? "For sale";
+}
+
+/**
+ * Build new listings from the upload slots and their text fields. A slot counts
+ * only when it has a photo; its price/details are validated. Pure: the caller
+ * checks the category and stores the photos (passing back the stored key).
+ */
+export function pickListings<F extends { type: string; size: number }>(
+  slots: { photo: F | undefined; price: string; details: string; status: string }[],
+  opts: { existing: number; types: string[]; maxBytes: number },
+): { ok: true; items: { photo: F; price: string; details: string; status: ListingStatus }[] } | { ok: false; error: string } {
+  const items: { photo: F; price: string; details: string; status: ListingStatus }[] = [];
+  for (const s of slots) {
+    if (!s.photo) continue;
+    if (!opts.types.includes(s.photo.type)) return { ok: false, error: "A listing photo must be a JPG, PNG or WebP image." };
+    if (s.photo.size > opts.maxBytes) return { ok: false, error: `Each listing photo must be under ${Math.round(opts.maxBytes / 1024 / 1024)} MB.` };
+    if (s.price.length > MAX_LISTING_PRICE || s.details.length > MAX_LISTING_DETAILS) return { ok: false, error: `Keep each price under ${MAX_LISTING_PRICE} and each detail under ${MAX_LISTING_DETAILS} characters.` };
+    if (LINK_PATTERN.test(s.price) || LINK_PATTERN.test(s.details)) return { ok: false, error: "Links aren't allowed here." };
+    items.push({ photo: s.photo, price: s.price, details: s.details, status: normaliseListingStatus(s.status) });
+  }
+  if (opts.existing + items.length > MAX_LISTINGS) return { ok: false, error: `Up to ${MAX_LISTINGS} listings in total.` };
+  return { ok: true, items };
+}
+
 /** Validate the single uploaded schedule file (same types/size as a menu). */
 export function checkScheduleFile(file: { type: string; size: number } | null): string | null {
   if (!file) return null;
@@ -378,8 +435,8 @@ export function pickBeforeAfter<F extends PhotoLike>(
 }
 
 /** Every R2 key this site's own host may serve (and removal must delete). */
-export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter" | "menu" | "schedule">): string[] {
-  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after]), ...(site.menu ?? []), ...(site.schedule ? [site.schedule] : [])];
+export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter" | "menu" | "schedule" | "listings">): string[] {
+  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after]), ...(site.menu ?? []), ...(site.schedule ? [site.schedule] : []), ...(site.listings ?? []).map((l) => l.photo)];
 }
 
 const LIMITS = {

@@ -10,7 +10,11 @@ import {
   MAX_BEFORE_AFTER,
   MAX_LOCATIONS,
   INSURANCE_CATEGORIES,
+  LISTING_CATEGORIES,
+  LISTING_SLOTS,
+  LISTING_STATUSES,
   MAX_FAQ,
+  MAX_LISTINGS,
   MAX_MENU,
   MAX_PHOTOS,
   MAX_TEAM,
@@ -21,6 +25,7 @@ import {
   beforeAfterAllowed,
   insuranceAllowed,
   isMenuPdf,
+  listingsAllowed,
   locationsToText,
   menuAllowed,
   scheduleAllowed,
@@ -30,6 +35,7 @@ import {
   teamToText,
   type CategoryKey,
   type FieldErrors,
+  type Listing,
   type Review,
   type Site,
 } from "./site.js";
@@ -694,6 +700,45 @@ function teamFields(category: string, value: string, e: (k: string) => string): 
 </fieldset>`;
 }
 
+/**
+ * The "Featured listings" section for real estate: existing listings show with
+ * a keep box; new ones use photo + price + status + details slots (a photo
+ * makes a listing). Category-gated via data-show-cats.
+ */
+function listingsFields(category: string, listings: Listing[], photoUrl: ((k: string) => string) | null, e: (k: string) => string): string {
+  const current =
+    listings.length && photoUrl
+      ? `<p class="hint">Current listings. Untick to remove one when you save.</p>
+<div class="photos">${listings
+          .map(
+            (l, i) =>
+              `<div class="photo"><img src="${esc(photoUrl(l.photo))}" alt="Listing ${i + 1}"><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepListing" value="${esc(l.photo)}" checked> ${esc(l.status)}${l.price ? ` · ${esc(l.price)}` : ""}</label></div></div>`,
+          )
+          .join("")}</div>`
+      : "";
+  const free = Math.min(Math.max(0, MAX_LISTINGS - listings.length), 3);
+  const statusOpts = LISTING_STATUSES.map((s, i) => `<option value="${esc(s)}"${i === 0 ? " selected" : ""}>${esc(s)}</option>`).join("");
+  const slots = LISTING_SLOTS.slice(0, free)
+    .map(
+      (s, i) => `<div class="listing-slot"><p class="hint" style="font-weight:600;margin:12px 0 6px">New listing ${i + 1}</p>
+  <div class="field"><label for="${s.photo}">Photo</label><input type="file" id="${s.photo}" name="${s.photo}" accept="image/*"></div>
+  <div class="row">
+    <div class="field"><label for="${s.price}">Price <span class="hint">Optional</span></label><input type="text" id="${s.price}" name="${s.price}" maxlength="24" placeholder="$450,000"></div>
+    <div class="field"><label for="${s.status}">Status</label><select id="${s.status}" name="${s.status}">${statusOpts}</select></div>
+  </div>
+  <div class="field"><label for="${s.details}">Details <span class="hint">Optional</span></label><input type="text" id="${s.details}" name="${s.details}" maxlength="120" placeholder="3 bed · 2 bath · 1,800 sqft"></div>
+</div>`,
+    )
+    .join("\n  ");
+  const add = free ? `<p class="hint">Add a property — the photo makes the listing; price and details are optional.</p>\n  ${slots}` : "";
+  return `<fieldset id="listings-fieldset" data-show-cats="${esc(LISTING_CATEGORIES.join(","))}"${listingsAllowed(category) ? "" : " hidden"}><legend>Featured listings</legend>
+  <p class="hint">Show a few properties on your website. Enter only facts, and follow US fair-housing law — no preferences based on protected characteristics.</p>
+  ${current}
+  ${add}
+  ${e("listings")}
+</fieldset>`;
+}
+
 /** The "Questions & answers" section — shown for every category (not gated). */
 function faqFields(value: string, e: (k: string) => string): string {
   return `<fieldset><legend>Questions &amp; answers</legend>
@@ -753,6 +798,7 @@ export function builderPage(
   const insurance = insuranceFields(selectedCat, v("insurance", site?.insurance ?? ""), e);
   const team = teamFields(selectedCat, v("team", site ? teamToText(site.team) : ""), e);
   const faq = faqFields(v("faq", site ? faqToText(site.faq) : ""), e);
+  const listings = listingsFields(selectedCat, mode.kind === "edit" ? mode.site.listings ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -820,6 +866,7 @@ ${menu}
 ${schedule}
 ${team}
 ${insurance}
+${listings}
 ${faq}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
