@@ -80,6 +80,14 @@ export type Service = { name: string; price: string | null };
 /** One customer testimonial: what they said, and who said it (name may be blank). */
 export type Testimonial = { name: string; quote: string };
 
+/**
+ * A review left by a visitor to the published site (not the owner). Pending ones
+ * live in KV (`revq:<slug>:<id>`) until the owner approves; approved ones are
+ * denormalised onto the site record (`site.reviews`) so the public page needs no
+ * extra lookup to render them.
+ */
+export type Review = { id: string; name: string; rating: number; text: string; createdAt: string };
+
 export type SiteContent = {
   businessName: string;
   category: CategoryKey;
@@ -113,6 +121,8 @@ export type Site = SiteContent & {
    * sites/<slug>/, like photos). Up to MAX_BEFORE_AFTER. Absent = none.
    */
   beforeAfter?: BeforeAfter[];
+  /** Approved customer reviews (visitor-submitted, owner-moderated). Absent = none. */
+  reviews?: Review[];
   /** R2 key of the business's video ad (AdVault sites only). */
   video?: string | null;
   /** Earlier addresses, each a permanent redirect to this one. */
@@ -141,6 +151,12 @@ export const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
 export const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 export const MAX_SERVICES = 12;
 export const MAX_TESTIMONIALS = 3;
+// Customer reviews (visitor-submitted, owner-moderated).
+export const MAX_APPROVED_REVIEWS = 24; // shown on the site, newest first
+export const MAX_PENDING_REVIEWS = 30; // queued awaiting moderation, per site
+export const REVIEWS_PER_IP_PER_DAY = 3; // a visitor can leave at most this many
+const MAX_REVIEW_NAME = 60;
+const MAX_REVIEW_TEXT = 600;
 
 /** One before & after pair: R2 keys of the two photos. */
 export type BeforeAfter = { before: string; after: string };
@@ -298,6 +314,33 @@ export function parseTestimonials(raw: string): Testimonial[] {
 
 export function testimonialsToText(testimonials: Testimonial[]): string {
   return testimonials.map((t) => (t.name ? `${t.name} — ${t.quote}` : t.quote)).join("\n");
+}
+
+/**
+ * Validate a visitor's review submission (the public "Leave a review" form).
+ * Facts only: no links, length-capped, 1-5 whole-star rating. The caller does
+ * the rate-limiting and honeypot; this just shapes and checks the content.
+ */
+export function parseReviewSubmission(
+  fields: Record<string, unknown>,
+): { ok: true; value: { name: string; rating: number; text: string } } | { ok: false; error: string } {
+  const name = text(fields.name);
+  const textBody = text(fields.text);
+  const rating = Number(text(fields.rating));
+  if (!name) return { ok: false, error: "Add your name." };
+  if (name.length > MAX_REVIEW_NAME) return { ok: false, error: `Keep your name under ${MAX_REVIEW_NAME} characters.` };
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return { ok: false, error: "Pick a rating from 1 to 5 stars." };
+  if (!textBody) return { ok: false, error: "Write a short review." };
+  if (textBody.length > MAX_REVIEW_TEXT) return { ok: false, error: `Keep your review under ${MAX_REVIEW_TEXT} characters.` };
+  if (LINK_PATTERN.test(name) || LINK_PATTERN.test(textBody)) return { ok: false, error: "Links aren't allowed." };
+  return { ok: true, value: { name, rating, text: textBody } };
+}
+
+/** Count and (one-decimal) average rating of the approved reviews. */
+export function reviewStats(reviews: Review[]): { count: number; average: number } {
+  if (reviews.length === 0) return { count: 0, average: 0 };
+  const sum = reviews.reduce((n, r) => n + r.rating, 0);
+  return { count: reviews.length, average: Math.round((sum / reviews.length) * 10) / 10 };
 }
 
 /** Validate form fields into SiteContent, or field-level errors. */

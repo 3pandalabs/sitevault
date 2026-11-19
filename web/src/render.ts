@@ -12,7 +12,7 @@
 // alt text, visible focus, 4.5:1 contrast (every theme's primary is dark
 // enough for white text), and nothing that only works with a mouse.
 
-import { CATEGORIES, headline, type Site } from "./site.js";
+import { CATEGORIES, headline, reviewStats, type Site } from "./site.js";
 import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
 
@@ -250,6 +250,28 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .quotes blockquote{margin:0;font-size:1.02rem;line-height:1.5;color:var(--ink)}
 .quotes .qby{margin:0;font-weight:700;color:var(--muted);font-size:.9rem}
 .quotes .qby::before{content:"— "}
+.stars{color:#f59e0b;letter-spacing:1px;white-space:nowrap}
+.rev-summary{display:flex;align-items:center;gap:8px;font-size:1.05rem;margin:0 0 18px}
+.rev-summary span{color:var(--muted);font-size:.95rem}
+.rev-empty{color:var(--muted);margin:0 0 18px}
+.revlist{list-style:none;margin:0 0 26px;padding:0;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
+.revlist li{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.rev-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.rev-name{font-weight:700;color:var(--ink)}
+.rev-text{margin:0;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+.rev-form{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;max-width:520px}
+.rev-form h3{margin:0 0 16px;font-size:1.15rem}
+.rev-field{margin-bottom:14px}
+.rev-field label,.rev-label{display:block;font-weight:600;font-size:.9rem;margin-bottom:5px;color:var(--ink)}
+.rev-form input[type=text],.rev-form textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--bg);color:var(--ink);box-sizing:border-box}
+.rev-form textarea{resize:vertical}
+.rev-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.rating{display:inline-flex;flex-direction:row-reverse;gap:2px;font-size:1.7rem;line-height:1}
+.rating input{position:absolute;width:1px;height:1px;opacity:0}
+.rating label{color:#d1d5db;cursor:pointer}
+.rating input:checked~label,.rating label:hover,.rating label:hover~label{color:#f59e0b}
+.rating input:focus-visible+label{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+.rev-note{color:var(--muted);font-size:.85rem;margin:12px 0 0}
 video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:#000}
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .facts h3{margin:0 0 4px;font-size:1rem;display:flex;align-items:center;gap:8px}
@@ -477,6 +499,50 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // Customer reviews: approved ones with stars + average, and the public
+  // "Leave a review" form (posts same-origin to /review, no JS needed; the CSS
+  // star rating and a honeypot keep it simple and spam-resistant).
+  const approvedReviews = site.reviews ?? [];
+  const rstats = reviewStats(approvedReviews);
+  const stars = (n: number) => `<span class="stars" aria-label="${n} out of 5">${"★".repeat(n)}${"☆".repeat(5 - n)}</span>`;
+  const reviewsHtml = `<section aria-labelledby="revs-h" class="band reveal">
+  <div class="wrap">
+    <p class="kicker">Reviews</p>
+    <h2 id="revs-h">Customer reviews</h2>
+    ${
+      approvedReviews.length
+        ? `<p class="rev-summary">${stars(Math.round(rstats.average))} <strong>${rstats.average.toFixed(1)}</strong> <span>· ${rstats.count} review${rstats.count === 1 ? "" : "s"}</span></p>
+    <ul class="revlist">
+      ${approvedReviews
+        .map(
+          (r) =>
+            `<li><div class="rev-head">${stars(r.rating)}<span class="rev-name">${esc(r.name)}</span></div><p class="rev-text">${esc(r.text)}</p></li>`,
+        )
+        .join("\n      ")}
+    </ul>`
+        : `<p class="rev-empty">No reviews yet — be the first to leave one.</p>`
+    }
+    <form class="rev-form" method="post" action="/review">
+      <h3>Leave a review</h3>
+      <input type="text" name="website" class="rev-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="rev-field"><label for="rev-name">Your name</label><input id="rev-name" name="name" type="text" maxlength="60" required></div>
+      <div class="rev-field"><span class="rev-label">Rating</span>
+        <div class="rating">
+          ${[5, 4, 3, 2, 1]
+            .map(
+              (n) =>
+                `<input type="radio" id="rev-star${n}" name="rating" value="${n}"${n === 5 ? " required" : ""}><label for="rev-star${n}" title="${n} star${n === 1 ? "" : "s"}">★</label>`,
+            )
+            .join("")}
+        </div>
+      </div>
+      <div class="rev-field"><label for="rev-text">Your review</label><textarea id="rev-text" name="text" maxlength="600" rows="3" required></textarea></div>
+      <button class="btn primary" type="submit">Submit review</button>
+      <p class="rev-note">Reviews appear on the site once the owner approves them.</p>
+    </form>
+  </div>
+</section>`;
+
   // A tiny SVG favicon: the business's initial on the theme colour, inlined as a
   // data URI (no extra request, and the strict CSP allows data: images).
   const favInitial = (site.businessName.match(/[A-Za-z0-9]/)?.[0] ?? "S").toUpperCase();
@@ -527,6 +593,7 @@ ${about}
 ${galleryHtml}
 ${beforeAfterHtml}
 ${testimonialsHtml}
+${reviewsHtml}
 ${visit}
 <section aria-labelledby="contact-h" class="reveal">
   <div class="wrap">
@@ -562,6 +629,11 @@ ${ctx.nonce ? `<script nonce="${ctx.nonce}">${SITE_JS}</script>` : ""}
  * or "unpublished" (made on SiteVault, not paid for yet). Same light look as
  * customer sites, no JavaScript, not indexed.
  */
+/** The minimal, business-branded page a visitor sees after submitting a review. */
+export function reviewResultPage(siteUrl: string, businessName: string, message: string): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(businessName)}</title><meta name="robots" content="noindex"><style>body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#f6f7f9;color:#111827;margin:0;display:grid;place-items:center;min-height:100vh;padding:24px}.box{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:32px;max-width:420px;text-align:center;box-shadow:0 10px 30px rgba(15,23,42,.08)}h1{font-size:1.2rem;margin:0 0 10px}p{color:#4b5563;line-height:1.5;margin:0 0 22px}a{display:inline-block;background:#111827;color:#fff;padding:10px 18px;border-radius:9px;text-decoration:none;font-weight:700}</style></head><body><div class="box"><h1>${esc(businessName)}</h1><p>${esc(message)}</p><a href="${esc(siteUrl)}">Back to the website</a></div></body></html>`;
+}
+
 export function renderHold(site: Site, kind: "paused" | "unpublished"): string {
   const brand = CATEGORIES[site.category].brand;
   const title = kind === "paused" ? `${site.businessName}: this site is paused` : "This site isn't published yet";

@@ -16,6 +16,7 @@ import {
   testimonialsToText,
   type CategoryKey,
   type FieldErrors,
+  type Review,
   type Site,
 } from "./site.js";
 import { DEFAULT_TEMPLATE, TEMPLATES, themeFor } from "./templates.js";
@@ -330,7 +331,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
 
 export type FormMode =
   | { kind: "new"; account?: { email: string } | null; admin?: boolean }
-  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; signedIn?: boolean; siteUrl?: string; admin?: boolean };
+  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; pendingReviews?: Review[]; signedIn?: boolean; siteUrl?: string; admin?: boolean };
 
 /** Everything the edit page's "Plan & billing" section shows. Only built while BILLING is on. */
 export type BillingView = {
@@ -474,6 +475,29 @@ function barTable(caption: string, head: string, rows: { label: string; n: numbe
         `<tr><th scope="row">${esc(r.label)}</th><td aria-hidden="true"><span class="bar" style="width:${Math.round((r.n / max) * 100)}%"></span></td><td class="n">${r.n}</td></tr>`,
     )
     .join("")}</tbody></table>`;
+}
+
+/** Edit-page moderation: pending customer reviews to approve/reject, approved ones to remove. */
+export function reviewsModerationSection(slug: string, key: string, pending: Review[], approved: Review[]): string {
+  const starStr = (n: number) => `${"★".repeat(n)}${"☆".repeat(5 - n)}`;
+  const act = (action: string, id: string, label: string, cls = "btn ghost") =>
+    `<form method="post" action="/api/sites/${encodeURIComponent(slug)}/reviews" style="display:inline">
+      <input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="action" value="${action}"><input type="hidden" name="reviewId" value="${esc(id)}">
+      <button class="${cls}" type="submit">${label}</button>
+    </form>`;
+  const card = (r: Review, buttons: string) =>
+    `<div class="notice" style="margin:10px 0"><p style="margin:0 0 6px"><span style="color:#f59e0b;letter-spacing:1px">${starStr(r.rating)}</span> <strong>${esc(r.name)}</strong></p><p class="hint" style="margin:0 0 12px">${esc(r.text)}</p><div class="buttons">${buttons}</div></div>`;
+  return `<section class="narrow" id="reviews" style="margin-top:32px">
+<h2>Customer reviews</h2>
+<p class="hint">Visitors can leave a review on your website; it only appears after you approve it.</p>
+${
+    pending.length
+      ? `<h3 style="margin:18px 0 8px">Waiting for approval (${pending.length})</h3>
+${pending.map((r) => card(r, `${act("approve", r.id, "Approve", "btn")} ${act("reject", r.id, "Reject")}`)).join("\n")}`
+      : `<p class="hint" style="margin-top:14px">No reviews waiting for approval.</p>`
+  }
+${approved.length ? `<h3 style="margin:24px 0 8px">Published (${approved.length})</h3>\n${approved.map((r) => card(r, act("remove", r.id, "Remove"))).join("\n")}` : ""}
+</section>`;
 }
 
 export function visitorsSection(v: VisitorsView): string {
@@ -691,6 +715,7 @@ ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 </form>
 ${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors) : ""}
 ${mode.kind === "edit" && mode.billing ? billingSection(mode.site.slug, mode.key, mode.billing) : ""}
+${mode.kind === "edit" ? reviewsModerationSection(mode.site.slug, mode.key, mode.pendingReviews ?? [], mode.site.reviews ?? []) : ""}
 ${
   mode.kind === "edit"
     ? `<div style="margin-top:28px" class="notice">

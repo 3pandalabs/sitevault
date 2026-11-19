@@ -32,7 +32,7 @@
 // D1 STATS (optional): aggregate visit counters, see stats.ts. Writes go
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
-import { renderHold, renderSite, type RenderContext } from "./render.js";
+import { renderHold, renderSite, reviewResultPage, type RenderContext } from "./render.js";
 import { accountPage, adminPage, authPage, builderPage, donePage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
@@ -101,7 +101,12 @@ import {
   type BeforeAfterField,
   parseContent,
   parseInternalOffer,
+  parseReviewSubmission,
+  MAX_APPROVED_REVIEWS,
+  MAX_PENDING_REVIEWS,
+  REVIEWS_PER_IP_PER_DAY,
   type FieldErrors,
+  type Review,
   type Site,
   type SiteContent,
 } from "./site.js";
@@ -186,6 +191,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     }
     const tap = path.match(/^\/t\/([a-z]+)$/);
     if (method === "POST" && tap) return countTap(request, env, ctx, slug, tap[1]!);
+    // A visitor leaving a review (same-origin form on the customer site).
+    if (method === "POST" && path === "/review") return submitReview(request, env, slug);
     // Any other method: 405, never a redirect. A 302 to "/" keeps the method,
     // so a HEAD (before HEAD was routed as GET) looped on itself forever.
     if (method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
@@ -278,6 +285,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/webhooks/stripe") return stripeWebhook(request, env);
     let m = path.match(/^\/api\/sites\/([a-z0-9-]+)$/);
     if (m) return updateSite(request, env, m[1]!);
+    m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/reviews$/);
+    if (m) return moderateReviews(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer$/);
     if (m) return setOfferInternal(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/paid$/);
@@ -689,6 +698,76 @@ function builder(_env: Env, mode: Parameters<typeof builderPage>[0], errors?: Fi
   return html(builderPage(mode, n, errors, values, _env.SITES_DOMAIN ?? null), status, n);
 }
 
+// ---------------------------------------------------------------------------
+// Customer reviews (visitor-submitted, owner-moderated)
+
+const pendingReviewKey = (slug: string, id: string) => `revq:${slug}:${id}`;
+
+/** Reviews awaiting the owner's moderation, newest first. */
+async function listPendingReviews(env: Env, slug: string): Promise<Review[]> {
+  const list = await env.SITES.list({ prefix: `revq:${slug}:` });
+  const out: Review[] = [];
+  for (const k of list.keys) {
+    const v = await env.SITES.get(k.name);
+    if (v) out.push(JSON.parse(v) as Review);
+  }
+  return out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+async function reviewRateLimited(request: Request, env: Env, slug: string): Promise<boolean> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const key = `rrl:${slug}:${await sha256Hex(`${ip}:${Math.floor(Date.now() / 86_400_000)}`)}`;
+  const n = Number((await env.SITES.get(key)) ?? "0");
+  if (n >= REVIEWS_PER_IP_PER_DAY) return true;
+  await env.SITES.put(key, String(n + 1), { expirationTtl: 86_400 });
+  return false;
+}
+
+// POST /review on a customer site. Stored pending until the owner approves.
+// Honeypot + per-IP rate limit; a dropped submission still gets a friendly
+// thanks, so neither a bot nor a rate-limited visitor learns why.
+async function submitReview(request: Request, env: Env, slug: string): Promise<Response> {
+  const site = await loadSite(env, slug);
+  if (!site || site.status !== "live") return new Response("Not found", { status: 404 });
+  const thanks = (msg: string, status = 200) => html(reviewResultPage(siteUrl(env, slug), site.businessName, msg), status);
+  const form = await readForm(request);
+  if (!form) return thanks("Something went wrong — please try again.", 400);
+  if ((form.fields.website ?? "").trim()) return thanks("Thanks for your review!"); // honeypot
+  if (await reviewRateLimited(request, env, slug)) return thanks("Thanks — you've already shared a review recently.");
+  const parsed = parseReviewSubmission(form.fields);
+  if (!parsed.ok) return thanks(parsed.error, 400);
+  if ((await listPendingReviews(env, slug)).length >= MAX_PENDING_REVIEWS) return thanks("Thanks for your review!");
+  const review: Review = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...parsed.value };
+  await env.SITES.put(pendingReviewKey(slug, review.id), JSON.stringify(review), { expirationTtl: 90 * 86_400 });
+  return thanks("Thanks! Your review will appear on the site once it's approved.");
+}
+
+// Owner moderates from the edit page: approve / reject a pending review, or
+// remove an approved one. Authed by the edit key or an owner session.
+async function moderateReviews(request: Request, env: Env, slug: string): Promise<Response> {
+  const form = await readForm(request);
+  const key = form?.fields.key ?? "";
+  const site = await authorize(env, slug, key, request);
+  if (!site) return redirectTo(env, "/login");
+  const action = form?.fields.action ?? "";
+  const reviewId = form?.fields.reviewId ?? "";
+  if (action === "approve" && reviewId) {
+    const raw = await env.SITES.get(pendingReviewKey(slug, reviewId));
+    if (raw) {
+      const review = JSON.parse(raw) as Review;
+      const reviews = [review, ...(site.reviews ?? [])].slice(0, MAX_APPROVED_REVIEWS);
+      await saveSite(env, { ...site, reviews, updatedAt: new Date().toISOString() });
+      await env.SITES.delete(pendingReviewKey(slug, reviewId));
+    }
+  } else if (action === "reject" && reviewId) {
+    await env.SITES.delete(pendingReviewKey(slug, reviewId));
+  } else if (action === "remove" && reviewId) {
+    const reviews = (site.reviews ?? []).filter((r) => r.id !== reviewId);
+    await saveSite(env, { ...site, reviews: reviews.length ? reviews : undefined, updatedAt: new Date().toISOString() });
+  }
+  return redirectTo(env, `/edit/${encodeURIComponent(slug)}?k=${encodeURIComponent(key)}`);
+}
+
 async function editPage(request: Request, env: Env, slug: string, key: string, justPaid = false): Promise<Response> {
   const site = await authorize(env, slug, key, request);
   if (!site) {
@@ -732,6 +811,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false): Pr
     photoUrl: (k) => `${env.PUBLIC_ORIGIN}/p/${k}`,
     billing,
     visitors: stats ? { stats, full: statsVisible(site, cfg, now) } : undefined,
+    pendingReviews: await listPendingReviews(env, site.slug),
     siteUrl: siteUrl(env, site.slug),
     admin: isAdminEmail(env, owner?.email),
   };
