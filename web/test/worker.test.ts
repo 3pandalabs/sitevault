@@ -721,3 +721,17 @@ describe("customer-site policy pages", () => {
     expect(terms).not.toContain('href="http://evil.test"');
   });
 });
+
+describe("contact page", () => {
+  it("serves /contact with the email, and the footer links to it (not a bare mailto)", async () => {
+    const res = await call(`${ORIGIN}/contact`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("3pandas@3pandalabs.com");
+    expect(body).toContain("Contact us");
+    // Footer link points at the page now.
+    const home = await (await call(`${ORIGIN}/`)).text();
+    expect(home).toContain('href="/contact"');
+    expect(home).not.toContain('href="mailto:3pandas@3pandalabs.com">Contact');
+  });
+});
