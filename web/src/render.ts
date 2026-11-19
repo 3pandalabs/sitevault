@@ -272,6 +272,18 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .rating input:checked~label,.rating label:hover,.rating label:hover~label{color:#f59e0b}
 .rating input:focus-visible+label{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
 .rev-note{color:var(--muted);font-size:.85rem;margin:12px 0 0}
+.visit-actions{display:flex;flex-wrap:wrap;gap:10px}
+.loc-popup{position:fixed;inset:0;background:rgba(5,8,12,.6);display:none;align-items:center;justify-content:center;padding:20px;z-index:70}
+.loc-popup:target{display:flex}
+.loc-backdrop{position:absolute;inset:0}
+.loc-panel{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:26px 24px 24px;box-shadow:0 30px 80px rgba(0,0,0,.4)}
+.loc-panel h2{margin:0 0 16px}
+.loc-close{position:absolute;top:10px;right:16px;font-size:1.4rem;text-decoration:none;color:var(--muted);line-height:1}
+.loc-list{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.loc-list li{border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.loc-list h3{margin:0 0 6px;font-size:1.05rem}
+.loc-list address{font-style:normal;color:var(--muted);margin:0 0 12px;display:block;overflow-wrap:anywhere}
+.loc-actions{display:flex;flex-wrap:wrap;gap:8px}
 video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:#000}
 .facts{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .facts h3{margin:0 0 4px;font-size:1rem;display:flex;align-items:center;gap:8px}
@@ -350,6 +362,11 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   const hero = useHeroPhoto ? photos[0] : undefined;
   const gallery = useHeroPhoto ? photos.slice(1) : photos;
   const where = [site.address, site.city].filter(Boolean).join(", ");
+  // Multiple locations: the primary (address/city + phone) plus any extras. When
+  // there's more than one, a "Locations" button opens a CSS-only (:target) popup.
+  const extraLocations = site.locations ?? [];
+  const allLocations = [...(where ? [{ name: "", address: where, phone: site.phone }] : []), ...extraLocations];
+  const multiLocation = extraLocations.length > 0 && allLocations.length > 1;
   const realEstate = site.category === "realestate";
   const ping = (kind: "call" | "directions") => (ctx.ping ? ` ping="/t/${kind}"` : "");
 
@@ -404,10 +421,10 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   // its time. No map embed (CSP forbids it): location is the address + a link.
   const locationBlock = where
     ? `<div class="visit-col">
-        <h2>Our Location</h2>
-        <p class="visit-sub">Find us on the map</p>
+        <h2>Our Location${multiLocation ? "s" : ""}</h2>
+        <p class="visit-sub">${multiLocation ? `We have ${allLocations.length} locations` : "Find us on the map"}</p>
         <address class="visit-addr">${esc(where)}</address>
-        <a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>Get directions</a>
+        <div class="visit-actions"><a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>Get directions</a>${multiLocation ? `<a class="btn" href="#locations">See all ${allLocations.length} locations</a>` : ""}</div>
       </div>`
     : "";
   const hoursBlock = site.hours
@@ -479,6 +496,26 @@ export function renderSite(site: Site, ctx: RenderContext): string {
     </ul>
   </div>
 </section>`
+    : "";
+
+  // The CSS-only (:target) popup listing every location with its phone + a
+  // directions link — no JS needed. Trigger buttons link to #locations.
+  const locationsPopup = multiLocation
+    ? `<div id="locations" class="loc-popup" role="dialog" aria-modal="true" aria-label="Our locations">
+  <a href="#main" class="loc-backdrop" aria-label="Close"></a>
+  <div class="loc-panel">
+    <a href="#main" class="loc-close" aria-label="Close">✕</a>
+    <h2>Our locations</h2>
+    <ul class="loc-list">
+      ${allLocations
+        .map(
+          (l, i) =>
+            `<li><h3>${esc(l.name || (i === 0 ? site.businessName : `Location ${i + 1}`))}</h3><address>${esc(l.address)}</address><div class="loc-actions"><a class="btn primary small" href="${esc(telHref(l.phone))}">${icon("phone")}${esc(l.phone)}</a><a class="btn ghost small" href="${esc(mapsHref(`${site.businessName} ${l.address}`))}" target="_blank" rel="noopener">${icon("pin")}Directions</a></div></li>`,
+        )
+        .join("\n      ")}
+    </ul>
+  </div>
+</div>`
     : "";
 
   // Customer reviews: approved ones with stars + average, and the public
@@ -564,7 +601,7 @@ ${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=
     <div class="hactions">
       <a class="btn primary small" href="${esc(telHref(site.phone))}"${ping("call")}>${icon("phone")}Call</a>
       <a class="btn ghost small" href="${esc(smsHref(site.phone))}">${icon("chat")}Text</a>
-      ${where ? `<a class="btn ghost small" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>${icon("pin")}Directions</a>` : ""}
+      ${multiLocation ? `<a class="btn ghost small" href="#locations">${icon("pin")}Locations</a>` : where ? `<a class="btn ghost small" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>${icon("pin")}Directions</a>` : ""}
     </div>
   </div>
 </header>
@@ -596,10 +633,11 @@ ${visit}
     <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs.</p>
   </div>
 </footer>
+${locationsPopup}
 <nav class="callbar" aria-label="Quick contact">
   <a class="btn primary" href="${esc(telHref(site.phone))}"${ping("call")}>Call</a>
   <a class="btn ghost" href="${esc(smsHref(site.phone))}">Text</a>
-  ${where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>Directions</a>` : ""}
+  ${multiLocation ? `<a class="btn ghost" href="#locations">Locations</a>` : where ? `<a class="btn ghost" href="${esc(mapsHref(`${site.businessName} ${where}`))}" target="_blank" rel="noopener"${ping("directions")}>Directions</a>` : ""}
 </nav>
 ${ctx.nonce ? `<script nonce="${ctx.nonce}">${SITE_JS}</script>` : ""}
 </body>

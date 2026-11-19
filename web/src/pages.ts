@@ -8,9 +8,11 @@ import {
   CATEGORIES,
   HOURS_TEMPLATE,
   MAX_BEFORE_AFTER,
+  MAX_LOCATIONS,
   MAX_PHOTOS,
   SERVICE_TEMPLATES,
   beforeAfterAllowed,
+  locationsToText,
   servicesToText,
   type CategoryKey,
   type FieldErrors,
@@ -528,6 +530,7 @@ const FIELD_ORDER = [
   "city",
   "address",
   "serviceArea",
+  "locations",
   "tagline",
   "offer",
   "services",
@@ -667,6 +670,10 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   <div class="row">
     <div class="field"><label for="address">Street address <span class="hint">Optional. Leave blank if you go to customers.</span></label><input type="text" id="address" name="address" maxlength="160" value="${v("address", site?.address ?? "")}" autocomplete="street-address">${e("address")}</div>
     <div class="field"><label for="serviceArea">Areas you serve <span class="hint">Optional</span></label><input type="text" id="serviceArea" name="serviceArea" maxlength="160" value="${v("serviceArea", site?.serviceArea ?? "")}" placeholder="Secaucus, Hoboken, Jersey City">${sg("serviceArea")}${e("serviceArea")}</div>
+    <div class="field"><details${values.locations || site?.locations?.length ? " open" : ""}><summary style="cursor:pointer;font-weight:600">Add more locations <span class="hint">Optional — if your business has multiple branches</span></summary>
+      <p class="hint" style="margin:10px 0 6px">One per line, as <strong>Name | Address | Phone</strong> (up to ${MAX_LOCATIONS}). Each gets its own Call and Directions in a "Locations" popup on your site.</p>
+      <textarea id="locations" name="locations" placeholder="Downtown | 123 Main St, Springfield | (555) 111-2222&#10;Westside | 456 Oak Ave, Springfield | (555) 333-4444">${v("locations", site ? locationsToText(site.locations ?? []) : "")}</textarea>${e("locations")}
+    </details></div>
   </div>
 </fieldset>
 <fieldset><legend>Website style</legend>
