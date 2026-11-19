@@ -33,7 +33,7 @@
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
 import { renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
-import { accountPage, adminPage, authPage, builderPage, donePage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
+import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
   accountForAdvault,
@@ -246,6 +246,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/admin") return adminDashboard(request, env);
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
+    if (path === "/contact") return html(contactPage());
     if (path === "/robots.txt") return new Response("User-agent: *\nDisallow: /edit/\nDisallow: /api/\nDisallow: /admin\nDisallow: /account\n", { headers: { "content-type": "text/plain" } });
     // The tab icon: an "S", matching AdVault's "A" (main site only; customer sites are the business's own).
     if (path === "/favicon.svg" || path === "/favicon.ico") {

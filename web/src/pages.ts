@@ -235,7 +235,7 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
 ${opts.body}
 </main>
 <footer><div class="wrap">
-  <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:${CONTACT}">Contact</a></div>
+  <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></div>
   <div class="legal"><span>&copy; 3PandaLabs LLC, USA.</span><span>All rights reserved.</span></div>
 </div></footer>
 ${opts.script && opts.nonce ? `<script nonce="${opts.nonce}">${opts.script}</script>` : ""}
@@ -1264,6 +1264,25 @@ export function termsPage(): string {
 <p>SiteVault is provided as is. We work to keep sites online but don't guarantee uninterrupted service. To the extent the law allows, our liability is limited to the amount you've paid us in the last 12 months.</p>
 <h2>Law</h2>
 <p>These terms are governed by the laws of New Jersey, USA.</p>
+</section>`,
+  });
+}
+
+/**
+ * Contact page. A real page (not just a mailto, which does nothing on a device
+ * with no mail app) so the footer "Contact" link always works: it shows the
+ * address as selectable text, with a mailto for devices that have a mail app.
+ */
+export function contactPage(): string {
+  return layout({
+    title: "Contact | SiteVault",
+    body: `<section class="prose">
+<h1>Contact us</h1>
+<p>SiteVault is made by 3PandaLabs LLC, USA. The best way to reach us is by email:</p>
+<p><a class="btn" href="mailto:${CONTACT}">Email ${esc(CONTACT)}</a></p>
+<p>If your email app doesn't open, copy this address: <strong>${esc(CONTACT)}</strong></p>
+<h2>Website owners</h2>
+<p>Editing your website? Use the edit link from when you built it, or sign in and open <a href="/account">My website</a>. Want your website taken down? Email us from the address above with your web address, and we'll confirm with you at the phone number on your site before removing it.</p>
 </section>`,
   });
 }
