@@ -735,3 +735,95 @@ describe("contact page", () => {
     expect(home).not.toContain('href="mailto:3pandas@3pandalabs.com">Contact');
   });
 });
+
+describe("restaurant/bakery menu upload", () => {
+  async function made(fields: Record<string, string> = {}) {
+    const res = await internalCreate({ category: "restaurant", businessName: "Tony's Pizza", phone: "(555) 300-1000", ...fields });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string | string[]> = {}, files: Record<string, File> = {}) {
+    const form = new FormData();
+    const base = { businessName: "Tony's Pizza", category: "restaurant", phone: "(555) 300-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) for (const x of Array.isArray(v) ? v : [v]) form.append(k, x);
+    for (const [k, f] of Object.entries(files)) form.append(k, f);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+  const menuOf = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { menu?: string[] }).menu;
+  const pdf = (name = "menu.pdf", bytes = 10) => jpeg(name, bytes, "application/pdf");
+
+  it("shows the Menu fieldset on the edit page for a restaurant, not a landscaper", async () => {
+    const r = await made();
+    expect(await (await call(`${ORIGIN}/edit/${r.slug}?k=${r.key}`)).text()).toContain("Add menu files");
+    const lawn = await internalCreate({ slug: "lawns-x", businessName: "Lawns X", phone: "(555) 300-2000" });
+    const { slug, editUrl } = (await lawn.json()) as { slug: string; editUrl: string };
+    const key = new URL(editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text()).not.toContain("Add menu files");
+  });
+
+  it("stores an uploaded PDF menu and shows a View menu button linking to it", async () => {
+    const { slug, key } = await made();
+    expect((await save(slug, key, {}, { menu: pdf() })).status).toBe(303);
+    const keys = menuOf(slug)!;
+    expect(keys).toHaveLength(1);
+    expect(keys[0]!.endsWith(".pdf")).toBe(true);
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain("View our menu (PDF)");
+    expect(page).toContain(`/p/${keys[0]}`);
+    const file = await call(`https://${slug}.3pandasite.test/p/${keys[0]}`);
+    expect(file.status).toBe(200);
+    expect(file.headers.get("content-type")).toBe("application/pdf");
+  });
+
+  it("shows an uploaded image menu inline in the Menu section", async () => {
+    const { slug, key } = await made();
+    expect((await save(slug, key, {}, { menu: jpeg("menu.jpg") })).status).toBe(303);
+    const keys = menuOf(slug)!;
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="menu-h"');
+    expect(page).toContain(`<img src="https://${slug}.3pandasite.test/p/${keys[0]}"`);
+  });
+
+  it("rejects a menu for a business type where it doesn't belong", async () => {
+    const lawn = await internalCreate({ slug: "lawns-y", businessName: "Lawns Y", phone: "(555) 300-3000" });
+    const { slug, editUrl } = (await lawn.json()) as { slug: string; editUrl: string };
+    const key = new URL(editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Lawns Y", category: "landscaping", phone: "(555) 300-3000", city: "Edison", key })) form.append(k, v);
+    form.append("menu", pdf());
+    const res = await call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", headers: { accept: "application/json" }, body: form });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.menu).toBeTruthy();
+    expect(menuOf(slug)).toBeUndefined();
+  });
+
+  it("rejects a disallowed type and an oversized file", async () => {
+    const { slug, key } = await made();
+    for (const bad of [jpeg("m.gif", 10, "image/gif"), pdf("big.pdf", 10 * 1024 * 1024 + 1)]) {
+      const res = await call(`${ORIGIN}/api/sites/${slug}`, {
+        method: "POST",
+        headers: { accept: "application/json" },
+        body: (() => {
+          const f = new FormData();
+          for (const [k, v] of Object.entries({ businessName: "Tony's Pizza", category: "restaurant", phone: "(555) 300-1000", city: "Edison", key })) f.append(k, v);
+          f.append("menu", bad);
+          return f;
+        })(),
+      });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { errors: Record<string, string> }).errors.menu).toBeTruthy();
+    }
+  });
+
+  it("removes a menu file when unticked, and deletes it from R2", async () => {
+    const { slug, key } = await made();
+    await save(slug, key, {}, { menu: pdf() });
+    const k0 = menuOf(slug)![0]!;
+    expect(R2().data.has(k0)).toBe(true);
+    // Save again without keepMenu for that key -> removed.
+    expect((await save(slug, key)).status).toBe(303);
+    expect(menuOf(slug)).toBeUndefined();
+    expect(R2().data.has(k0)).toBe(false);
+  });
+});

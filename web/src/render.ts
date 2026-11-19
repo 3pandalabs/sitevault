@@ -12,7 +12,7 @@
 // alt text, visible focus, 4.5:1 contrast (every theme's primary is dark
 // enough for white text), and nothing that only works with a mouse.
 
-import { CATEGORIES, headline, reviewStats, type PolicyKind, type Site } from "./site.js";
+import { CATEGORIES, headline, isMenuPdf, menuAllowed, reviewStats, type PolicyKind, type Site } from "./site.js";
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
 import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
@@ -236,6 +236,10 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .svc{font-weight:600}.price{color:var(--primary);font-weight:700;white-space:nowrap}
 .gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
 .gallery img{width:100%;height:160px;object-fit:cover;border-radius:var(--radius);display:block}
+.menu{display:flex;flex-direction:column;gap:16px;max-width:720px}
+.menu-img{display:block}
+.menu-img img{width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius);display:block}
+.menu-pdf{align-self:flex-start}
 .ba{list-style:none;margin:0;padding:0;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
 .ba-cmp{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--band);--pos:50%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .ba-cmp img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
@@ -501,6 +505,29 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // A restaurant/bakery's uploaded menu(s): images shown inline (tap to open
+  // full size), PDFs as a button. Only for food categories, only when present.
+  const menuFiles = menuAllowed(site.category) ? site.menu ?? [] : [];
+  const menuHtml = menuFiles.length
+    ? `<section aria-labelledby="menu-h" class="band reveal">
+  <div class="wrap">
+    <p class="kicker">Have a look</p>
+    <h2 id="menu-h">Our menu</h2>
+    <div class="menu">
+      ${menuFiles
+        .map((k, i) => {
+          const href = photoUrl(ctx, k);
+          const label = menuFiles.length > 1 ? ` ${i + 1}` : "";
+          return isMenuPdf(k)
+            ? `<a class="btn primary menu-pdf" href="${esc(href)}" target="_blank" rel="noopener">View our menu${label} (PDF)</a>`
+            : `<a class="menu-img" href="${esc(href)}" target="_blank" rel="noopener"><img src="${esc(href)}" alt="${esc(`${site.businessName} menu${label}`)}" loading="lazy" decoding="async"></a>`;
+        })
+        .join("\n      ")}
+    </div>
+  </div>
+</section>`
+    : "";
+
   const pairs = site.beforeAfter ?? [];
   const beforeAfterHtml = pairs.length
     ? `<section aria-labelledby="ba-h" class="reveal">
@@ -632,6 +659,7 @@ ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
 ${video}
 ${services}
 ${about}
+${menuHtml}
 ${galleryHtml}
 ${beforeAfterHtml}
 ${reviewsHtml}
