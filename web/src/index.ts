@@ -96,8 +96,10 @@ import {
   PHOTO_TYPES,
   beforeAfterAllowed,
   checkMenu,
+  checkScheduleFile,
   isMenuPdf,
   menuAllowed,
+  scheduleAllowed,
   pickBeforeAfter,
   siteFileKeys,
   type BeforeAfter,
@@ -1311,6 +1313,8 @@ type Parsed = {
   menu: File[];
   /** Existing menu files to keep, by R2 key (edit page). */
   keepMenu: string[];
+  /** New class-schedule file (name="schedule"), if any. */
+  schedule: File | null;
 };
 
 const BA_FIELD_NAMES: readonly string[] = BEFORE_AFTER_FIELDS.flat();
@@ -1327,6 +1331,7 @@ async function readForm(request: Request): Promise<Parsed | null> {
   const ba: Partial<Record<BeforeAfterField, File>> = {};
   const menu: File[] = [];
   let video: File | null = null;
+  let schedule: File | null = null;
   for (const [k, v] of form as unknown as Iterable<[string, string | File]>) {
     if (typeof v === "string") {
       if (k === "keep") keep.push(v);
@@ -1339,11 +1344,13 @@ async function readForm(request: Request): Promise<Parsed | null> {
       video = v;
     } else if (k === "menu" && v.size > 0) {
       menu.push(v);
+    } else if (k === "schedule" && v.size > 0) {
+      schedule = v;
     } else if (BA_FIELD_NAMES.includes(k) && v.size > 0) {
       ba[k as BeforeAfterField] = v;
     }
   }
-  return { fields, files, keep, video, ba, keepPair, menu, keepMenu };
+  return { fields, files, keep, video, ba, keepPair, menu, keepMenu, schedule };
 }
 
 function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES): string | null {
@@ -1426,6 +1433,7 @@ async function insertSite(
   adminTest = false,
   pairFiles: [File, File][] = [],
   menuFiles: File[] = [],
+  scheduleFile: File | null = null,
 ) {
   const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
@@ -1445,6 +1453,7 @@ async function insertSite(
     video: await storeVideo(env, slug, videoFile),
     ...(pairFiles.length ? { beforeAfter: await storePairs(env, slug, pairFiles) } : {}),
     ...(menuFiles.length ? { menu: await storeMenu(env, slug, menuFiles) } : {}),
+    ...(scheduleFile ? { schedule: (await storeMenu(env, slug, [scheduleFile]))[0] } : {}),
     status: "live",
     source,
     editKeyHash: await sha256Hex(key),
@@ -1617,6 +1626,12 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     const menuProblem = checkMenu(form.menu, 0);
     if (menuProblem) errors.menu = menuProblem;
   }
+  // Class schedule (fitness businesses can add one while building).
+  if (form.schedule && parsed.ok && !scheduleAllowed(parsed.value.category)) errors.schedule = "A schedule can't be added for this type of business.";
+  else {
+    const schedProblem = checkScheduleFile(form.schedule);
+    if (schedProblem) errors.schedule = schedProblem;
+  }
   const requested = fields.slug ? normaliseAddress(fields.slug) : null;
   if (requested) {
     const problem = await requestedAddressProblem(env, requested);
@@ -1649,7 +1664,7 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     owner = made;
     console.log("account_created", { id: made.id });
   }
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), [], form.menu);
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), [], form.menu, form.schedule);
   await addSiteToAccount(env.SITES, owner, slug);
   reportSitevaultUse(env, ctx, owner);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
@@ -1734,6 +1749,12 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
     errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
   }
+  // Class schedule (fitness): one uploaded timetable, replaced on re-upload.
+  if (form.schedule && parsed.ok && !scheduleAllowed(parsed.value.category)) errors.schedule = "A schedule can't be added for this type of business.";
+  else {
+    const schedProblem = checkScheduleFile(form.schedule);
+    if (schedProblem) errors.schedule = schedProblem;
+  }
   // Before & after: untick to remove a pair; add new ones only for trades
   // where they fit, with both photos and the "our own work" tick.
   const pairsNow = site.beforeAfter ?? [];
@@ -1772,6 +1793,15 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     removed.push(site.video);
     video = null;
   }
+  // A new schedule replaces the current one; otherwise keep it unless unticked.
+  let schedule = site.schedule ?? null;
+  if (form.schedule) {
+    schedule = (await storeMenu(env, slug, [form.schedule]))[0] ?? null;
+    if (site.schedule) removed.push(site.schedule);
+  } else if (site.schedule && form.fields.keepSchedule !== "yes") {
+    removed.push(site.schedule);
+    schedule = null;
+  }
   // Billing may have changed while the owner was editing (a webhook landed):
   // start from the freshest copy so a save never undoes a payment.
   const fresh = (await loadSite(env, slug))?.billing ?? site.billing;
@@ -1793,6 +1823,8 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   else delete next.beforeAfter;
   if (menu.length) next.menu = menu;
   else delete next.menu;
+  if (schedule) next.schedule = schedule;
+  else delete next.schedule;
   if (renaming) {
     const aliases = [...new Set([...(site.aliases ?? []), site.slug])].filter((a) => a !== wanted);
     next.slug = wanted;

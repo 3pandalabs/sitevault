@@ -12,11 +12,13 @@ import {
   MAX_MENU,
   MAX_PHOTOS,
   MENU_CATEGORIES,
+  SCHEDULE_CATEGORIES,
   SERVICE_TEMPLATES,
   beforeAfterAllowed,
   isMenuPdf,
   locationsToText,
   menuAllowed,
+  scheduleAllowed,
   servicesToText,
   type CategoryKey,
   type FieldErrors,
@@ -632,10 +634,33 @@ function menuFields(category: string, files: string[], photoUrl: ((k: string) =>
     ? `<div class="menu-upload"><button type="button" class="btn ghost" id="menu-upload-btn">Upload menu</button> <span class="hint" id="menu-status" role="status" aria-live="polite"></span></div>`
     : "";
   const add = `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. Each appears as a thumbnail on your site — visitors tap a photo to enlarge it, or a PDF to open it.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${uploadBtn}${e("menu")}</div>`;
-  return `<fieldset id="menu-fieldset" data-menu-cats="${esc(MENU_CATEGORIES.join(","))}"${menuAllowed(category) ? "" : " hidden"}><legend>Menu</legend>
+  return `<fieldset id="menu-fieldset" data-show-cats="${esc(MENU_CATEGORIES.join(","))}"${menuAllowed(category) ? "" : " hidden"}><legend>Menu</legend>
   <p class="hint">Show your menu on your website — upload a PDF or a clear photo of it.${isEdit ? ` Choose a file, then click <strong>Upload menu</strong> to add it right away.` : ""}</p>
   ${current}
   ${add}
+</fieldset>`;
+}
+
+/**
+ * The "Class schedule" section for fitness businesses: one uploaded timetable
+ * (image or PDF). On the edit page the current one shows with a keep box; a new
+ * upload replaces it. Category-gated like the Menu via data-show-cats.
+ */
+function scheduleFields(category: string, current: string | null, photoUrl: ((k: string) => string) | null, e: (k: string) => string): string {
+  const cur =
+    current && photoUrl
+      ? `<label class="check"><input type="checkbox" name="keepSchedule" value="yes" checked> <span>Keep the current schedule on my website</span></label>
+<div class="photos">${
+          isMenuPdf(current)
+            ? `<div class="photo"><div class="menu-doc">PDF schedule</div><div class="photo-ctl"><a class="tpl-preview" href="${esc(photoUrl(current))}" target="_blank" rel="noopener">View ↗</a></div></div>`
+            : `<div class="photo"><img src="${esc(photoUrl(current))}" alt="Class schedule"></div>`
+        }</div>`
+      : "";
+  const label = current ? "Replace schedule" : "Add a schedule";
+  return `<fieldset id="schedule-fieldset" data-show-cats="${esc(SCHEDULE_CATEGORIES.join(","))}"${scheduleAllowed(category) ? "" : " hidden"}><legend>Class schedule</legend>
+  <p class="hint">Upload your weekly class schedule as a clear photo or a PDF — it shows on your website, and visitors tap it to enlarge.</p>
+  ${cur}
+  <div class="field"><label for="schedule">${label} <span class="hint">One PDF or image, up to 10 MB.</span></label><input type="file" id="schedule" name="schedule" accept="image/*,application/pdf">${e("schedule")}</div>
 </fieldset>`;
 }
 
@@ -686,6 +711,7 @@ export function builderPage(
 
   const beforeAfter = mode.kind === "edit" ? beforeAfterFields(mode.site, mode.photoUrl, e) : "";
   const menu = menuFields(selectedCat, mode.kind === "edit" ? mode.site.menu ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
+  const schedule = scheduleFields(selectedCat, mode.kind === "edit" ? mode.site.schedule ?? null : null, mode.kind === "edit" ? mode.photoUrl : null, e);
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -750,6 +776,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
 </fieldset>
 ${beforeAfter}
 ${menu}
+${schedule}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
@@ -790,8 +817,11 @@ const BUILDER_SCRIPT = `
   var FIELDS=${JSON.stringify(FIELD_ORDER)};
   // The Menu upload only applies to food businesses: show it when the owner
   // picks a matching category, hide it otherwise (data-menu-cats lists them).
-  var catSel=document.getElementById('category'),menuFs=document.getElementById('menu-fieldset');
-  if(catSel&&menuFs){ var mcats=(menuFs.getAttribute('data-menu-cats')||'').split(','); var updMenu=function(){ menuFs.hidden=mcats.indexOf(catSel.value)<0; }; catSel.addEventListener('change',updMenu); updMenu(); }
+  // Category-gated sections (Menu, Class schedule, …) reveal when the owner
+  // picks a matching category. Each carries data-show-cats; one loop toggles all.
+  var catSel=document.getElementById('category');
+  var gatedFs=[].slice.call(document.querySelectorAll('[data-show-cats]'));
+  if(catSel&&gatedFs.length){ var updGated=function(){ gatedFs.forEach(function(fs){ fs.hidden=(fs.getAttribute('data-show-cats')||'').split(',').indexOf(catSel.value)<0; }); }; catSel.addEventListener('change',updGated); updGated(); }
   // Edit page: "Upload menu" uploads the chosen file(s) on their own and shows
   // the thumbnail at once, without saving the whole form.
   var upBtn=document.getElementById('menu-upload-btn');

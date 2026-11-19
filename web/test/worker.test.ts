@@ -831,7 +831,7 @@ describe("menu in the builder (create flow)", () => {
   it("renders the Menu fieldset on the builder, hidden until a food category is picked", async () => {
     const page = await (await call(`${ORIGIN}/new`)).text();
     expect(page).toContain('id="menu-fieldset"');
-    expect(page).toContain('data-menu-cats="restaurant,bakery"');
+    expect(page).toContain('data-show-cats="restaurant,bakery"');
     // No category chosen yet on a fresh builder -> starts hidden (JS reveals it).
     expect(page).toMatch(/<fieldset id="menu-fieldset"[^>]*\shidden/);
   });
@@ -932,5 +932,76 @@ describe("menu upload endpoint (Upload button)", () => {
     const over = await upload(slug, key, [jpeg("x.jpg")]);
     expect(over.status).toBe(400);
     expect(((await over.json()) as { error: string }).error).toMatch(/Up to 6/);
+  });
+});
+
+describe("fitness class schedule", () => {
+  async function fitnessSite() {
+    const res = await internalCreate({ category: "fitness", businessName: "Flow Yoga", phone: "(555) 600-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string> = {}, files: Record<string, File> = {}) {
+    const form = new FormData();
+    const base = { businessName: "Flow Yoga", category: "fitness", phone: "(555) 600-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    for (const [k, f] of Object.entries(files)) form.set(k, f);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+  const schedOf = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { schedule?: string }).schedule;
+  const pdf = (name = "sched.pdf", bytes = 10) => jpeg(name, bytes, "application/pdf");
+
+  it("shows the Class schedule fieldset only for fitness (gated + revealed by category)", async () => {
+    const { slug, key } = await fitnessSite();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="schedule-fieldset"');
+    expect(page).toContain('data-show-cats="fitness"');
+    expect(page).not.toMatch(/<fieldset id="schedule-fieldset"[^>]*\shidden/);
+    // Not shown for a landscaper (present but hidden).
+    const lawn = await internalCreate({ slug: "lawns-sch", businessName: "Lawns S", phone: "(555) 600-2000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const lkey = new URL(l.editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${l.slug}?k=${lkey}`)).text()).toMatch(/<fieldset id="schedule-fieldset"[^>]*\shidden/);
+  });
+
+  it("stores an uploaded schedule and shows it in a Class schedule section", async () => {
+    const { slug, key } = await fitnessSite();
+    expect((await save(slug, key, {}, { schedule: jpeg("week.jpg") })).status).toBe(303);
+    const k0 = schedOf(slug)!;
+    expect(k0).toBeTruthy();
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="sch-h"');
+    expect(page).toContain(`<img src="https://${slug}.3pandasite.test/p/${k0}"`);
+  });
+
+  it("a PDF schedule shows as a tile; replacing swaps the file and removing deletes it", async () => {
+    const { slug, key } = await fitnessSite();
+    await save(slug, key, {}, { schedule: pdf() });
+    const first = schedOf(slug)!;
+    expect(first.endsWith(".pdf")).toBe(true);
+    expect((await (await call(`https://${slug}.3pandasite.test/`)).text())).toContain("View schedule");
+    // Replace with a new file.
+    await save(slug, key, {}, { schedule: jpeg("new.jpg") });
+    const second = schedOf(slug)!;
+    expect(second).not.toBe(first);
+    expect(R2().data.has(first)).toBe(false);
+    // Remove: no new file and keepSchedule not ticked.
+    expect((await save(slug, key)).status).toBe(303);
+    expect(schedOf(slug)).toBeUndefined();
+    expect(R2().data.has(second)).toBe(false);
+  });
+
+  it("rejects a schedule for a non-fitness business", async () => {
+    const lawn = await internalCreate({ slug: "lawns-sch2", businessName: "Lawns S2", phone: "(555) 600-3000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const key = new URL(l.editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Lawns S2", category: "landscaping", phone: "(555) 600-3000", city: "Edison", key })) form.append(k, v);
+    form.append("schedule", pdf());
+    const res = await call(`${ORIGIN}/api/sites/${l.slug}`, { method: "POST", headers: { accept: "application/json" }, body: form });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.schedule).toBeTruthy();
+    expect(schedOf(l.slug)).toBeUndefined();
   });
 });

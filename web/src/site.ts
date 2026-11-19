@@ -138,6 +138,8 @@ export type Site = SiteContent & {
    * or PDF). Shown in a "Menu" section. Up to MAX_MENU. Absent = none.
    */
   menu?: string[];
+  /** R2 key of a fitness business's uploaded class schedule (image or PDF). */
+  schedule?: string;
   /** Approved customer reviews (visitor-submitted, owner-moderated). Absent = none. */
   reviews?: Review[];
   /** R2 key of the business's video ad (AdVault sites only). */
@@ -252,6 +254,24 @@ export function checkMenu<F extends { type: string; size: number }>(files: F[], 
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Class schedule (fitness & yoga): one uploaded timetable, image or PDF.
+
+/** Categories that get a "Class schedule" section. */
+export const SCHEDULE_CATEGORIES: readonly CategoryKey[] = ["fitness"];
+
+export function scheduleAllowed(category: string): boolean {
+  return (SCHEDULE_CATEGORIES as readonly string[]).includes(category);
+}
+
+/** Validate the single uploaded schedule file (same types/size as a menu). */
+export function checkScheduleFile(file: { type: string; size: number } | null): string | null {
+  if (!file) return null;
+  if (!MENU_TYPES.includes(file.type)) return "A schedule must be a PDF or a JPG, PNG or WebP image.";
+  if (file.size > MAX_MENU_BYTES) return `The schedule must be under ${Math.round(MAX_MENU_BYTES / 1024 / 1024)} MB.`;
+  return null;
+}
+
 type PhotoLike = { type: string; size: number };
 
 /**
@@ -279,8 +299,8 @@ export function pickBeforeAfter<F extends PhotoLike>(
 }
 
 /** Every R2 key this site's own host may serve (and removal must delete). */
-export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter" | "menu">): string[] {
-  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after]), ...(site.menu ?? [])];
+export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter" | "menu" | "schedule">): string[] {
+  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after]), ...(site.menu ?? []), ...(site.schedule ? [site.schedule] : [])];
 }
 
 const LIMITS = {

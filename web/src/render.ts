@@ -12,7 +12,7 @@
 // alt text, visible focus, 4.5:1 contrast (every theme's primary is dark
 // enough for white text), and nothing that only works with a mouse.
 
-import { CATEGORIES, headline, isMenuPdf, menuAllowed, reviewStats, type PolicyKind, type Site } from "./site.js";
+import { CATEGORIES, headline, isMenuPdf, menuAllowed, reviewStats, scheduleAllowed, type PolicyKind, type Site } from "./site.js";
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
 import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
@@ -527,6 +527,25 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // A fitness business's uploaded class schedule: one thumbnail/PDF tile, shown
+  // like a menu (photo enlarges in the lightbox, PDF opens).
+  const scheduleKey = scheduleAllowed(site.category) ? site.schedule : undefined;
+  const scheduleHtml = scheduleKey
+    ? `<section aria-labelledby="sch-h" class="reveal">
+  <div class="wrap">
+    <p class="kicker">Plan your week</p>
+    <h2 id="sch-h">Class schedule</h2>
+    <ul class="gallery menu-grid">
+      ${
+        isMenuPdf(scheduleKey)
+          ? `<li><a class="menu-pdf-tile" href="${esc(photoUrl(ctx, scheduleKey))}" target="_blank" rel="noopener"><span class="menu-pdf-badge">PDF</span><span>View schedule</span></a></li>`
+          : `<li><img src="${esc(photoUrl(ctx, scheduleKey))}" alt="${esc(`${site.businessName} class schedule`)}" loading="lazy" decoding="async"></li>`
+      }
+    </ul>
+  </div>
+</section>`
+    : "";
+
   const pairs = site.beforeAfter ?? [];
   const beforeAfterHtml = pairs.length
     ? `<section aria-labelledby="ba-h" class="reveal">
@@ -659,6 +678,7 @@ ${video}
 ${services}
 ${about}
 ${menuHtml}
+${scheduleHtml}
 ${galleryHtml}
 ${beforeAfterHtml}
 ${reviewsHtml}
