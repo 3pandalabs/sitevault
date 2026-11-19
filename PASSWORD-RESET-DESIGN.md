@@ -127,3 +127,32 @@ host is passed per request so each app's email links back to its own domain.
 - Apex `3pandalabs.com` sending mixes transactional + corporate reputation;
   acceptable at low volume. A dedicated `send.`/`mail.` subdomain is the future
   hardening step.
+
+## Cutover runbook (Option A) — recorded 2026-11-18
+
+Order matters (Resend free plan = one verified domain; adding `3pandalabs.com`
+evicts `rsvpvault`).
+
+1. **Resend → verify `3pandalabs.com`.** Delete `rsvpvault`, Add Domain
+   `3pandalabs.com`, add the records Resend shows (currently **2 CNAME + 1 TXT**)
+   to Cloudflare DNS as **DNS only (grey cloud)**. Do NOT edit the existing apex
+   SPF or `_dmarc`. Click **Verify**.
+2. **Cloudflare Email Routing** (optional): add `passwordreset@3pandalabs.com`
+   (lowercase) → forward to a monitored inbox, so replies land somewhere.
+3. **Token:** `openssl rand -hex 32` → this is `ADVAULT_MAILER_TOKEN`, used in
+   BOTH places below.
+4. **Mailer `APP_TOKENS`** (Cloudflare secret, replaces the whole value — keep
+   evitevault's): `{"evitevault":"<existing>","advault":"<ADVAULT_MAILER_TOKEN>"}`.
+   Dashboard: Workers → mailer → Settings → Variables and Secrets. Or
+   `npx wrangler secret put APP_TOKENS`.
+5. **Deploy mailer** (`mailer` PR #7: adds the `advault` sender + quota, moves
+   senders to `3pandalabs.com`) — only AFTER step 1 verifies.
+6. **advault-api (Coolify) env:** `MAILER_URL=https://mailer.3pandalabs.com`,
+   `MAILER_TOKEN=<ADVAULT_MAILER_TOKEN>`. Redeploy.
+7. **Merge + deploy** advault#116 then sitevault#78.
+8. **Test:** SiteVault `/forgot-password` with a real account → check inbox.
+
+NOTE (2026-11-18): EviteVault sends `invitations@3pandalabs.com` via **Cloudflare
+Email Sending**, NOT this gateway and NOT Resend. So the Resend `rsvpvault`
+eviction does not affect it. If EviteVault mail breaks during this cutover, look
+at `3pandalabs.com` DNS (apex SPF / `_dmarc` / existing DKIM), not Resend.
