@@ -10,6 +10,9 @@
 //   GET  <slug>.<SITES_DOMAIN>/    the same site on the customer-site domain,
 //                                  once that domain exists (SITES_DOMAIN unset = off)
 //   GET  /edit/<slug>?k=<key>      builder, prefilled
+//   GET  /edit/<slug>?embed=1      the same editor inside AdVault's "Your website" (session only; no
+//                                  SiteVault chrome or billing; framable by AdVault only)
+//   GET  /embed/session?token=     AdVault's signed, single-use, 60 s handoff: signs the owner in, -> embed editor
 //   POST /api/sites/<slug>         update (key in the form)
 //   GET  /p/<key>                  photo (or before & after photo) from R2
 //   GET  /privacy, /terms
@@ -122,6 +125,7 @@ import {
   type SiteContent,
 } from "./site.js";
 import { policyPathKind } from "./policies.js";
+import { HANDOFF_JTI_TTL_SECONDS, allowEmbedFraming, verifyHandoff } from "./embed.js";
 import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
@@ -266,6 +270,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/api/address") return addressCheck(env, url);
     if (path === "/api/internal/resolve") return resolveInternal(request, env, url);
     if (path === "/api/internal/account-site") return accountSiteInternal(request, env, url);
+    if (path === "/embed/session") return embedSession(request, env, url, head);
     let m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer-status$/);
     if (m) return offerStatusInternal(request, env, m[1]!);
     m = path.match(/^\/s\/([a-z0-9-]+)\/?$/);
@@ -278,7 +283,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (m) {
       const target = (await env.SITES.get(siteKey(m[1]!))) ? null : await aliasTarget(env, m[1]!);
       const k = url.searchParams.get("k") ?? "";
-      if (target) return Response.redirect(`${env.PUBLIC_ORIGIN}/edit/${target}?k=${encodeURIComponent(k)}`, 302);
+      const embed = url.searchParams.get("embed") === "1";
+      if (target) return Response.redirect(`${env.PUBLIC_ORIGIN}/edit/${target}?${embed ? "embed=1" : `k=${encodeURIComponent(k)}`}`, 302);
+      if (embed) return embedEditPage(request, env, m[1]!, url.searchParams.get("saved") === "1");
       return editPage(request, env, m[1]!, k, url.searchParams.get("paid") === "1");
     }
     if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
@@ -735,7 +742,13 @@ async function done(request: Request, env: Env, handoff: string, consume = true)
 
 function builder(_env: Env, mode: Parameters<typeof builderPage>[0], errors?: FieldErrors, values?: Record<string, string>, status = 200): Response {
   const n = nonce();
-  return html(builderPage(mode, n, errors, values, _env.SITES_DOMAIN ?? null), status, n);
+  const res = html(builderPage(mode, n, errors, values, _env.SITES_DOMAIN ?? null), status, n);
+  return mode.kind === "edit" && mode.embed ? allowEmbedFraming(res) : res;
+}
+
+/** A plain message page that AdVault may frame (the embed flow's errors). */
+function embedMessage(title: string, message: string, status: number): Response {
+  return allowEmbedFraming(html(messagePage(title, message, title), status));
 }
 
 // ---------------------------------------------------------------------------
@@ -791,6 +804,7 @@ async function moderateReviews(request: Request, env: Env, slug: string): Promis
   if (!site) return redirectTo(env, "/login");
   const action = form?.fields.action ?? "";
   const reviewId = form?.fields.reviewId ?? "";
+  const embed = form?.fields.embed === "1";
   if (action === "approve" && reviewId) {
     const raw = await env.SITES.get(pendingReviewKey(slug, reviewId));
     if (raw) {
@@ -805,7 +819,7 @@ async function moderateReviews(request: Request, env: Env, slug: string): Promis
     const reviews = (site.reviews ?? []).filter((r) => r.id !== reviewId);
     await saveSite(env, { ...site, reviews: reviews.length ? reviews : undefined, updatedAt: new Date().toISOString() });
   }
-  return redirectTo(env, `/edit/${encodeURIComponent(slug)}?k=${encodeURIComponent(key)}`);
+  return redirectTo(env, `/edit/${encodeURIComponent(slug)}${embed ? "?embed=1" : `?k=${encodeURIComponent(key)}`}`);
 }
 
 async function editPage(request: Request, env: Env, slug: string, key: string, justPaid = false): Promise<Response> {
@@ -819,12 +833,64 @@ async function editPage(request: Request, env: Env, slug: string, key: string, j
   return builder(env, { ...(await editMode(env, site, key, justPaid)), signedIn });
 }
 
+// ---------------------------------------------------------------------------
+// Embedded editor (embed.ts): AdVault's "Your website" page frames the edit
+// page. AdVault-made sites only (AdVault covers their website, so no
+// SiteVault billing is shown); the owner's session only (never an edit key
+// in the frame's URL); never a sign-in form: an expired session says to
+// reopen the page in AdVault, which mints a fresh handoff.
+
+const EMBED_EXPIRED = "Go back to AdVault and open Your website again.";
+
+async function embedEditPage(request: Request, env: Env, slug: string, saved: boolean): Promise<Response> {
+  const site = await authorize(env, slug, "", request);
+  if (!site) return embedMessage("Please reopen", EMBED_EXPIRED, 403);
+  if (site.source !== "advault") return embedMessage("Edit on SiteVault", "This website was made on SiteVault. Edit it at sitevault.3pandalabs.com.", 409);
+  return builder(env, { ...(await editMode(env, site, "", false, true)), signedIn: true, embed: true, saved });
+}
+
+/**
+ * GET /embed/session?token=  AdVault's sign-in handoff (embed.ts has the
+ * format). Valid signature, at most 60 s old, never used before (KV
+ * `embedjti:`), and the AdVault user's account owns this AdVault-made site:
+ * then the normal session cookie and a redirect to the embed editor.
+ */
+async function embedSession(request: Request, env: Env, url: URL, head: boolean): Promise<Response> {
+  const fail = () => embedMessage("Please reopen", `This link has expired. ${EMBED_EXPIRED}`, 403);
+  const checked = await verifyHandoff(env.INTERNAL_TOKEN, url.searchParams.get("token") ?? "");
+  if (!checked.ok) {
+    if (checked.error === "not_configured") return embedMessage("Not available", "Editing from AdVault isn't switched on yet.", 503);
+    console.warn("embed_handoff_refused", { reason: checked.error });
+    return fail();
+  }
+  const h = checked.handoff;
+  // A link checker's HEAD must not use the token up.
+  if (head) return embedMessage("Opening your editor", "One moment.", 200);
+  const jtiKey = `embedjti:${h.jti}`;
+  if (await env.SITES.get(jtiKey)) {
+    console.warn("embed_handoff_refused", { reason: "reused" });
+    return fail();
+  }
+  await env.SITES.put(jtiKey, "1", { expirationTtl: HANDOFF_JTI_TTL_SECONDS });
+  const account = await findAccountForAdvault(env.SITES, { advaultUserId: h.uid, email: h.email });
+  const site = account ? await ownedSite(env, account, h.slug) : null;
+  if (!account || !site || site.source !== "advault") {
+    console.warn("embed_handoff_refused", { reason: "not_owner", slug: h.slug });
+    return fail();
+  }
+  const res = redirectTo(env, `/edit/${encodeURIComponent(site.slug)}?embed=1`, sessionCookie(await startSession(env.SITES, account.id)));
+  res.headers.set("referrer-policy", "no-referrer");
+  res.headers.set("cache-control", "no-store");
+  return res;
+}
+
 /** The edit form plus its "Plan & billing" (BILLING on) and "Visitors" (STATS bound) sections. */
-async function editMode(env: Env, site: Site, key: string, justPaid = false): Promise<FormMode & { kind: "edit" }> {
+async function editMode(env: Env, site: Site, key: string, justPaid = false, embed = false): Promise<FormMode & { kind: "edit" }> {
   const cfg = billingConfig(env);
   const now = new Date();
   let billing: BillingView | undefined;
-  if (cfg.on) {
+  // Embedded in AdVault: no plan, credits or pay buttons (AdVault covers it).
+  if (cfg.on && !embed) {
     const b = billingOf(site);
     billing = {
       state: siteState(site, cfg, now),
@@ -854,6 +920,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false): Pr
     pendingReviews: await listPendingReviews(env, site.slug),
     siteUrl: siteUrl(env, site.slug),
     admin: isAdminEmail(env, owner?.email),
+    ...(embed ? { embed: true } : {}),
   };
 }
 
@@ -1759,7 +1826,8 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
       ? json({ ok: false, errors: { form: "Your edit link isn't valid any more. Reload it and try again." } }, 403)
       : html(messagePage("Edit link not valid", "Reload your edit link and try again.", "Can't save"), 403);
   }
-  const mode = await editMode(env, site, form.fields.key!);
+  const embed = form.fields.embed === "1";
+  const mode = await editMode(env, site, form.fields.key ?? "", false, embed);
 
   const parsed = parseContent(form.fields);
   const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
@@ -1767,7 +1835,9 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   const cfg = billingConfig(env);
   const spend = parsed.ok ? offerSpend(site.offer, parsed.value.offer, billingOf(site).credits, cfg.on) : ({ ok: true, spend: 0 } as const);
   if (!spend.ok) {
-    errors.offer = "Changing your special uses 1 credit and you have none left. Buy more credits in Plan & billing above, or keep the current special.";
+    errors.offer = embed
+      ? "Changing your special uses 1 credit and you have none left. Keep the current special for now."
+      : "Changing your special uses 1 credit and you have none left. Buy more credits in Plan & billing above, or keep the current special.";
   }
   // Keep the order the owner arranged (form.keep is in the edit page's DOM order),
   // filtered to this site's real photo keys.
@@ -1859,7 +1929,7 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   let billing = fresh;
   if (spend.ok && spend.spend === 1) {
     const b = billingOf({ billing: fresh });
-    if (b.credits < 1) return rejected(request, env, mode, { offer: "You have no offer credits left. Buy more in Plan & billing above." }, form.fields, 402);
+    if (b.credits < 1) return rejected(request, env, mode, { offer: embed ? "You have no offer credits left." : "You have no offer credits left. Buy more in Plan & billing above." }, form.fields, 402);
     billing = { ...b, credits: b.credits - 1 };
   }
   const next: Site = {
@@ -1896,7 +1966,9 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   await indexSite(env, next);
   await deletePhotos(env, removed);
 
-  const target = siteUrl(env, next.slug);
+  // Embedded in AdVault: back to the embed editor (it says "Saved"), never
+  // off to the public site inside AdVault's frame.
+  const target = embed ? `${env.PUBLIC_ORIGIN}/edit/${encodeURIComponent(next.slug)}?embed=1&saved=1` : siteUrl(env, next.slug);
   return wantsJson(request) ? json({ ok: true, next: target }) : Response.redirect(target, 303);
 }
 
