@@ -831,7 +831,7 @@ describe("menu in the builder (create flow)", () => {
   it("renders the Menu fieldset on the builder, hidden until a food category is picked", async () => {
     const page = await (await call(`${ORIGIN}/new`)).text();
     expect(page).toContain('id="menu-fieldset"');
-    expect(page).toContain('data-menu-cats="restaurant,bakery"');
+    expect(page).toContain('data-show-cats="restaurant,bakery"');
     // No category chosen yet on a fresh builder -> starts hidden (JS reveals it).
     expect(page).toMatch(/<fieldset id="menu-fieldset"[^>]*\shidden/);
   });
@@ -932,5 +932,283 @@ describe("menu upload endpoint (Upload button)", () => {
     const over = await upload(slug, key, [jpeg("x.jpg")]);
     expect(over.status).toBe(400);
     expect(((await over.json()) as { error: string }).error).toMatch(/Up to 6/);
+  });
+});
+
+describe("fitness class schedule", () => {
+  async function fitnessSite() {
+    const res = await internalCreate({ category: "fitness", businessName: "Flow Yoga", phone: "(555) 600-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string> = {}, files: Record<string, File> = {}) {
+    const form = new FormData();
+    const base = { businessName: "Flow Yoga", category: "fitness", phone: "(555) 600-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    for (const [k, f] of Object.entries(files)) form.set(k, f);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+  const schedOf = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { schedule?: string }).schedule;
+  const pdf = (name = "sched.pdf", bytes = 10) => jpeg(name, bytes, "application/pdf");
+
+  it("shows the Class schedule fieldset only for fitness (gated + revealed by category)", async () => {
+    const { slug, key } = await fitnessSite();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="schedule-fieldset"');
+    expect(page).toContain('data-show-cats="fitness"');
+    expect(page).not.toMatch(/<fieldset id="schedule-fieldset"[^>]*\shidden/);
+    // Not shown for a landscaper (present but hidden).
+    const lawn = await internalCreate({ slug: "lawns-sch", businessName: "Lawns S", phone: "(555) 600-2000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const lkey = new URL(l.editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${l.slug}?k=${lkey}`)).text()).toMatch(/<fieldset id="schedule-fieldset"[^>]*\shidden/);
+  });
+
+  it("stores an uploaded schedule and shows it in a Class schedule section", async () => {
+    const { slug, key } = await fitnessSite();
+    expect((await save(slug, key, {}, { schedule: jpeg("week.jpg") })).status).toBe(303);
+    const k0 = schedOf(slug)!;
+    expect(k0).toBeTruthy();
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="sch-h"');
+    expect(page).toContain(`<img src="https://${slug}.3pandasite.test/p/${k0}"`);
+  });
+
+  it("a PDF schedule shows as a tile; replacing swaps the file and removing deletes it", async () => {
+    const { slug, key } = await fitnessSite();
+    await save(slug, key, {}, { schedule: pdf() });
+    const first = schedOf(slug)!;
+    expect(first.endsWith(".pdf")).toBe(true);
+    expect((await (await call(`https://${slug}.3pandasite.test/`)).text())).toContain("View schedule");
+    // Replace with a new file.
+    await save(slug, key, {}, { schedule: jpeg("new.jpg") });
+    const second = schedOf(slug)!;
+    expect(second).not.toBe(first);
+    expect(R2().data.has(first)).toBe(false);
+    // Remove: no new file and keepSchedule not ticked.
+    expect((await save(slug, key)).status).toBe(303);
+    expect(schedOf(slug)).toBeUndefined();
+    expect(R2().data.has(second)).toBe(false);
+  });
+
+  it("rejects a schedule for a non-fitness business", async () => {
+    const lawn = await internalCreate({ slug: "lawns-sch2", businessName: "Lawns S2", phone: "(555) 600-3000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const key = new URL(l.editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Lawns S2", category: "landscaping", phone: "(555) 600-3000", city: "Edison", key })) form.append(k, v);
+    form.append("schedule", pdf());
+    const res = await call(`${ORIGIN}/api/sites/${l.slug}`, { method: "POST", headers: { accept: "application/json" }, body: form });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.schedule).toBeTruthy();
+    expect(schedOf(l.slug)).toBeUndefined();
+  });
+});
+
+describe("insurance accepted (dentist/clinic)", () => {
+  async function dentist() {
+    const res = await internalCreate({ category: "dentist", businessName: "Bright Smiles", phone: "(555) 700-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string>) {
+    const form = new FormData();
+    const base = { businessName: "Bright Smiles", category: "dentist", phone: "(555) 700-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+
+  it("shows the Insurance fieldset for a dentist (gated), hidden for a landscaper", async () => {
+    const { slug, key } = await dentist();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="insurance-fieldset"');
+    expect(page).toContain('data-show-cats="dentist,clinic"');
+    expect(page).not.toMatch(/<fieldset id="insurance-fieldset"[^>]*\shidden/);
+    const lawn = await internalCreate({ slug: "lawns-ins", businessName: "Lawns I", phone: "(555) 700-2000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const lkey = new URL(l.editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${l.slug}?k=${lkey}`)).text()).toMatch(/<fieldset id="insurance-fieldset"[^>]*\shidden/);
+  });
+
+  it("renders the accepted plans on the site", async () => {
+    const { slug, key } = await dentist();
+    expect((await save(slug, key, { insurance: "Delta Dental\nCigna\nAetna" })).status).toBe(303);
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="ins-h"');
+    expect(page).toContain("Delta Dental");
+    expect(page).toContain("Cigna");
+    expect(page).toContain("Aetna");
+  });
+
+  it("does not render the section for a non-medical business even if the field is sent", async () => {
+    const lawn = await internalCreate({ slug: "lawns-ins2", businessName: "Lawns I2", phone: "(555) 700-3000" });
+    const l = (await lawn.json()) as { slug: string; editUrl: string };
+    const key = new URL(l.editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Lawns I2", category: "landscaping", phone: "(555) 700-3000", city: "Edison", key, insurance: "Delta Dental" })) form.set(k, v);
+    expect((await call(`${ORIGIN}/api/sites/${l.slug}`, { method: "POST", body: form })).status).toBe(303);
+    const page = await (await call(`https://${l.slug}.3pandasite.test/`)).text();
+    expect(page).not.toContain('id="ins-h"');
+  });
+});
+
+describe("meet the team", () => {
+  async function salon() {
+    const res = await internalCreate({ category: "salon", businessName: "Shear Bliss", phone: "(555) 800-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string>) {
+    const form = new FormData();
+    const base = { businessName: "Shear Bliss", category: "salon", phone: "(555) 800-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+
+  it("shows the team fieldset for a salon (gated), hidden for a plumber", async () => {
+    const { slug, key } = await salon();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="team-fieldset"');
+    expect(page).toContain("salon,barber,spa,dentist,clinic,fitness,realestate,petcare");
+    expect(page).not.toMatch(/<fieldset id="team-fieldset"[^>]*\shidden/);
+    const plumb = await internalCreate({ slug: "pipe-team", category: "plumbing", businessName: "Pipe Co", phone: "(555) 800-2000" });
+    const p = (await plumb.json()) as { slug: string; editUrl: string };
+    const pkey = new URL(p.editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${p.slug}?k=${pkey}`)).text()).toMatch(/<fieldset id="team-fieldset"[^>]*\shidden/);
+  });
+
+  it("renders team members with names and roles", async () => {
+    const { slug, key } = await salon();
+    expect((await save(slug, key, { team: "Maria Lopez | Owner & senior stylist\nJames Carter\nPriya Shah | Colour specialist" })).status).toBe(303);
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="team-h"');
+    expect(page).toContain("Maria Lopez");
+    expect(page).toContain("Owner &amp; senior stylist");
+    expect(page).toContain("James Carter"); // role optional
+    expect(page).toContain("Colour specialist");
+  });
+
+  it("does not render the team section for a non-team business", async () => {
+    const plumb = await internalCreate({ slug: "pipe-team2", category: "plumbing", businessName: "Pipe Co2", phone: "(555) 800-3000" });
+    const p = (await plumb.json()) as { slug: string; editUrl: string };
+    const key = new URL(p.editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Pipe Co2", category: "plumbing", phone: "(555) 800-3000", city: "Edison", key, team: "Bob | Boss" })) form.set(k, v);
+    expect((await call(`${ORIGIN}/api/sites/${p.slug}`, { method: "POST", body: form })).status).toBe(303);
+    expect(await (await call(`https://${p.slug}.3pandasite.test/`)).text()).not.toContain('id="team-h"');
+  });
+});
+
+describe("FAQ (all categories)", () => {
+  async function made() {
+    const res = await internalCreate({ slug: "faq-co", businessName: "FAQ Co", phone: "(555) 900-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string>) {
+    const form = new FormData();
+    const base = { businessName: "FAQ Co", category: "landscaping", phone: "(555) 900-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+
+  it("offers the FAQ fieldset on every category (not gated)", async () => {
+    const { slug, key } = await made();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('name="faq"');
+    expect(page).toContain("Questions &amp; answers");
+  });
+
+  it("renders FAQs as a details/summary accordion (no JS)", async () => {
+    const { slug, key } = await made();
+    expect((await save(slug, key, { faq: "Do you take walk-ins? | Yes, appointments recommended.\nWhere do you park? | Free lot behind the building." })).status).toBe(303);
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="faq-h"');
+    expect(page).toContain("<details><summary>Do you take walk-ins?</summary>");
+    expect(page).toContain("Free lot behind the building.");
+  });
+
+  it("drops a line with no answer", async () => {
+    const { slug, key } = await made();
+    await save(slug, key, { faq: "Just a question with no answer\nReal one? | Real answer." });
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).not.toContain("Just a question with no answer");
+    expect(page).toContain("Real answer.");
+  });
+});
+
+describe("featured listings (real estate)", () => {
+  async function realtor() {
+    const res = await internalCreate({ category: "realestate", businessName: "Keystone Realty", phone: "(555) 950-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string | string[]>, files: Record<string, File> = {}) {
+    const form = new FormData();
+    const base = { businessName: "Keystone Realty", category: "realestate", phone: "(555) 950-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) for (const x of Array.isArray(v) ? v : [v]) form.append(k, x);
+    for (const [k, f] of Object.entries(files)) form.set(k, f);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+  const listOf = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { listings?: { photo: string; price: string; details: string; status: string }[] }).listings;
+
+  it("shows the Listings fieldset for real estate (gated), hidden for a plumber", async () => {
+    const { slug, key } = await realtor();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="listings-fieldset"');
+    expect(page).toContain('data-show-cats="realestate"');
+    expect(page).toContain('name="listing1Photo"');
+    expect(page).not.toMatch(/<fieldset id="listings-fieldset"[^>]*\shidden/);
+    const plumb = await internalCreate({ slug: "pipe-list", category: "plumbing", businessName: "Pipe Co", phone: "(555) 950-2000" });
+    const p = (await plumb.json()) as { slug: string; editUrl: string };
+    const pkey = new URL(p.editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${p.slug}?k=${pkey}`)).text()).toMatch(/<fieldset id="listings-fieldset"[^>]*\shidden/);
+  });
+
+  it("stores a listing (photo + price + details + status) and renders it", async () => {
+    const { slug, key } = await realtor();
+    const res = await save(slug, key, { listing1Price: "$450,000", listing1Details: "3 bed · 2 bath", listing1Status: "For sale" }, { listing1Photo: jpeg("home.jpg") });
+    expect(res.status).toBe(303);
+    const items = listOf(slug)!;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ price: "$450,000", details: "3 bed · 2 bath", status: "For sale" });
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="listings-h"');
+    expect(page).toContain("$450,000");
+    expect(page).toContain("3 bed · 2 bath");
+    expect(page).toContain(`/p/${items[0]!.photo}`);
+  });
+
+  it("keeps or removes existing listings, and defaults a bad status", async () => {
+    const { slug, key } = await realtor();
+    await save(slug, key, { listing1Price: "$1", listing1Status: "nonsense" }, { listing1Photo: jpeg("a.jpg") });
+    const first = listOf(slug)!;
+    expect(first[0]!.status).toBe("For sale"); // bad status normalised
+    const k0 = first[0]!.photo;
+    // Save again keeping it -> still there.
+    expect((await save(slug, key, { keepListing: k0 })).status).toBe(303);
+    expect(listOf(slug)).toHaveLength(1);
+    // Save again without keepListing -> removed and photo deleted.
+    expect((await save(slug, key, {})).status).toBe(303);
+    expect(listOf(slug)).toBeUndefined();
+    expect(R2().data.has(k0)).toBe(false);
+  });
+
+  it("rejects listings for a non-realestate business", async () => {
+    const plumb = await internalCreate({ slug: "pipe-list2", category: "plumbing", businessName: "Pipe Co2", phone: "(555) 950-3000" });
+    const p = (await plumb.json()) as { slug: string; editUrl: string };
+    const key = new URL(p.editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Pipe Co2", category: "plumbing", phone: "(555) 950-3000", city: "Edison", key })) form.append(k, v);
+    form.set("listing1Photo", jpeg("x.jpg"));
+    const res = await call(`${ORIGIN}/api/sites/${p.slug}`, { method: "POST", headers: { accept: "application/json" }, body: form });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.listings).toBeTruthy();
+    expect(listOf(p.slug)).toBeUndefined();
   });
 });

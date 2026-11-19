@@ -12,7 +12,7 @@
 // alt text, visible focus, 4.5:1 contrast (every theme's primary is dark
 // enough for white text), and nothing that only works with a mouse.
 
-import { CATEGORIES, headline, isMenuPdf, menuAllowed, reviewStats, type PolicyKind, type Site } from "./site.js";
+import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, listingsAllowed, menuAllowed, reviewStats, scheduleAllowed, teamAllowed, type PolicyKind, type Site } from "./site.js";
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
 import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
@@ -238,6 +238,31 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .gallery img{width:100%;height:160px;object-fit:cover;border-radius:var(--radius);display:block}
 .menu-pdf-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:160px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--primary);font-weight:700;text-decoration:none;text-align:center;padding:10px}
 .menu-pdf-badge{font-size:.7rem;letter-spacing:.12em;background:var(--primary);color:#fff;border-radius:6px;padding:3px 9px}
+.creds{list-style:none;margin:0;padding:0;display:grid;gap:10px;max-width:640px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.creds li{display:flex;gap:12px;align-items:center;color:var(--ink);font-weight:600}
+.creds .ck{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;border-radius:50%;background:var(--band);color:var(--primary);font-weight:800;font-size:.8rem}
+.ins-note{margin:16px 0 0;color:var(--muted)}
+.team{list-style:none;margin:0;padding:0;display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.team li{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.team-ava{flex:none;width:44px;height:44px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--primary);color:#fff;font-weight:800;font-size:1.1rem}
+.team-info{display:flex;flex-direction:column;min-width:0}
+.team-name{font-weight:700;color:var(--ink);overflow-wrap:anywhere}
+.team-role{color:var(--muted);font-size:.92rem}
+.faq{max-width:760px;display:grid;gap:10px}
+.faq details{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.faq summary{cursor:pointer;padding:14px 16px;font-weight:700;color:var(--ink);list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--primary);font-weight:800;font-size:1.3rem;line-height:1}
+.faq details[open] summary::after{content:"−"}
+.faq p{margin:0;padding:0 16px 16px;color:var(--muted);line-height:1.6}
+.listings{list-style:none;margin:0;padding:0;display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.listing{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.listing-img{position:relative}
+.listing-img img{width:100%;height:190px;object-fit:cover;display:block}
+.listing-status{position:absolute;top:10px;left:10px;background:var(--primary);color:#fff;font-size:.75rem;font-weight:700;letter-spacing:.04em;padding:4px 10px;border-radius:999px}
+.listing-body{padding:12px 14px}
+.listing-price{margin:0;font-weight:800;font-size:1.15rem;color:var(--ink)}
+.listing-details{margin:4px 0 0;color:var(--muted)}
 .ba{list-style:none;margin:0;padding:0;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
 .ba-cmp{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--band);--pos:50%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .ba-cmp img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
@@ -527,6 +552,92 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // A fitness business's uploaded class schedule: one thumbnail/PDF tile, shown
+  // like a menu (photo enlarges in the lightbox, PDF opens).
+  const scheduleKey = scheduleAllowed(site.category) ? site.schedule : undefined;
+  const scheduleHtml = scheduleKey
+    ? `<section aria-labelledby="sch-h" class="reveal">
+  <div class="wrap">
+    <p class="kicker">Plan your week</p>
+    <h2 id="sch-h">Class schedule</h2>
+    <ul class="gallery menu-grid">
+      ${
+        isMenuPdf(scheduleKey)
+          ? `<li><a class="menu-pdf-tile" href="${esc(photoUrl(ctx, scheduleKey))}" target="_blank" rel="noopener"><span class="menu-pdf-badge">PDF</span><span>View schedule</span></a></li>`
+          : `<li><img src="${esc(photoUrl(ctx, scheduleKey))}" alt="${esc(`${site.businessName} class schedule`)}" loading="lazy" decoding="async"></li>`
+      }
+    </ul>
+  </div>
+</section>`
+    : "";
+
+  // People-facing businesses: the "Meet the team" section (name + role).
+  const teamMembers = teamAllowed(site.category) ? site.team ?? [] : [];
+  const teamHtml = teamMembers.length
+    ? `<section aria-labelledby="team-h" class="reveal">
+  <div class="wrap">
+    <p class="kicker">The people</p>
+    <h2 id="team-h">Meet the team</h2>
+    <ul class="team">
+      ${teamMembers
+        .map((m) => {
+          const initial = (m.name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
+          return `<li><span class="team-ava" aria-hidden="true">${esc(initial)}</span><span class="team-info"><span class="team-name">${esc(m.name)}</span>${m.role ? `<span class="team-role">${esc(m.role)}</span>` : ""}</span></li>`;
+        })
+        .join("\n      ")}
+    </ul>
+  </div>
+</section>`
+    : "";
+
+  // Dentist/clinic: the insurance plans they accept, one per line.
+  const insuranceItems = insuranceAllowed(site.category) ? (site.insurance ?? "").split("\n").map((l) => l.trim()).filter(Boolean) : [];
+  const insuranceHtml = insuranceItems.length
+    ? `<section aria-labelledby="ins-h" class="band reveal">
+  <div class="wrap">
+    <p class="kicker">Before you visit</p>
+    <h2 id="ins-h">Insurance accepted</h2>
+    <ul class="creds">
+      ${insuranceItems.map((item) => `<li><span class="ck" aria-hidden="true">✓</span>${esc(item)}</li>`).join("\n      ")}
+    </ul>
+    <p class="ins-note">Not sure if we take your plan? Give us a call and we'll check.</p>
+  </div>
+</section>`
+    : "";
+
+  // Real estate: featured listings (photo + status + price + details).
+  const listings = listingsAllowed(site.category) ? site.listings ?? [] : [];
+  const listingsHtml = listings.length
+    ? `<section aria-labelledby="listings-h" class="band reveal">
+  <div class="wrap">
+    <p class="kicker">On the market</p>
+    <h2 id="listings-h">Featured listings</h2>
+    <ul class="listings">
+      ${listings
+        .map(
+          (l, i) =>
+            `<li class="listing"><div class="listing-img"><img src="${esc(photoUrl(ctx, l.photo))}" alt="${esc(`Listing ${i + 1}`)}" loading="lazy" decoding="async"><span class="listing-status">${esc(l.status)}</span></div><div class="listing-body">${l.price ? `<p class="listing-price">${esc(l.price)}</p>` : ""}${l.details ? `<p class="listing-details">${esc(l.details)}</p>` : ""}</div></li>`,
+        )
+        .join("\n      ")}
+    </ul>
+  </div>
+</section>`
+    : "";
+
+  // FAQ (all categories): a native <details> accordion, no JavaScript.
+  const faqItems = site.faq ?? [];
+  const faqHtml = faqItems.length
+    ? `<section aria-labelledby="faq-h" class="reveal">
+  <div class="wrap">
+    <p class="kicker">Good to know</p>
+    <h2 id="faq-h">Frequently asked questions</h2>
+    <div class="faq">
+      ${faqItems.map((f) => `<details><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join("\n      ")}
+    </div>
+  </div>
+</section>`
+    : "";
+
   const pairs = site.beforeAfter ?? [];
   const beforeAfterHtml = pairs.length
     ? `<section aria-labelledby="ba-h" class="reveal">
@@ -658,9 +769,14 @@ ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
 ${video}
 ${services}
 ${about}
+${teamHtml}
+${insuranceHtml}
 ${menuHtml}
+${scheduleHtml}
+${listingsHtml}
 ${galleryHtml}
 ${beforeAfterHtml}
+${faqHtml}
 ${reviewsHtml}
 ${visit}
 <section aria-labelledby="contact-h" class="reveal">

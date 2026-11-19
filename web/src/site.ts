@@ -95,6 +95,15 @@ export type Review = { id: string; name: string; rating: number; text: string; c
  */
 export type Location = { name: string; address: string; phone: string };
 
+/** A team member shown in the "Meet the team" section: their name and role. */
+export type TeamMember = { name: string; role: string };
+
+/** A frequently-asked question and its answer, shown in a native-HTML accordion. */
+export type FaqItem = { q: string; a: string };
+
+/** A real-estate featured listing: a photo (R2 key) plus facts the owner typed. */
+export type Listing = { photo: string; price: string; details: string; status: string };
+
 export type SiteContent = {
   businessName: string;
   category: CategoryKey;
@@ -115,6 +124,12 @@ export type SiteContent = {
   template: TemplateKey;
   /** Show the first photo as the big hero banner (else a coloured banner). Default true. */
   heroPhoto: boolean;
+  /** Dentist/clinic: insurance plans accepted, one per line. Empty = not shown. */
+  insurance: string | null;
+  /** "Meet the team" members (name + role). Empty = section not shown. */
+  team: TeamMember[];
+  /** Frequently-asked questions (all categories). Empty = section not shown. */
+  faq: FaqItem[];
 };
 
 /** The legal/policy pages every customer site carries (copy in policies.ts). */
@@ -138,6 +153,10 @@ export type Site = SiteContent & {
    * or PDF). Shown in a "Menu" section. Up to MAX_MENU. Absent = none.
    */
   menu?: string[];
+  /** R2 key of a fitness business's uploaded class schedule (image or PDF). */
+  schedule?: string;
+  /** Real-estate featured listings (photo + price + details + status). Absent = none. */
+  listings?: Listing[];
   /** Approved customer reviews (visitor-submitted, owner-moderated). Absent = none. */
   reviews?: Review[];
   /** R2 key of the business's video ad (AdVault sites only). */
@@ -252,6 +271,143 @@ export function checkMenu<F extends { type: string; size: number }>(files: F[], 
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Class schedule (fitness & yoga): one uploaded timetable, image or PDF.
+
+/** Categories that get a "Class schedule" section. */
+export const SCHEDULE_CATEGORIES: readonly CategoryKey[] = ["fitness"];
+
+export function scheduleAllowed(category: string): boolean {
+  return (SCHEDULE_CATEGORIES as readonly string[]).includes(category);
+}
+
+// ---------------------------------------------------------------------------
+// Insurance accepted (dentist, medical clinic).
+
+/** Categories that get an "Insurance accepted" section. */
+export const INSURANCE_CATEGORIES: readonly CategoryKey[] = ["dentist", "clinic"];
+
+export function insuranceAllowed(category: string): boolean {
+  return (INSURANCE_CATEGORIES as readonly string[]).includes(category);
+}
+
+// ---------------------------------------------------------------------------
+// Meet the team (people-facing businesses).
+
+export const MAX_TEAM = 12;
+const MAX_TEAM_NAME = 60;
+const MAX_TEAM_ROLE = 80;
+
+/** Categories where a "Meet the team" section fits. */
+export const TEAM_CATEGORIES: readonly CategoryKey[] = ["salon", "barber", "spa", "dentist", "clinic", "fitness", "realestate", "petcare"];
+
+export function teamAllowed(category: string): boolean {
+  return (TEAM_CATEGORIES as readonly string[]).includes(category);
+}
+
+/** Team members, one per line: "Name | Role" (role optional). Name required. */
+export function parseTeam(raw: string): TeamMember[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, MAX_TEAM)
+    .map((line) => {
+      const [name, ...rest] = line.split("|").map((p) => p.trim());
+      return { name: name ?? "", role: rest.join(" ").trim() };
+    })
+    .filter((m) => m.name);
+}
+
+export function teamToText(team: TeamMember[]): string {
+  return team.map((m) => [m.name, m.role].filter(Boolean).join(" | ")).join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// FAQ (all categories).
+
+export const MAX_FAQ = 12;
+const MAX_FAQ_Q = 160;
+const MAX_FAQ_A = 600;
+
+/** FAQs, one per line: "Question | Answer". Both required. */
+export function parseFaq(raw: string): FaqItem[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, MAX_FAQ)
+    .map((line) => {
+      const [q, ...rest] = line.split("|").map((p) => p.trim());
+      return { q: q ?? "", a: rest.join(" | ").trim() };
+    })
+    .filter((f) => f.q && f.a);
+}
+
+export function faqToText(faq: FaqItem[]): string {
+  return faq.map((f) => `${f.q} | ${f.a}`).join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Featured listings (real estate).
+
+export const MAX_LISTINGS = 6;
+export const LISTING_STATUSES = ["For sale", "For rent", "Sold", "Rented", "Under offer"] as const;
+export type ListingStatus = (typeof LISTING_STATUSES)[number];
+const MAX_LISTING_PRICE = 24;
+const MAX_LISTING_DETAILS = 120;
+
+/** Categories that get a "Featured listings" section. */
+export const LISTING_CATEGORIES: readonly CategoryKey[] = ["realestate"];
+
+export function listingsAllowed(category: string): boolean {
+  return (LISTING_CATEGORIES as readonly string[]).includes(category);
+}
+
+/** The per-slot form field names for new listings (photo + the three text fields). */
+export const LISTING_SLOTS = Array.from({ length: MAX_LISTINGS }, (_, i) => ({
+  photo: `listing${i + 1}Photo`,
+  price: `listing${i + 1}Price`,
+  details: `listing${i + 1}Details`,
+  status: `listing${i + 1}Status`,
+}));
+export const LISTING_PHOTO_FIELDS: readonly string[] = LISTING_SLOTS.map((s) => s.photo);
+
+export function normaliseListingStatus(raw: string): ListingStatus {
+  const found = LISTING_STATUSES.find((s) => s.toLowerCase() === raw.trim().toLowerCase());
+  return found ?? "For sale";
+}
+
+/**
+ * Build new listings from the upload slots and their text fields. A slot counts
+ * only when it has a photo; its price/details are validated. Pure: the caller
+ * checks the category and stores the photos (passing back the stored key).
+ */
+export function pickListings<F extends { type: string; size: number }>(
+  slots: { photo: F | undefined; price: string; details: string; status: string }[],
+  opts: { existing: number; types: string[]; maxBytes: number },
+): { ok: true; items: { photo: F; price: string; details: string; status: ListingStatus }[] } | { ok: false; error: string } {
+  const items: { photo: F; price: string; details: string; status: ListingStatus }[] = [];
+  for (const s of slots) {
+    if (!s.photo) continue;
+    if (!opts.types.includes(s.photo.type)) return { ok: false, error: "A listing photo must be a JPG, PNG or WebP image." };
+    if (s.photo.size > opts.maxBytes) return { ok: false, error: `Each listing photo must be under ${Math.round(opts.maxBytes / 1024 / 1024)} MB.` };
+    if (s.price.length > MAX_LISTING_PRICE || s.details.length > MAX_LISTING_DETAILS) return { ok: false, error: `Keep each price under ${MAX_LISTING_PRICE} and each detail under ${MAX_LISTING_DETAILS} characters.` };
+    if (LINK_PATTERN.test(s.price) || LINK_PATTERN.test(s.details)) return { ok: false, error: "Links aren't allowed here." };
+    items.push({ photo: s.photo, price: s.price, details: s.details, status: normaliseListingStatus(s.status) });
+  }
+  if (opts.existing + items.length > MAX_LISTINGS) return { ok: false, error: `Up to ${MAX_LISTINGS} listings in total.` };
+  return { ok: true, items };
+}
+
+/** Validate the single uploaded schedule file (same types/size as a menu). */
+export function checkScheduleFile(file: { type: string; size: number } | null): string | null {
+  if (!file) return null;
+  if (!MENU_TYPES.includes(file.type)) return "A schedule must be a PDF or a JPG, PNG or WebP image.";
+  if (file.size > MAX_MENU_BYTES) return `The schedule must be under ${Math.round(MAX_MENU_BYTES / 1024 / 1024)} MB.`;
+  return null;
+}
+
 type PhotoLike = { type: string; size: number };
 
 /**
@@ -279,8 +435,8 @@ export function pickBeforeAfter<F extends PhotoLike>(
 }
 
 /** Every R2 key this site's own host may serve (and removal must delete). */
-export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter" | "menu">): string[] {
-  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after]), ...(site.menu ?? [])];
+export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter" | "menu" | "schedule" | "listings">): string[] {
+  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after]), ...(site.menu ?? []), ...(site.schedule ? [site.schedule] : []), ...(site.listings ?? []).map((l) => l.photo)];
 }
 
 const LIMITS = {
@@ -294,6 +450,7 @@ const LIMITS = {
   serviceArea: 160,
   hours: 400,
   offer: 160,
+  insurance: 400,
   serviceName: 60,
   servicePrice: 24,
   testimonialName: 60,
@@ -446,9 +603,12 @@ export function parseContent(
   const serviceArea = get("serviceArea");
   const hours = get("hours");
   const offer = get("offer");
+  const insurance = get("insurance");
   const services = parseServices(get("services"));
   const testimonials = parseTestimonials(get("testimonials"));
   const locations = parseLocations(get("locations"));
+  const team = parseTeam(get("team"));
+  const faq = parseFaq(get("faq"));
 
   const required: [string, string][] = [
     ["businessName", businessName],
@@ -471,6 +631,7 @@ export function parseContent(
     ["serviceArea", serviceArea],
     ["hours", hours],
     ["offer", offer],
+    ["insurance", insurance],
   ];
   for (const [k, v] of lengths) {
     const problem = fieldProblem(k, v);
@@ -488,6 +649,20 @@ export function parseContent(
       errors.testimonials = `Keep each name under ${LIMITS.testimonialName} and each quote under ${LIMITS.testimonialQuote} characters.`;
     } else if (LINK_PATTERN.test(t.name) || LINK_PATTERN.test(t.quote)) {
       errors.testimonials = "Links aren't allowed here.";
+    }
+  }
+  for (const m of team) {
+    if (m.name.length > MAX_TEAM_NAME || m.role.length > MAX_TEAM_ROLE) {
+      errors.team = `Keep each name under ${MAX_TEAM_NAME} and each role under ${MAX_TEAM_ROLE} characters.`;
+    } else if (LINK_PATTERN.test(m.name) || LINK_PATTERN.test(m.role)) {
+      errors.team = "Links aren't allowed here.";
+    }
+  }
+  for (const f of faq) {
+    if (f.q.length > MAX_FAQ_Q || f.a.length > MAX_FAQ_A) {
+      errors.faq = `Keep each question under ${MAX_FAQ_Q} and each answer under ${MAX_FAQ_A} characters.`;
+    } else if (LINK_PATTERN.test(f.q) || LINK_PATTERN.test(f.a)) {
+      errors.faq = "Links aren't allowed here.";
     }
   }
   for (const loc of locations) {
@@ -527,6 +702,9 @@ export function parseContent(
       offer: offer || null,
       template: asTemplate(get("template")),
       heroPhoto: get("heroPhoto") !== "no",
+      insurance: insurance || null,
+      team,
+      faq,
     },
   };
 }

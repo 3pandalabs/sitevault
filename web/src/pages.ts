@@ -9,17 +9,33 @@ import {
   HOURS_TEMPLATE,
   MAX_BEFORE_AFTER,
   MAX_LOCATIONS,
+  INSURANCE_CATEGORIES,
+  LISTING_CATEGORIES,
+  LISTING_SLOTS,
+  LISTING_STATUSES,
+  MAX_FAQ,
+  MAX_LISTINGS,
   MAX_MENU,
   MAX_PHOTOS,
+  MAX_TEAM,
   MENU_CATEGORIES,
+  SCHEDULE_CATEGORIES,
   SERVICE_TEMPLATES,
+  TEAM_CATEGORIES,
   beforeAfterAllowed,
+  insuranceAllowed,
   isMenuPdf,
+  listingsAllowed,
   locationsToText,
   menuAllowed,
+  scheduleAllowed,
+  faqToText,
   servicesToText,
+  teamAllowed,
+  teamToText,
   type CategoryKey,
   type FieldErrors,
+  type Listing,
   type Review,
   type Site,
 } from "./site.js";
@@ -632,10 +648,102 @@ function menuFields(category: string, files: string[], photoUrl: ((k: string) =>
     ? `<div class="menu-upload"><button type="button" class="btn ghost" id="menu-upload-btn">Upload menu</button> <span class="hint" id="menu-status" role="status" aria-live="polite"></span></div>`
     : "";
   const add = `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. Each appears as a thumbnail on your site — visitors tap a photo to enlarge it, or a PDF to open it.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${uploadBtn}${e("menu")}</div>`;
-  return `<fieldset id="menu-fieldset" data-menu-cats="${esc(MENU_CATEGORIES.join(","))}"${menuAllowed(category) ? "" : " hidden"}><legend>Menu</legend>
+  return `<fieldset id="menu-fieldset" data-show-cats="${esc(MENU_CATEGORIES.join(","))}"${menuAllowed(category) ? "" : " hidden"}><legend>Menu</legend>
   <p class="hint">Show your menu on your website — upload a PDF or a clear photo of it.${isEdit ? ` Choose a file, then click <strong>Upload menu</strong> to add it right away.` : ""}</p>
   ${current}
   ${add}
+</fieldset>`;
+}
+
+/**
+ * The "Class schedule" section for fitness businesses: one uploaded timetable
+ * (image or PDF). On the edit page the current one shows with a keep box; a new
+ * upload replaces it. Category-gated like the Menu via data-show-cats.
+ */
+function scheduleFields(category: string, current: string | null, photoUrl: ((k: string) => string) | null, e: (k: string) => string): string {
+  const cur =
+    current && photoUrl
+      ? `<label class="check"><input type="checkbox" name="keepSchedule" value="yes" checked> <span>Keep the current schedule on my website</span></label>
+<div class="photos">${
+          isMenuPdf(current)
+            ? `<div class="photo"><div class="menu-doc">PDF schedule</div><div class="photo-ctl"><a class="tpl-preview" href="${esc(photoUrl(current))}" target="_blank" rel="noopener">View ↗</a></div></div>`
+            : `<div class="photo"><img src="${esc(photoUrl(current))}" alt="Class schedule"></div>`
+        }</div>`
+      : "";
+  const label = current ? "Replace schedule" : "Add a schedule";
+  return `<fieldset id="schedule-fieldset" data-show-cats="${esc(SCHEDULE_CATEGORIES.join(","))}"${scheduleAllowed(category) ? "" : " hidden"}><legend>Class schedule</legend>
+  <p class="hint">Upload your weekly class schedule as a clear photo or a PDF — it shows on your website, and visitors tap it to enlarge.</p>
+  ${cur}
+  <div class="field"><label for="schedule">${label} <span class="hint">One PDF or image, up to 10 MB.</span></label><input type="file" id="schedule" name="schedule" accept="image/*,application/pdf">${e("schedule")}</div>
+</fieldset>`;
+}
+
+/**
+ * The "Insurance accepted" section for dentists & clinics: the plans they take,
+ * one per line. Category-gated like the others via data-show-cats.
+ */
+function insuranceFields(category: string, value: string, e: (k: string) => string): string {
+  return `<fieldset id="insurance-fieldset" data-show-cats="${esc(INSURANCE_CATEGORIES.join(","))}"${insuranceAllowed(category) ? "" : " hidden"}><legend>Insurance accepted</legend>
+  <p class="hint">List the insurance plans you accept, one per line, so patients know before they call.</p>
+  <div class="field"><label for="insurance">Insurance plans <span class="hint">Optional. One per line.</span></label><textarea id="insurance" name="insurance" placeholder="Delta Dental&#10;Cigna&#10;Aetna&#10;MetLife&#10;UnitedHealthcare">${value}</textarea>${e("insurance")}</div>
+</fieldset>`;
+}
+
+/**
+ * The "Meet the team" section for people-facing businesses: members one per
+ * line as "Name | Role". Category-gated via data-show-cats.
+ */
+function teamFields(category: string, value: string, e: (k: string) => string): string {
+  return `<fieldset id="team-fieldset" data-show-cats="${esc(TEAM_CATEGORIES.join(","))}"${teamAllowed(category) ? "" : " hidden"}><legend>Meet the team</legend>
+  <p class="hint">Introduce the people behind your business. One per line as <strong>Name | Role</strong> (the role is optional), up to ${MAX_TEAM}.</p>
+  <div class="field"><label for="team">Team members <span class="hint">Optional.</span></label><textarea id="team" name="team" placeholder="Maria Lopez | Owner & senior stylist&#10;James Carter | Barber&#10;Priya Shah | Colour specialist">${value}</textarea>${e("team")}</div>
+</fieldset>`;
+}
+
+/**
+ * The "Featured listings" section for real estate: existing listings show with
+ * a keep box; new ones use photo + price + status + details slots (a photo
+ * makes a listing). Category-gated via data-show-cats.
+ */
+function listingsFields(category: string, listings: Listing[], photoUrl: ((k: string) => string) | null, e: (k: string) => string): string {
+  const current =
+    listings.length && photoUrl
+      ? `<p class="hint">Current listings. Untick to remove one when you save.</p>
+<div class="photos">${listings
+          .map(
+            (l, i) =>
+              `<div class="photo"><img src="${esc(photoUrl(l.photo))}" alt="Listing ${i + 1}"><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepListing" value="${esc(l.photo)}" checked> ${esc(l.status)}${l.price ? ` · ${esc(l.price)}` : ""}</label></div></div>`,
+          )
+          .join("")}</div>`
+      : "";
+  const free = Math.min(Math.max(0, MAX_LISTINGS - listings.length), 3);
+  const statusOpts = LISTING_STATUSES.map((s, i) => `<option value="${esc(s)}"${i === 0 ? " selected" : ""}>${esc(s)}</option>`).join("");
+  const slots = LISTING_SLOTS.slice(0, free)
+    .map(
+      (s, i) => `<div class="listing-slot"><p class="hint" style="font-weight:600;margin:12px 0 6px">New listing ${i + 1}</p>
+  <div class="field"><label for="${s.photo}">Photo</label><input type="file" id="${s.photo}" name="${s.photo}" accept="image/*"></div>
+  <div class="row">
+    <div class="field"><label for="${s.price}">Price <span class="hint">Optional</span></label><input type="text" id="${s.price}" name="${s.price}" maxlength="24" placeholder="$450,000"></div>
+    <div class="field"><label for="${s.status}">Status</label><select id="${s.status}" name="${s.status}">${statusOpts}</select></div>
+  </div>
+  <div class="field"><label for="${s.details}">Details <span class="hint">Optional</span></label><input type="text" id="${s.details}" name="${s.details}" maxlength="120" placeholder="3 bed · 2 bath · 1,800 sqft"></div>
+</div>`,
+    )
+    .join("\n  ");
+  const add = free ? `<p class="hint">Add a property — the photo makes the listing; price and details are optional.</p>\n  ${slots}` : "";
+  return `<fieldset id="listings-fieldset" data-show-cats="${esc(LISTING_CATEGORIES.join(","))}"${listingsAllowed(category) ? "" : " hidden"}><legend>Featured listings</legend>
+  <p class="hint">Show a few properties on your website. Enter only facts, and follow US fair-housing law — no preferences based on protected characteristics.</p>
+  ${current}
+  ${add}
+  ${e("listings")}
+</fieldset>`;
+}
+
+/** The "Questions & answers" section — shown for every category (not gated). */
+function faqFields(value: string, e: (k: string) => string): string {
+  return `<fieldset><legend>Questions &amp; answers</legend>
+  <p class="hint">Answer the things customers ask most. One per line as <strong>Question | Answer</strong>, up to ${MAX_FAQ}. They show as a tap-to-open list on your site.</p>
+  <div class="field"><label for="faq">FAQs <span class="hint">Optional.</span></label><textarea id="faq" name="faq" placeholder="Do you take walk-ins? | Yes, but appointments are recommended on weekends.&#10;Where do you park? | Free lot behind the building.">${value}</textarea>${e("faq")}</div>
 </fieldset>`;
 }
 
@@ -686,6 +794,11 @@ export function builderPage(
 
   const beforeAfter = mode.kind === "edit" ? beforeAfterFields(mode.site, mode.photoUrl, e) : "";
   const menu = menuFields(selectedCat, mode.kind === "edit" ? mode.site.menu ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
+  const schedule = scheduleFields(selectedCat, mode.kind === "edit" ? mode.site.schedule ?? null : null, mode.kind === "edit" ? mode.photoUrl : null, e);
+  const insurance = insuranceFields(selectedCat, v("insurance", site?.insurance ?? ""), e);
+  const team = teamFields(selectedCat, v("team", site ? teamToText(site.team) : ""), e);
+  const faq = faqFields(v("faq", site ? faqToText(site.faq) : ""), e);
+  const listings = listingsFields(selectedCat, mode.kind === "edit" ? mode.site.listings ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -750,6 +863,11 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
 </fieldset>
 ${beforeAfter}
 ${menu}
+${schedule}
+${team}
+${insurance}
+${listings}
+${faq}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
@@ -790,8 +908,11 @@ const BUILDER_SCRIPT = `
   var FIELDS=${JSON.stringify(FIELD_ORDER)};
   // The Menu upload only applies to food businesses: show it when the owner
   // picks a matching category, hide it otherwise (data-menu-cats lists them).
-  var catSel=document.getElementById('category'),menuFs=document.getElementById('menu-fieldset');
-  if(catSel&&menuFs){ var mcats=(menuFs.getAttribute('data-menu-cats')||'').split(','); var updMenu=function(){ menuFs.hidden=mcats.indexOf(catSel.value)<0; }; catSel.addEventListener('change',updMenu); updMenu(); }
+  // Category-gated sections (Menu, Class schedule, …) reveal when the owner
+  // picks a matching category. Each carries data-show-cats; one loop toggles all.
+  var catSel=document.getElementById('category');
+  var gatedFs=[].slice.call(document.querySelectorAll('[data-show-cats]'));
+  if(catSel&&gatedFs.length){ var updGated=function(){ gatedFs.forEach(function(fs){ fs.hidden=(fs.getAttribute('data-show-cats')||'').split(',').indexOf(catSel.value)<0; }); }; catSel.addEventListener('change',updGated); updGated(); }
   // Edit page: "Upload menu" uploads the chosen file(s) on their own and shows
   // the thumbnail at once, without saving the whole form.
   var upBtn=document.getElementById('menu-upload-btn');
