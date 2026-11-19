@@ -98,6 +98,9 @@ export type Location = { name: string; address: string; phone: string };
 /** A team member shown in the "Meet the team" section: their name and role. */
 export type TeamMember = { name: string; role: string };
 
+/** A frequently-asked question and its answer, shown in a native-HTML accordion. */
+export type FaqItem = { q: string; a: string };
+
 export type SiteContent = {
   businessName: string;
   category: CategoryKey;
@@ -122,6 +125,8 @@ export type SiteContent = {
   insurance: string | null;
   /** "Meet the team" members (name + role). Empty = section not shown. */
   team: TeamMember[];
+  /** Frequently-asked questions (all categories). Empty = section not shown. */
+  faq: FaqItem[];
 };
 
 /** The legal/policy pages every customer site carries (copy in policies.ts). */
@@ -311,6 +316,31 @@ export function parseTeam(raw: string): TeamMember[] {
 
 export function teamToText(team: TeamMember[]): string {
   return team.map((m) => [m.name, m.role].filter(Boolean).join(" | ")).join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// FAQ (all categories).
+
+export const MAX_FAQ = 12;
+const MAX_FAQ_Q = 160;
+const MAX_FAQ_A = 600;
+
+/** FAQs, one per line: "Question | Answer". Both required. */
+export function parseFaq(raw: string): FaqItem[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, MAX_FAQ)
+    .map((line) => {
+      const [q, ...rest] = line.split("|").map((p) => p.trim());
+      return { q: q ?? "", a: rest.join(" | ").trim() };
+    })
+    .filter((f) => f.q && f.a);
+}
+
+export function faqToText(faq: FaqItem[]): string {
+  return faq.map((f) => `${f.q} | ${f.a}`).join("\n");
 }
 
 /** Validate the single uploaded schedule file (same types/size as a menu). */
@@ -521,6 +551,7 @@ export function parseContent(
   const testimonials = parseTestimonials(get("testimonials"));
   const locations = parseLocations(get("locations"));
   const team = parseTeam(get("team"));
+  const faq = parseFaq(get("faq"));
 
   const required: [string, string][] = [
     ["businessName", businessName],
@@ -570,6 +601,13 @@ export function parseContent(
       errors.team = "Links aren't allowed here.";
     }
   }
+  for (const f of faq) {
+    if (f.q.length > MAX_FAQ_Q || f.a.length > MAX_FAQ_A) {
+      errors.faq = `Keep each question under ${MAX_FAQ_Q} and each answer under ${MAX_FAQ_A} characters.`;
+    } else if (LINK_PATTERN.test(f.q) || LINK_PATTERN.test(f.a)) {
+      errors.faq = "Links aren't allowed here.";
+    }
+  }
   for (const loc of locations) {
     const d = loc.phone.replace(/\D/g, "");
     if (loc.name.length > MAX_LOCATION_NAME || loc.address.length > MAX_LOCATION_ADDRESS) {
@@ -609,6 +647,7 @@ export function parseContent(
       heroPhoto: get("heroPhoto") !== "no",
       insurance: insurance || null,
       team,
+      faq,
     },
   };
 }

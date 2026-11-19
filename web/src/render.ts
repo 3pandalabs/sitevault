@@ -248,6 +248,13 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .team-info{display:flex;flex-direction:column;min-width:0}
 .team-name{font-weight:700;color:var(--ink);overflow-wrap:anywhere}
 .team-role{color:var(--muted);font-size:.92rem}
+.faq{max-width:760px;display:grid;gap:10px}
+.faq details{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.faq summary{cursor:pointer;padding:14px 16px;font-weight:700;color:var(--ink);list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--primary);font-weight:800;font-size:1.3rem;line-height:1}
+.faq details[open] summary::after{content:"−"}
+.faq p{margin:0;padding:0 16px 16px;color:var(--muted);line-height:1.6}
 .ba{list-style:none;margin:0;padding:0;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
 .ba-cmp{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--band);--pos:50%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .ba-cmp img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
@@ -590,6 +597,20 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // FAQ (all categories): a native <details> accordion, no JavaScript.
+  const faqItems = site.faq ?? [];
+  const faqHtml = faqItems.length
+    ? `<section aria-labelledby="faq-h" class="reveal">
+  <div class="wrap">
+    <p class="kicker">Good to know</p>
+    <h2 id="faq-h">Frequently asked questions</h2>
+    <div class="faq">
+      ${faqItems.map((f) => `<details><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join("\n      ")}
+    </div>
+  </div>
+</section>`
+    : "";
+
   const pairs = site.beforeAfter ?? [];
   const beforeAfterHtml = pairs.length
     ? `<section aria-labelledby="ba-h" class="reveal">
@@ -727,6 +748,7 @@ ${menuHtml}
 ${scheduleHtml}
 ${galleryHtml}
 ${beforeAfterHtml}
+${faqHtml}
 ${reviewsHtml}
 ${visit}
 <section aria-labelledby="contact-h" class="reveal">

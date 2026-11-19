@@ -10,6 +10,7 @@ import {
   MAX_BEFORE_AFTER,
   MAX_LOCATIONS,
   INSURANCE_CATEGORIES,
+  MAX_FAQ,
   MAX_MENU,
   MAX_PHOTOS,
   MAX_TEAM,
@@ -23,6 +24,7 @@ import {
   locationsToText,
   menuAllowed,
   scheduleAllowed,
+  faqToText,
   servicesToText,
   teamAllowed,
   teamToText,
@@ -692,6 +694,14 @@ function teamFields(category: string, value: string, e: (k: string) => string): 
 </fieldset>`;
 }
 
+/** The "Questions & answers" section — shown for every category (not gated). */
+function faqFields(value: string, e: (k: string) => string): string {
+  return `<fieldset><legend>Questions &amp; answers</legend>
+  <p class="hint">Answer the things customers ask most. One per line as <strong>Question | Answer</strong>, up to ${MAX_FAQ}. They show as a tap-to-open list on your site.</p>
+  <div class="field"><label for="faq">FAQs <span class="hint">Optional.</span></label><textarea id="faq" name="faq" placeholder="Do you take walk-ins? | Yes, but appointments are recommended on weekends.&#10;Where do you park? | Free lot behind the building.">${value}</textarea>${e("faq")}</div>
+</fieldset>`;
+}
+
 export function builderPage(
   mode: FormMode,
   nonce: string,
@@ -742,6 +752,7 @@ export function builderPage(
   const schedule = scheduleFields(selectedCat, mode.kind === "edit" ? mode.site.schedule ?? null : null, mode.kind === "edit" ? mode.photoUrl : null, e);
   const insurance = insuranceFields(selectedCat, v("insurance", site?.insurance ?? ""), e);
   const team = teamFields(selectedCat, v("team", site ? teamToText(site.team) : ""), e);
+  const faq = faqFields(v("faq", site ? faqToText(site.faq) : ""), e);
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -809,6 +820,7 @@ ${menu}
 ${schedule}
 ${team}
 ${insurance}
+${faq}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>

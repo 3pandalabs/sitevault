@@ -1101,3 +1101,42 @@ describe("meet the team", () => {
     expect(await (await call(`https://${p.slug}.3pandasite.test/`)).text()).not.toContain('id="team-h"');
   });
 });
+
+describe("FAQ (all categories)", () => {
+  async function made() {
+    const res = await internalCreate({ slug: "faq-co", businessName: "FAQ Co", phone: "(555) 900-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string>) {
+    const form = new FormData();
+    const base = { businessName: "FAQ Co", category: "landscaping", phone: "(555) 900-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+
+  it("offers the FAQ fieldset on every category (not gated)", async () => {
+    const { slug, key } = await made();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('name="faq"');
+    expect(page).toContain("Questions &amp; answers");
+  });
+
+  it("renders FAQs as a details/summary accordion (no JS)", async () => {
+    const { slug, key } = await made();
+    expect((await save(slug, key, { faq: "Do you take walk-ins? | Yes, appointments recommended.\nWhere do you park? | Free lot behind the building." })).status).toBe(303);
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="faq-h"');
+    expect(page).toContain("<details><summary>Do you take walk-ins?</summary>");
+    expect(page).toContain("Free lot behind the building.");
+  });
+
+  it("drops a line with no answer", async () => {
+    const { slug, key } = await made();
+    await save(slug, key, { faq: "Just a question with no answer\nReal one? | Real answer." });
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).not.toContain("Just a question with no answer");
+    expect(page).toContain("Real answer.");
+  });
+});
