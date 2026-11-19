@@ -574,3 +574,60 @@ describe("password reset pages", () => {
     expect(res.headers.get("location")).toBe(`${ORIGIN}/login`);
   });
 });
+
+describe("customer reviews", () => {
+  async function makeWithKey(fields: Record<string, string> = {}) {
+    const res = await internalCreate(fields);
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  const review = (slug: string, body: Record<string, string>) =>
+    call(`https://${slug}.3pandasite.test/review`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body),
+    });
+  const pendingKeys = (slug: string) => [...kv.data.keys()].filter((k) => k.startsWith(`revq:${slug}:`));
+  const reviewsOf = (slug: string) => (stored(slug) as unknown as { reviews?: { text: string }[] }).reviews ?? [];
+
+  it("stores a submission as pending; honeypot and invalid are dropped", async () => {
+    const { slug } = await makeWithKey({ slug: "rev-site" });
+    expect((await review(slug, { name: "Pat", rating: "5", text: "Great job" })).status).toBe(200);
+    expect(pendingKeys(slug)).toHaveLength(1);
+    await review(slug, { name: "Bot", rating: "5", text: "spam", website: "http://x" }); // honeypot
+    expect(pendingKeys(slug)).toHaveLength(1);
+    expect((await review(slug, { name: "Pat", rating: "9", text: "x" })).status).toBe(400); // bad rating
+    expect(pendingKeys(slug)).toHaveLength(1);
+  });
+
+  it("rate-limits a visitor after 3 a day", async () => {
+    const { slug } = await makeWithKey({ slug: "rl-site" });
+    for (let i = 0; i < 3; i++) await review(slug, { name: "Pat", rating: "5", text: `review ${i}` });
+    expect(pendingKeys(slug)).toHaveLength(3);
+    await review(slug, { name: "Pat", rating: "5", text: "one more" });
+    expect(pendingKeys(slug)).toHaveLength(3); // dropped
+  });
+
+  it("owner approve publishes it (and it shows on the live site); reject and remove work", async () => {
+    const { slug, key } = await makeWithKey({ slug: "mod-site" });
+    await review(slug, { name: "Pat", rating: "4", text: "Solid work" });
+    const moderate = (action: string, reviewId: string) =>
+      call(`${ORIGIN}/api/sites/${slug}/reviews`, {
+        method: "POST",
+        headers: { origin: ORIGIN, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ key, action, reviewId }),
+      });
+    const id = pendingKeys(slug)[0]!.split(":").pop()!;
+    expect((await moderate("approve", id)).status).toBe(303);
+    expect(pendingKeys(slug)).toHaveLength(0);
+    expect(reviewsOf(slug).map((r) => r.text)).toEqual(["Solid work"]);
+    expect(await (await call(`https://${slug}.3pandasite.test/`)).text()).toContain("Solid work");
+    await moderate("remove", id);
+    expect(reviewsOf(slug)).toHaveLength(0);
+    await review(slug, { name: "X", rating: "2", text: "meh" });
+    const id2 = pendingKeys(slug)[0]!.split(":").pop()!;
+    await moderate("reject", id2);
+    expect(pendingKeys(slug)).toHaveLength(0);
+  });
+});

@@ -6,10 +6,13 @@ import {
   beforeAfterAllowed,
   headline,
   parseContent,
+  parseReviewSubmission,
   parseServices,
   pickBeforeAfter,
+  reviewStats,
   servicesToText,
   siteFileKeys,
+  type Review,
 } from "../src/site.js";
 import { renderHold, renderSite } from "../src/render.js";
 import { esc, jsonForScript, phoneIdentity, slugify, telHref } from "../src/util.js";
@@ -85,6 +88,33 @@ describe("parseContent", () => {
   it("refuses links and over-long text in testimonials", () => {
     expect(parseContent({ ...base, testimonials: "Spammer — visit www.evil.com" }).ok).toBe(false);
     expect(parseContent({ ...base, testimonials: `Jane — ${"x".repeat(301)}` }).ok).toBe(false);
+  });
+});
+
+describe("customer reviews", () => {
+  it("accepts a valid review; rejects bad rating, empties, links, over-long", () => {
+    expect(parseReviewSubmission({ name: "Jane", rating: "5", text: "Great work" })).toEqual({
+      ok: true,
+      value: { name: "Jane", rating: 5, text: "Great work" },
+    });
+    for (const bad of [
+      { name: "Jane", rating: "0", text: "x" },
+      { name: "Jane", rating: "6", text: "x" },
+      { name: "Jane", rating: "4.5", text: "x" },
+      { name: "Jane", rating: "3", text: "" },
+      { name: "", rating: "3", text: "x" },
+      { name: "Jane", rating: "3", text: "see www.evil.com" },
+      { name: "Jane", rating: "3", text: "x".repeat(601) },
+    ]) {
+      expect(parseReviewSubmission(bad).ok).toBe(false);
+    }
+  });
+
+  it("computes count + one-decimal average", () => {
+    const r = (rating: number): Review => ({ id: "x", name: "A", rating, text: "t", createdAt: "" });
+    expect(reviewStats([])).toEqual({ count: 0, average: 0 });
+    expect(reviewStats([r(5), r(4)])).toEqual({ count: 2, average: 4.5 });
+    expect(reviewStats([r(5), r(5), r(4)]).average).toBe(4.7);
   });
 });
 
@@ -190,6 +220,18 @@ describe("renderSite", () => {
       expect(out).toContain('<p class="qby">Bob &lt;b&gt;D&lt;/b&gt;</p>');
       expect(out).not.toContain("<b>D</b>");
     }
+  });
+  it("always shows the Reviews section with a leave-a-review form; lists approved reviews", () => {
+    expect(html).toContain('action="/review"');
+    expect(html).toContain("No reviews yet");
+    const ctx = { siteUrl: "https://x/s/a", assetOrigin: "https://x", homeUrl: "https://x" };
+    const out = renderSite(
+      { ...site, reviews: [{ id: "r1", name: "Pat", rating: 5, text: "Loved <the> work", createdAt: "2026-11-18T00:00:00Z" }] },
+      ctx,
+    );
+    expect(out).toContain("Customer reviews");
+    expect(out).toContain("Loved &lt;the&gt; work"); // escaped
+    expect(out).toContain("5.0");
   });
   it("gives each site a themed SVG favicon with its initial", () => {
     expect(html).toContain('<link rel="icon" href="data:image/svg+xml,');
