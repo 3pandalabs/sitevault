@@ -236,10 +236,8 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .svc{font-weight:600}.price{color:var(--primary);font-weight:700;white-space:nowrap}
 .gallery{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
 .gallery img{width:100%;height:160px;object-fit:cover;border-radius:var(--radius);display:block}
-.menu{display:flex;flex-direction:column;gap:16px;max-width:720px}
-.menu-img{display:block}
-.menu-img img{width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius);display:block}
-.menu-pdf{align-self:flex-start}
+.menu-pdf-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:160px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--primary);font-weight:700;text-decoration:none;text-align:center;padding:10px}
+.menu-pdf-badge{font-size:.7rem;letter-spacing:.12em;background:var(--primary);color:#fff;border-radius:6px;padding:3px 9px}
 .ba{list-style:none;margin:0;padding:0;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
 .ba-cmp{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--band);--pos:50%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .ba-cmp img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
@@ -505,25 +503,26 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
-  // A restaurant/bakery's uploaded menu(s): images shown inline (tap to open
-  // full size), PDFs as a button. Only for food categories, only when present.
+  // A restaurant/bakery's uploaded menu(s): thumbnails, like the gallery. A
+  // photo enlarges in the lightbox on tap (it's a `.gallery img`, so the same
+  // script handles it); a PDF is a small tile that opens the file.
   const menuFiles = menuAllowed(site.category) ? site.menu ?? [] : [];
   const menuHtml = menuFiles.length
     ? `<section aria-labelledby="menu-h" class="band reveal">
   <div class="wrap">
     <p class="kicker">Have a look</p>
     <h2 id="menu-h">Our menu</h2>
-    <div class="menu">
+    <ul class="gallery menu-grid">
       ${menuFiles
         .map((k, i) => {
           const href = photoUrl(ctx, k);
           const label = menuFiles.length > 1 ? ` ${i + 1}` : "";
           return isMenuPdf(k)
-            ? `<a class="btn primary menu-pdf" href="${esc(href)}" target="_blank" rel="noopener">View our menu${label} (PDF)</a>`
-            : `<a class="menu-img" href="${esc(href)}" target="_blank" rel="noopener"><img src="${esc(href)}" alt="${esc(`${site.businessName} menu${label}`)}" loading="lazy" decoding="async"></a>`;
+            ? `<li><a class="menu-pdf-tile" href="${esc(href)}" target="_blank" rel="noopener"><span class="menu-pdf-badge">PDF</span><span>View menu${label}</span></a></li>`
+            : `<li><img src="${esc(href)}" alt="${esc(`${site.businessName} menu${label}`)}" loading="lazy" decoding="async"></li>`;
         })
         .join("\n      ")}
-    </div>
+    </ul>
   </div>
 </section>`
     : "";

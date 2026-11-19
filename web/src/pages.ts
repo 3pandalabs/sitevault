@@ -11,6 +11,7 @@ import {
   MAX_LOCATIONS,
   MAX_MENU,
   MAX_PHOTOS,
+  MENU_CATEGORIES,
   SERVICE_TEMPLATES,
   beforeAfterAllowed,
   isMenuPdf,
@@ -32,7 +33,6 @@ const CAT_THUMB_COLORS: Record<string, { p: string; b: string }> = Object.fromEn
   }),
 );
 import { MAX_RENAMES } from "./address.js";
-import { POLICY_KINDS, POLICY_META, policyDefault, policyData } from "./policies.js";
 import { esc } from "./util.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
 import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
@@ -604,46 +604,30 @@ export function beforeAfterFields(site: Site, photoUrl: (k: string) => string, e
 }
 
 /**
- * The edit-only "Legal & policy pages" section: one textarea per page,
- * prefilled with the owner's text or the version generated from the business's
- * details. Clearing a box restores the automatic version (parsePolicies stores
- * nothing when a submission matches the prefilled default).
+ * The "Menu" section for restaurants & bakeries: upload a PDF or a photo of the
+ * menu (up to MAX_MENU), with keep-boxes for existing files (edit page). Shown
+ * on both the builder and the edit page, but only for food categories — it
+ * starts hidden and the builder script reveals it when the owner picks a food
+ * category (`data-menu-cats`); server-side it's visible when the category is
+ * already food (e.g. a validation re-render, or the edit page).
  */
-function policyFields(site: Site, siteUrl: string, v: (k: string, fallback?: string) => string, e: (k: string) => string): string {
-  const data = policyData(site, siteUrl || `https://${site.slug}/`);
-  const fields = POLICY_KINDS.map((kind) => {
-    const prefill = site.policies?.[kind] ?? policyDefault(kind, data);
-    return `<div class="field"><label for="policy_${kind}">${esc(POLICY_META[kind].title)} <span class="hint">Shows at ${esc(POLICY_META[kind].path)}. Edit to customise, or clear the box to use the automatic version.</span></label>
-  <textarea id="policy_${kind}" name="policy_${kind}" rows="12" maxlength="20000">${v(`policy_${kind}`, prefill)}</textarea>${e(`policy_${kind}`)}</div>`;
-  }).join("\n  ");
-  return `<fieldset><legend>Legal &amp; policy pages</legend>
-  <p class="hint">Every website comes with these four pages, linked in your footer and prepopulated from the details above. They're plain-language starters, <strong>not legal advice</strong> — if your business is regulated, or you serve customers in the EU, UK or California, have a lawyer review them.</p>
-  ${fields}
-</fieldset>`;
-}
-
-/**
- * The edit-only "Menu" section for restaurants & bakeries: upload a PDF or a
- * photo of the menu (up to MAX_MENU), with keep-boxes to remove existing files.
- */
-function menuFields(site: Site, photoUrl: (k: string) => string, e: (k: string) => string): string {
-  if (!menuAllowed(site.category)) return "";
-  const files = site.menu ?? [];
-  const current = files.length
-    ? `<p class="hint">Current menu files. Untick to remove one from your website.</p>
+function menuFields(category: string, files: string[], photoUrl: ((k: string) => string) | null, e: (k: string) => string): string {
+  const current =
+    files.length && photoUrl
+      ? `<p class="hint">Current menu files. Untick to remove one from your website.</p>
 <div class="photos">${files
-        .map((k, i) =>
-          isMenuPdf(k)
-            ? `<div class="photo"><div class="menu-doc">PDF menu ${i + 1}</div><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(k)}" checked> Keep</label><a class="tpl-preview" href="${esc(photoUrl(k))}" target="_blank" rel="noopener">View ↗</a></div></div>`
-            : `<div class="photo"><img src="${esc(photoUrl(k))}" alt="Menu ${i + 1}"><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(k)}" checked> Keep menu ${i + 1}</label></div></div>`,
-        )
-        .join("")}</div>`
-    : "";
+          .map((k, i) =>
+            isMenuPdf(k)
+              ? `<div class="photo"><div class="menu-doc">PDF menu ${i + 1}</div><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(k)}" checked> Keep</label><a class="tpl-preview" href="${esc(photoUrl(k))}" target="_blank" rel="noopener">View ↗</a></div></div>`
+              : `<div class="photo"><img src="${esc(photoUrl(k))}" alt="Menu ${i + 1}"><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(k)}" checked> Keep menu ${i + 1}</label></div></div>`,
+          )
+          .join("")}</div>`
+      : "";
   const free = Math.max(0, MAX_MENU - files.length);
   const add = free
-    ? `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. A PDF shows as a "View menu" button; a photo shows on the page.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${e("menu")}</div>`
+    ? `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. Each appears as a thumbnail on your site — visitors tap a photo to enlarge it, or a PDF to open it.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${e("menu")}</div>`
     : e("menu");
-  return `<fieldset><legend>Menu</legend>
+  return `<fieldset id="menu-fieldset" data-menu-cats="${esc(MENU_CATEGORIES.join(","))}"${menuAllowed(category) ? "" : " hidden"}><legend>Menu</legend>
   <p class="hint">Show your menu on your website — upload a PDF or a clear photo of it.</p>
   ${current}
   ${add}
@@ -696,8 +680,7 @@ export function builderPage(
       : "";
 
   const beforeAfter = mode.kind === "edit" ? beforeAfterFields(mode.site, mode.photoUrl, e) : "";
-  const menu = mode.kind === "edit" ? menuFields(mode.site, mode.photoUrl, e) : "";
-  const policySection = mode.kind === "edit" ? policyFields(mode.site, mode.siteUrl ?? "", v, e) : "";
+  const menu = menuFields(selectedCat, mode.kind === "edit" ? mode.site.menu ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -762,7 +745,6 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
 </fieldset>
 ${beforeAfter}
 ${menu}
-${policySection}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
@@ -801,6 +783,10 @@ const BUILDER_SCRIPT = `
 (function(){
   var form=document.getElementById('builder'); if(!form||!window.fetch||!window.FormData) return;
   var FIELDS=${JSON.stringify(FIELD_ORDER)};
+  // The Menu upload only applies to food businesses: show it when the owner
+  // picks a matching category, hide it otherwise (data-menu-cats lists them).
+  var catSel=document.getElementById('category'),menuFs=document.getElementById('menu-fieldset');
+  if(catSel&&menuFs){ var mcats=(menuFs.getAttribute('data-menu-cats')||'').split(','); var updMenu=function(){ menuFs.hidden=mcats.indexOf(catSel.value)<0; }; catSel.addEventListener('change',updMenu); updMenu(); }
   // Reorder existing photos with the arrows; the "keep" inputs' DOM order is the saved order.
   var plist=document.getElementById('photolist');
   if(plist){

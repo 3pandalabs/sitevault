@@ -675,50 +675,25 @@ describe("customer-site policy pages", () => {
     expect((await call(`${host}/privacy`, { method: "POST" })).status).toBe(405);
   });
 
-  it("prefills the edit page with the four textareas", async () => {
+  it("does not let the owner edit the policy pages (no editable fields, nothing stored)", async () => {
     const { slug, key } = await made();
     const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
-    for (const k of ["privacy", "accessibility", "cookies", "terms"]) expect(page).toContain(`name="policy_${k}"`);
-    expect(page).toContain("Legal &amp; policy pages");
-  });
-
-  it("stores an owner edit, shows it on the page, and leaves untouched pages on the default", async () => {
-    const { slug, key } = await made();
-    const res = await save(slug, key, { policy_privacy: "## Custom\nWe collect nothing at all." });
-    expect(res.status).toBe(303);
-    expect(policies(slug)).toEqual({ privacy: "## Custom\nWe collect nothing at all." });
-    const privacy = await (await call(`https://${slug}.3pandasite.test/privacy`)).text();
-    expect(privacy).toContain("We collect nothing at all.");
-    // An untouched page is still its generated default (not frozen into KV).
-    expect(policies(slug)!.cookies).toBeUndefined();
-  });
-
-  it("clearing an overridden page restores the automatic version", async () => {
-    const { slug, key } = await made();
-    await save(slug, key, { policy_privacy: "## Mine\nCustom text." });
-    expect(policies(slug)).toEqual({ privacy: "## Mine\nCustom text." });
-    const res = await save(slug, key, { policy_privacy: "" });
+    for (const k of ["privacy", "accessibility", "cookies", "terms"]) expect(page).not.toContain(`name="policy_${k}"`);
+    expect(page).not.toContain("Legal &amp; policy pages");
+    // Even a hand-crafted policy_* field in the form is ignored — nothing is stored.
+    const res = await save(slug, key, { policy_privacy: "## Mine\nCustom text." });
     expect(res.status).toBe(303);
     expect(policies(slug)).toBeUndefined();
     const privacy = await (await call(`https://${slug}.3pandasite.test/privacy`)).text();
+    expect(privacy).not.toContain("Custom text.");
     expect(privacy).toContain("Anonymous visit counts");
   });
 
-  it("an un-overridden page follows a change to the business details", async () => {
+  it("a policy page reflects the business's current details", async () => {
     const { slug, key } = await made();
     await save(slug, key, { phone: "(555) 999-1234" });
-    expect(policies(slug)).toBeUndefined();
     const privacy = await (await call(`https://${slug}.3pandasite.test/privacy`)).text();
     expect(privacy).toContain("(555) 999-1234");
-  });
-
-  it("escapes owner text so a typed link never becomes clickable", async () => {
-    const { slug, key } = await made();
-    await save(slug, key, { policy_terms: "Visit <b>evil</b> at http://evil.test now." });
-    const terms = await (await call(`https://${slug}.3pandasite.test/terms`)).text();
-    expect(terms).toContain("&lt;b&gt;evil&lt;/b&gt;");
-    expect(terms).not.toContain("<b>evil</b>");
-    expect(terms).not.toContain('href="http://evil.test"');
   });
 });
 
@@ -753,36 +728,60 @@ describe("restaurant/bakery menu upload", () => {
   const menuOf = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { menu?: string[] }).menu;
   const pdf = (name = "menu.pdf", bytes = 10) => jpeg(name, bytes, "application/pdf");
 
-  it("shows the Menu fieldset on the edit page for a restaurant, not a landscaper", async () => {
+  it("shows the Menu fieldset on the edit page for a restaurant, hidden for a landscaper", async () => {
     const r = await made();
-    expect(await (await call(`${ORIGIN}/edit/${r.slug}?k=${r.key}`)).text()).toContain("Add menu files");
+    const rest = await (await call(`${ORIGIN}/edit/${r.slug}?k=${r.key}`)).text();
+    expect(rest).toContain("Add menu files");
+    // Restaurant: the fieldset is visible (not hidden).
+    expect(rest).not.toMatch(/<fieldset id="menu-fieldset"[^>]*\shidden/);
     const lawn = await internalCreate({ slug: "lawns-x", businessName: "Lawns X", phone: "(555) 300-2000" });
     const { slug, editUrl } = (await lawn.json()) as { slug: string; editUrl: string };
     const key = new URL(editUrl).searchParams.get("k")!;
-    expect(await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text()).not.toContain("Add menu files");
+    // Landscaper: present but hidden, so a non-food business never sees it.
+    expect(await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text()).toMatch(/<fieldset id="menu-fieldset"[^>]*\shidden/);
   });
 
-  it("stores an uploaded PDF menu and shows a View menu button linking to it", async () => {
+  it("stores an uploaded PDF menu and shows a small PDF tile linking to it", async () => {
     const { slug, key } = await made();
     expect((await save(slug, key, {}, { menu: pdf() })).status).toBe(303);
     const keys = menuOf(slug)!;
     expect(keys).toHaveLength(1);
     expect(keys[0]!.endsWith(".pdf")).toBe(true);
     const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
-    expect(page).toContain("View our menu (PDF)");
+    expect(page).toContain("menu-pdf-tile");
+    expect(page).toContain("View menu");
     expect(page).toContain(`/p/${keys[0]}`);
     const file = await call(`https://${slug}.3pandasite.test/p/${keys[0]}`);
     expect(file.status).toBe(200);
     expect(file.headers.get("content-type")).toBe("application/pdf");
   });
 
-  it("shows an uploaded image menu inline in the Menu section", async () => {
+  it("shows an uploaded image menu as a gallery thumbnail (enlarges on tap)", async () => {
     const { slug, key } = await made();
     expect((await save(slug, key, {}, { menu: jpeg("menu.jpg") })).status).toBe(303);
     const keys = menuOf(slug)!;
     const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
     expect(page).toContain('id="menu-h"');
+    // Rendered inside the gallery grid, so the existing lightbox enlarges it on tap.
+    expect(page).toContain('class="gallery menu-grid"');
     expect(page).toContain(`<img src="https://${slug}.3pandasite.test/p/${keys[0]}"`);
+  });
+
+  it("allows up to 6 menu files", async () => {
+    const { slug, key } = await made();
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Tony's Pizza", category: "restaurant", phone: "(555) 300-1000", city: "Edison", key })) form.append(k, v);
+    for (let i = 0; i < 6; i++) form.append("menu", jpeg(`m${i}.jpg`));
+    expect((await call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form })).status).toBe(303);
+    expect(menuOf(slug)).toHaveLength(6);
+    // A 7th is over the cap.
+    const over = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Tony's Pizza", category: "restaurant", phone: "(555) 300-1000", city: "Edison", key })) over.append(k, v);
+    for (const existing of menuOf(slug)!) over.append("keepMenu", existing);
+    over.append("menu", jpeg("extra.jpg"));
+    const res = await call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", headers: { accept: "application/json" }, body: over });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.menu).toMatch(/Up to 6/);
   });
 
   it("rejects a menu for a business type where it doesn't belong", async () => {
@@ -825,5 +824,50 @@ describe("restaurant/bakery menu upload", () => {
     expect((await save(slug, key)).status).toBe(303);
     expect(menuOf(slug)).toBeUndefined();
     expect(R2().data.has(k0)).toBe(false);
+  });
+});
+
+describe("menu in the builder (create flow)", () => {
+  it("renders the Menu fieldset on the builder, hidden until a food category is picked", async () => {
+    const page = await (await call(`${ORIGIN}/new`)).text();
+    expect(page).toContain('id="menu-fieldset"');
+    expect(page).toContain('data-menu-cats="restaurant,bakery"');
+    // No category chosen yet on a fresh builder -> starts hidden (JS reveals it).
+    expect(page).toMatch(/<fieldset id="menu-fieldset"[^>]*\shidden/);
+  });
+
+  async function publicCreate(fields: Record<string, string>, files: Record<string, File> = {}) {
+    const form = new FormData();
+    const base = {
+      businessName: "Tony's Pizza",
+      category: "restaurant",
+      phone: "(555) 400-1000",
+      city: "Edison",
+      attest: "yes",
+      acct_email: "owner-menu@example.test",
+      acct_password: "supersecret1",
+    };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    for (const [k, f] of Object.entries(files)) form.set(k, f);
+    return call(`${ORIGIN}/api/sites`, { method: "POST", headers: { accept: "application/json" }, body: form });
+  }
+  const storedBySlug = (slug: string) => JSON.parse(kv.data.get(`site:${slug}`)!.value) as { menu?: string[]; category: string };
+  const onlySlug = () => [...kv.data.keys()].find((k) => k.startsWith("site:"))!.slice("site:".length);
+
+  it("stores a menu uploaded while building a restaurant site", async () => {
+    const res = await publicCreate({}, { menu: jpeg("menu.pdf", 10, "application/pdf") });
+    expect(res.status).toBe(200);
+    const slug = onlySlug();
+    const menu = storedBySlug(slug).menu!;
+    expect(menu).toHaveLength(1);
+    expect(menu[0]!.endsWith(".pdf")).toBe(true);
+    expect(await (await call(`https://${slug}.3pandasite.test/`)).text()).toContain("menu-pdf-tile");
+  });
+
+  it("rejects a menu at build time for a non-food business", async () => {
+    const res = await publicCreate({ category: "plumbing", businessName: "Pipe Co" }, { menu: jpeg("menu.pdf", 10, "application/pdf") });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.menu).toBeTruthy();
+    expect([...kv.data.keys()].some((k) => k.startsWith("site:"))).toBe(false);
   });
 });
