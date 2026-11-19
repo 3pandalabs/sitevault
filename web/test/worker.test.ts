@@ -1053,3 +1053,51 @@ describe("insurance accepted (dentist/clinic)", () => {
     expect(page).not.toContain('id="ins-h"');
   });
 });
+
+describe("meet the team", () => {
+  async function salon() {
+    const res = await internalCreate({ category: "salon", businessName: "Shear Bliss", phone: "(555) 800-1000" });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string>) {
+    const form = new FormData();
+    const base = { businessName: "Shear Bliss", category: "salon", phone: "(555) 800-1000", city: "Edison", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+
+  it("shows the team fieldset for a salon (gated), hidden for a plumber", async () => {
+    const { slug, key } = await salon();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    expect(page).toContain('id="team-fieldset"');
+    expect(page).toContain("salon,barber,spa,dentist,clinic,fitness,realestate,petcare");
+    expect(page).not.toMatch(/<fieldset id="team-fieldset"[^>]*\shidden/);
+    const plumb = await internalCreate({ slug: "pipe-team", category: "plumbing", businessName: "Pipe Co", phone: "(555) 800-2000" });
+    const p = (await plumb.json()) as { slug: string; editUrl: string };
+    const pkey = new URL(p.editUrl).searchParams.get("k")!;
+    expect(await (await call(`${ORIGIN}/edit/${p.slug}?k=${pkey}`)).text()).toMatch(/<fieldset id="team-fieldset"[^>]*\shidden/);
+  });
+
+  it("renders team members with names and roles", async () => {
+    const { slug, key } = await salon();
+    expect((await save(slug, key, { team: "Maria Lopez | Owner & senior stylist\nJames Carter\nPriya Shah | Colour specialist" })).status).toBe(303);
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).toContain('id="team-h"');
+    expect(page).toContain("Maria Lopez");
+    expect(page).toContain("Owner &amp; senior stylist");
+    expect(page).toContain("James Carter"); // role optional
+    expect(page).toContain("Colour specialist");
+  });
+
+  it("does not render the team section for a non-team business", async () => {
+    const plumb = await internalCreate({ slug: "pipe-team2", category: "plumbing", businessName: "Pipe Co2", phone: "(555) 800-3000" });
+    const p = (await plumb.json()) as { slug: string; editUrl: string };
+    const key = new URL(p.editUrl).searchParams.get("k")!;
+    const form = new FormData();
+    for (const [k, v] of Object.entries({ businessName: "Pipe Co2", category: "plumbing", phone: "(555) 800-3000", city: "Edison", key, team: "Bob | Boss" })) form.set(k, v);
+    expect((await call(`${ORIGIN}/api/sites/${p.slug}`, { method: "POST", body: form })).status).toBe(303);
+    expect(await (await call(`https://${p.slug}.3pandasite.test/`)).text()).not.toContain('id="team-h"');
+  });
+});

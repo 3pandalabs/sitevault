@@ -12,7 +12,7 @@
 // alt text, visible focus, 4.5:1 contrast (every theme's primary is dark
 // enough for white text), and nothing that only works with a mouse.
 
-import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, menuAllowed, reviewStats, scheduleAllowed, type PolicyKind, type Site } from "./site.js";
+import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, menuAllowed, reviewStats, scheduleAllowed, teamAllowed, type PolicyKind, type Site } from "./site.js";
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
 import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
@@ -242,6 +242,12 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .creds li{display:flex;gap:12px;align-items:center;color:var(--ink);font-weight:600}
 .creds .ck{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;border-radius:50%;background:var(--band);color:var(--primary);font-weight:800;font-size:.8rem}
 .ins-note{margin:16px 0 0;color:var(--muted)}
+.team{list-style:none;margin:0;padding:0;display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.team li{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.team-ava{flex:none;width:44px;height:44px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--primary);color:#fff;font-weight:800;font-size:1.1rem}
+.team-info{display:flex;flex-direction:column;min-width:0}
+.team-name{font-weight:700;color:var(--ink);overflow-wrap:anywhere}
+.team-role{color:var(--muted);font-size:.92rem}
 .ba{list-style:none;margin:0;padding:0;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
 .ba-cmp{position:relative;border-radius:var(--radius);overflow:hidden;background:var(--band);--pos:50%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .ba-cmp img{display:block;width:100%;aspect-ratio:4/3;height:auto;object-fit:cover}
@@ -550,6 +556,25 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
+  // People-facing businesses: the "Meet the team" section (name + role).
+  const teamMembers = teamAllowed(site.category) ? site.team ?? [] : [];
+  const teamHtml = teamMembers.length
+    ? `<section aria-labelledby="team-h" class="reveal">
+  <div class="wrap">
+    <p class="kicker">The people</p>
+    <h2 id="team-h">Meet the team</h2>
+    <ul class="team">
+      ${teamMembers
+        .map((m) => {
+          const initial = (m.name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
+          return `<li><span class="team-ava" aria-hidden="true">${esc(initial)}</span><span class="team-info"><span class="team-name">${esc(m.name)}</span>${m.role ? `<span class="team-role">${esc(m.role)}</span>` : ""}</span></li>`;
+        })
+        .join("\n      ")}
+    </ul>
+  </div>
+</section>`
+    : "";
+
   // Dentist/clinic: the insurance plans they accept, one per line.
   const insuranceItems = insuranceAllowed(site.category) ? (site.insurance ?? "").split("\n").map((l) => l.trim()).filter(Boolean) : [];
   const insuranceHtml = insuranceItems.length
@@ -696,6 +721,7 @@ ${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
 ${video}
 ${services}
 ${about}
+${teamHtml}
 ${insuranceHtml}
 ${menuHtml}
 ${scheduleHtml}

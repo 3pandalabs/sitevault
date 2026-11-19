@@ -95,6 +95,9 @@ export type Review = { id: string; name: string; rating: number; text: string; c
  */
 export type Location = { name: string; address: string; phone: string };
 
+/** A team member shown in the "Meet the team" section: their name and role. */
+export type TeamMember = { name: string; role: string };
+
 export type SiteContent = {
   businessName: string;
   category: CategoryKey;
@@ -117,6 +120,8 @@ export type SiteContent = {
   heroPhoto: boolean;
   /** Dentist/clinic: insurance plans accepted, one per line. Empty = not shown. */
   insurance: string | null;
+  /** "Meet the team" members (name + role). Empty = section not shown. */
+  team: TeamMember[];
 };
 
 /** The legal/policy pages every customer site carries (copy in policies.ts). */
@@ -274,6 +279,38 @@ export const INSURANCE_CATEGORIES: readonly CategoryKey[] = ["dentist", "clinic"
 
 export function insuranceAllowed(category: string): boolean {
   return (INSURANCE_CATEGORIES as readonly string[]).includes(category);
+}
+
+// ---------------------------------------------------------------------------
+// Meet the team (people-facing businesses).
+
+export const MAX_TEAM = 12;
+const MAX_TEAM_NAME = 60;
+const MAX_TEAM_ROLE = 80;
+
+/** Categories where a "Meet the team" section fits. */
+export const TEAM_CATEGORIES: readonly CategoryKey[] = ["salon", "barber", "spa", "dentist", "clinic", "fitness", "realestate", "petcare"];
+
+export function teamAllowed(category: string): boolean {
+  return (TEAM_CATEGORIES as readonly string[]).includes(category);
+}
+
+/** Team members, one per line: "Name | Role" (role optional). Name required. */
+export function parseTeam(raw: string): TeamMember[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, MAX_TEAM)
+    .map((line) => {
+      const [name, ...rest] = line.split("|").map((p) => p.trim());
+      return { name: name ?? "", role: rest.join(" ").trim() };
+    })
+    .filter((m) => m.name);
+}
+
+export function teamToText(team: TeamMember[]): string {
+  return team.map((m) => [m.name, m.role].filter(Boolean).join(" | ")).join("\n");
 }
 
 /** Validate the single uploaded schedule file (same types/size as a menu). */
@@ -483,6 +520,7 @@ export function parseContent(
   const services = parseServices(get("services"));
   const testimonials = parseTestimonials(get("testimonials"));
   const locations = parseLocations(get("locations"));
+  const team = parseTeam(get("team"));
 
   const required: [string, string][] = [
     ["businessName", businessName],
@@ -525,6 +563,13 @@ export function parseContent(
       errors.testimonials = "Links aren't allowed here.";
     }
   }
+  for (const m of team) {
+    if (m.name.length > MAX_TEAM_NAME || m.role.length > MAX_TEAM_ROLE) {
+      errors.team = `Keep each name under ${MAX_TEAM_NAME} and each role under ${MAX_TEAM_ROLE} characters.`;
+    } else if (LINK_PATTERN.test(m.name) || LINK_PATTERN.test(m.role)) {
+      errors.team = "Links aren't allowed here.";
+    }
+  }
   for (const loc of locations) {
     const d = loc.phone.replace(/\D/g, "");
     if (loc.name.length > MAX_LOCATION_NAME || loc.address.length > MAX_LOCATION_ADDRESS) {
@@ -563,6 +608,7 @@ export function parseContent(
       template: asTemplate(get("template")),
       heroPhoto: get("heroPhoto") !== "no",
       insurance: insurance || null,
+      team,
     },
   };
 }

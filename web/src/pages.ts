@@ -12,9 +12,11 @@ import {
   INSURANCE_CATEGORIES,
   MAX_MENU,
   MAX_PHOTOS,
+  MAX_TEAM,
   MENU_CATEGORIES,
   SCHEDULE_CATEGORIES,
   SERVICE_TEMPLATES,
+  TEAM_CATEGORIES,
   beforeAfterAllowed,
   insuranceAllowed,
   isMenuPdf,
@@ -22,6 +24,8 @@ import {
   menuAllowed,
   scheduleAllowed,
   servicesToText,
+  teamAllowed,
+  teamToText,
   type CategoryKey,
   type FieldErrors,
   type Review,
@@ -677,6 +681,17 @@ function insuranceFields(category: string, value: string, e: (k: string) => stri
 </fieldset>`;
 }
 
+/**
+ * The "Meet the team" section for people-facing businesses: members one per
+ * line as "Name | Role". Category-gated via data-show-cats.
+ */
+function teamFields(category: string, value: string, e: (k: string) => string): string {
+  return `<fieldset id="team-fieldset" data-show-cats="${esc(TEAM_CATEGORIES.join(","))}"${teamAllowed(category) ? "" : " hidden"}><legend>Meet the team</legend>
+  <p class="hint">Introduce the people behind your business. One per line as <strong>Name | Role</strong> (the role is optional), up to ${MAX_TEAM}.</p>
+  <div class="field"><label for="team">Team members <span class="hint">Optional.</span></label><textarea id="team" name="team" placeholder="Maria Lopez | Owner & senior stylist&#10;James Carter | Barber&#10;Priya Shah | Colour specialist">${value}</textarea>${e("team")}</div>
+</fieldset>`;
+}
+
 export function builderPage(
   mode: FormMode,
   nonce: string,
@@ -726,6 +741,7 @@ export function builderPage(
   const menu = menuFields(selectedCat, mode.kind === "edit" ? mode.site.menu ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
   const schedule = scheduleFields(selectedCat, mode.kind === "edit" ? mode.site.schedule ?? null : null, mode.kind === "edit" ? mode.photoUrl : null, e);
   const insurance = insuranceFields(selectedCat, v("insurance", site?.insurance ?? ""), e);
+  const team = teamFields(selectedCat, v("team", site ? teamToText(site.team) : ""), e);
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
@@ -791,6 +807,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
 ${beforeAfter}
 ${menu}
 ${schedule}
+${team}
 ${insurance}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
