@@ -631,3 +631,93 @@ describe("customer reviews", () => {
     expect(pendingKeys(slug)).toHaveLength(0);
   });
 });
+
+describe("customer-site policy pages", () => {
+  async function made(fields: Record<string, string> = {}) {
+    const res = await internalCreate({ email: "hi@greenlawns.test", address: "12 Oak St", ...fields });
+    expect(res.status).toBe(201);
+    const { slug, editUrl } = (await res.json()) as { slug: string; editUrl: string };
+    return { slug, key: new URL(editUrl).searchParams.get("k")! };
+  }
+  async function save(slug: string, key: string, fields: Record<string, string>) {
+    const form = new FormData();
+    const base = { businessName: "Green Lawns", category: "landscaping", phone: "(555) 201-0000", city: "Edison", email: "hi@greenlawns.test", address: "12 Oak St", key };
+    for (const [k, v] of Object.entries({ ...base, ...fields })) form.set(k, v);
+    return call(`${ORIGIN}/api/sites/${slug}`, { method: "POST", body: form });
+  }
+  const policies = (slug: string) => (JSON.parse(kv.data.get(`site:${slug}`)!.value) as { policies?: Record<string, string> }).policies;
+
+  it("serves all four pages, prepopulated from the business and accurate about cookies", async () => {
+    const { slug } = await made();
+    const host = `https://${slug}.3pandasite.test`;
+    for (const [path, title] of [["/privacy", "Privacy Policy"], ["/accessibility", "Accessibility Statement"], ["/cookies", "Cookies Policy"], ["/terms", "Terms of Service"]]) {
+      const res = await call(`${host}${path}`);
+      expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).toContain(`<h1>${title}</h1>`);
+      expect(body).toContain("Green Lawns");
+    }
+    const cookies = await (await call(`${host}/cookies`)).text();
+    expect(cookies).toMatch(/does not set cookies/i);
+    expect(cookies).not.toMatch(/advertising cookies/i);
+  });
+
+  it("links the four pages in the site footer", async () => {
+    const { slug } = await made();
+    const home = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    for (const p of ["/privacy", "/accessibility", "/cookies", "/terms"]) expect(home).toContain(`href="${p}"`);
+  });
+
+  it("HEAD works and a bad method is 405, like the rest of the customer host", async () => {
+    const { slug } = await made();
+    const host = `https://${slug}.3pandasite.test`;
+    expect((await call(`${host}/privacy`, { method: "HEAD" })).status).toBe(200);
+    expect((await call(`${host}/privacy`, { method: "POST" })).status).toBe(405);
+  });
+
+  it("prefills the edit page with the four textareas", async () => {
+    const { slug, key } = await made();
+    const page = await (await call(`${ORIGIN}/edit/${slug}?k=${key}`)).text();
+    for (const k of ["privacy", "accessibility", "cookies", "terms"]) expect(page).toContain(`name="policy_${k}"`);
+    expect(page).toContain("Legal &amp; policy pages");
+  });
+
+  it("stores an owner edit, shows it on the page, and leaves untouched pages on the default", async () => {
+    const { slug, key } = await made();
+    const res = await save(slug, key, { policy_privacy: "## Custom\nWe collect nothing at all." });
+    expect(res.status).toBe(303);
+    expect(policies(slug)).toEqual({ privacy: "## Custom\nWe collect nothing at all." });
+    const privacy = await (await call(`https://${slug}.3pandasite.test/privacy`)).text();
+    expect(privacy).toContain("We collect nothing at all.");
+    // An untouched page is still its generated default (not frozen into KV).
+    expect(policies(slug)!.cookies).toBeUndefined();
+  });
+
+  it("clearing an overridden page restores the automatic version", async () => {
+    const { slug, key } = await made();
+    await save(slug, key, { policy_privacy: "## Mine\nCustom text." });
+    expect(policies(slug)).toEqual({ privacy: "## Mine\nCustom text." });
+    const res = await save(slug, key, { policy_privacy: "" });
+    expect(res.status).toBe(303);
+    expect(policies(slug)).toBeUndefined();
+    const privacy = await (await call(`https://${slug}.3pandasite.test/privacy`)).text();
+    expect(privacy).toContain("Anonymous visit counts");
+  });
+
+  it("an un-overridden page follows a change to the business details", async () => {
+    const { slug, key } = await made();
+    await save(slug, key, { phone: "(555) 999-1234" });
+    expect(policies(slug)).toBeUndefined();
+    const privacy = await (await call(`https://${slug}.3pandasite.test/privacy`)).text();
+    expect(privacy).toContain("(555) 999-1234");
+  });
+
+  it("escapes owner text so a typed link never becomes clickable", async () => {
+    const { slug, key } = await made();
+    await save(slug, key, { policy_terms: "Visit <b>evil</b> at http://evil.test now." });
+    const terms = await (await call(`https://${slug}.3pandasite.test/terms`)).text();
+    expect(terms).toContain("&lt;b&gt;evil&lt;/b&gt;");
+    expect(terms).not.toContain("<b>evil</b>");
+    expect(terms).not.toContain('href="http://evil.test"');
+  });
+});

@@ -32,7 +32,7 @@
 // D1 STATS (optional): aggregate visit counters, see stats.ts. Writes go
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
-import { renderHold, renderSite, reviewResultPage, type RenderContext } from "./render.js";
+import { renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
 import { accountPage, adminPage, authPage, builderPage, donePage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
@@ -101,15 +101,18 @@ import {
   type BeforeAfterField,
   parseContent,
   parseInternalOffer,
+  parsePolicies,
   parseReviewSubmission,
   MAX_APPROVED_REVIEWS,
   MAX_PENDING_REVIEWS,
   REVIEWS_PER_IP_PER_DAY,
   type FieldErrors,
+  type PolicyKind,
   type Review,
   type Site,
   type SiteContent,
 } from "./site.js";
+import { POLICY_KINDS, policyData, policyDefault, policyPathKind } from "./policies.js";
 import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
@@ -209,6 +212,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
       if (site?.status === "live" && siteFileKeys(site).includes(key)) return photo(env, key, request);
       return new Response("Not found", { status: 404 });
     }
+    const policyKind = policyPathKind(path);
+    if (policyKind) return servePolicyPage(env, slug, site, policyKind);
     if (path !== "/") return Response.redirect(`https://${url.hostname}/`, 302);
     return serveSite(env, slug, site, { request, ctx, ping: true, count: !head });
   }
@@ -672,6 +677,29 @@ async function serveSite(
     // don't hit KV for every visitor.
     res.headers.set("cache-control", "public, max-age=60");
   }
+  return res;
+}
+
+/**
+ * A customer site's legal/policy page (/privacy, /accessibility, /cookies,
+ * /terms). Same availability gating as the site itself: a removed site 404s, an
+ * unpublished or paused one shows the hold page (noindex), so policy pages never
+ * leak a site that isn't live.
+ */
+async function servePolicyPage(env: Env, slug: string, preloaded: Site | null | undefined, kind: PolicyKind): Promise<Response> {
+  const site = preloaded !== undefined ? preloaded : await loadSite(env, slug);
+  if (!site || site.status !== "live") {
+    return html(messagePage("This website isn't available", "It may have been removed by its owner."), 404);
+  }
+  const cfg = billingConfig(env);
+  const state = siteState(site, cfg, new Date());
+  if (state === "unpublished" || state === "paused") {
+    const res = html(renderHold(site, state));
+    res.headers.set("x-robots-tag", "noindex");
+    return res;
+  }
+  const res = html(renderPolicyPage(site, kind, renderCtx(env, slug)));
+  res.headers.set("cache-control", "public, max-age=60");
   return res;
 }
 
@@ -1660,6 +1688,14 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     if (parsed.ok && !beforeAfterAllowed(parsed.value.category)) errors.beforeAfter = "Before & after photos are not available for this type of business.";
     else if (form.fields.baAttest !== "yes") errors.baAttest = "Please confirm these are real photos of your own work.";
   }
+  // Policy-page edits. Compare each submission against the default that was
+  // prefilled from the PRE-save site, so "untouched" stores nothing and the page
+  // keeps auto-updating; only real edits become overrides.
+  const policyUrl = siteUrl(env, site.slug);
+  const policyDefaults = Object.fromEntries(POLICY_KINDS.map((k) => [k, policyDefault(k, policyData(site, policyUrl))])) as Record<PolicyKind, string>;
+  const policies = parsePolicies(form.fields, policyDefaults);
+  Object.assign(errors, policies.errors);
+
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
   const removed = site.photos.filter((k) => !kept.includes(k));
@@ -1695,6 +1731,8 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   };
   if (beforeAfter.length) next.beforeAfter = beforeAfter;
   else delete next.beforeAfter;
+  if (Object.keys(policies.value).length) next.policies = policies.value;
+  else delete next.policies;
   if (renaming) {
     const aliases = [...new Set([...(site.aliases ?? []), site.slug])].filter((a) => a !== wanted);
     next.slug = wanted;

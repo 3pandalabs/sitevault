@@ -12,7 +12,8 @@
 // alt text, visible focus, 4.5:1 contrast (every theme's primary is dark
 // enough for white text), and nothing that only works with a mouse.
 
-import { CATEGORIES, headline, reviewStats, type Site } from "./site.js";
+import { CATEGORIES, headline, reviewStats, type PolicyKind, type Site } from "./site.js";
+import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
 import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
 
@@ -300,6 +301,15 @@ video.ad{display:block;width:100%;max-height:70vh;border-radius:12px;background:
 .visit-note{text-align:center;color:var(--muted);font-weight:600;background:var(--band);border-radius:6px}
 footer{padding:28px 0 40px;color:var(--muted);font-size:.9rem;border-top:1px solid var(--line)}
 footer a{color:var(--muted)}
+.legal{list-style:none;display:flex;flex-wrap:wrap;gap:4px 16px;margin:8px 0;padding:0}
+.legal span{color:var(--muted)}
+.policy{max-width:760px;margin:24px auto 8px}
+.policy .updated{color:var(--muted);font-size:.9rem;margin:0 0 18px}
+.policy h2{margin:28px 0 8px;font-size:1.2rem;color:var(--ink)}
+.policy p,.policy li{color:var(--muted)}
+.policy ul{padding-left:20px;margin:8px 0}
+.policy li{margin:4px 0}
+.policy strong{color:var(--ink)}
 .callbar{position:fixed;left:0;right:0;bottom:0;display:none;gap:8px;padding:10px 16px;background:var(--card);border-top:1px solid var(--line)}
 .callbar .btn{flex:1}
 @media (max-width:640px){.callbar{display:flex}body{padding-bottom:72px}header.top .btn{display:none}}`;
@@ -347,6 +357,17 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .t-editorial .facts h3{justify-content:center}
 .t-editorial section[aria-labelledby="about-h"] p:first-of-type::first-letter{float:left;font-family:var(--head-font);font-size:3.4em;line-height:.72;padding:6px 10px 0 0;color:var(--primary)}`,
 };
+
+/**
+ * Footer links to the site's legal pages. The current page (if any) is shown as
+ * plain text, not a link. Relative hrefs, so they stay on the customer host.
+ */
+function legalNav(current?: PolicyKind): string {
+  const items = POLICY_KINDS.map((k) =>
+    k === current ? `<li><span>${esc(POLICY_META[k].navLabel)}</span></li>` : `<li><a href="${POLICY_META[k].path}">${esc(POLICY_META[k].navLabel)}</a></li>`,
+  ).join("");
+  return `<ul class="legal" aria-label="Legal">${items}</ul>`;
+}
 
 export function renderSite(site: Site, ctx: RenderContext): string {
   const cat = CATEGORIES[site.category];
@@ -630,6 +651,7 @@ ${visit}
 <footer>
   <div class="wrap">
     <p>&copy; ${new Date().getUTCFullYear()} ${esc(site.businessName)}.${realEstate ? " Equal Housing Opportunity." : ""}</p>
+    ${legalNav()}
     <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs.</p>
   </div>
 </footer>
@@ -650,6 +672,75 @@ ${ctx.nonce ? `<script nonce="${ctx.nonce}">${SITE_JS}</script>` : ""}
  * or "unpublished" (made on SiteVault, not paid for yet). Same light look as
  * customer sites, no JavaScript, not indexed.
  */
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "2026-11-19T…" -> "November 19, 2026" (UTC, no locale/ICU surprises). */
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
+/**
+ * A customer site's legal/policy page (privacy, accessibility, cookies, terms).
+ * Same light, per-business look as the site, script-free, with the owner's text
+ * or the generated default. The body is escaped markup (renderPolicyMarkup): an
+ * owner can edit it freely without any link ever becoming clickable.
+ */
+export function renderPolicyPage(site: Site, kind: PolicyKind, ctx: RenderContext): string {
+  const cat = CATEGORIES[site.category];
+  const theme = themeFor(site.category, cat.brand);
+  const meta = POLICY_META[kind];
+  const title = `${meta.title} | ${site.businessName}`;
+  const markup = renderPolicyMarkup(policyBody(site, kind, ctx.siteUrl));
+  const updated = formatDate(site.updatedAt);
+  const favInitial = (site.businessName.match(/[A-Za-z0-9]/)?.[0] ?? "S").toUpperCase();
+  const faviconHref = `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="${theme.primary}"/><text x="16" y="23" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="#ffffff">${favInitial}</text></svg>`,
+  )}`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(`${meta.title} for ${site.businessName}.`)}">
+<link rel="canonical" href="${esc(ctx.siteUrl)}${meta.path.slice(1)}">
+<meta name="theme-color" content="${theme.primary}">
+<link rel="icon" href="${faviconHref}">
+<style>${baseCss(theme)}</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="name" href="${esc(ctx.siteUrl)}">${esc(site.businessName)}</a>
+    <div class="hactions">
+      <a class="btn primary small" href="${esc(telHref(site.phone))}">Call</a>
+    </div>
+  </div>
+</header>
+<main id="main">
+  <div class="wrap">
+    <article class="policy">
+      <h1>${esc(meta.title)}</h1>
+      ${updated ? `<p class="updated">Last updated: ${esc(updated)}</p>` : ""}
+      ${markup}
+      <p><a href="${esc(ctx.siteUrl)}">&larr; Back to ${esc(site.businessName)}</a></p>
+    </article>
+  </div>
+</main>
+<footer>
+  <div class="wrap">
+    <p>&copy; ${new Date().getUTCFullYear()} ${esc(site.businessName)}.</p>
+    ${legalNav(kind)}
+    <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs.</p>
+  </div>
+</footer>
+</body>
+</html>`;
+}
+
 /** The minimal, business-branded page a visitor sees after submitting a review. */
 export function reviewResultPage(siteUrl: string, businessName: string, message: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(businessName)}</title><meta name="robots" content="noindex"><style>body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#f6f7f9;color:#111827;margin:0;display:grid;place-items:center;min-height:100vh;padding:24px}.box{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:32px;max-width:420px;text-align:center;box-shadow:0 10px 30px rgba(15,23,42,.08)}h1{font-size:1.2rem;margin:0 0 10px}p{color:#4b5563;line-height:1.5;margin:0 0 22px}a{display:inline-block;background:#111827;color:#fff;padding:10px 18px;border-radius:9px;text-decoration:none;font-weight:700}</style></head><body><div class="box"><h1>${esc(businessName)}</h1><p>${esc(message)}</p><a href="${esc(siteUrl)}">Back to the website</a></div></body></html>`;

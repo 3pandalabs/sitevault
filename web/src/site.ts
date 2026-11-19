@@ -117,6 +117,9 @@ export type SiteContent = {
   heroPhoto: boolean;
 };
 
+/** The legal/policy pages every customer site carries (copy in policies.ts). */
+export type PolicyKind = "privacy" | "accessibility" | "cookies" | "terms";
+
 export type Site = SiteContent & {
   slug: string;
   photos: string[];
@@ -140,6 +143,12 @@ export type Site = SiteContent & {
   renames?: number;
   /** Another live site had the same name in the same town at creation: admin review. */
   possibleDuplicateOf?: string;
+  /**
+   * Owner edits of the legal/policy pages (privacy, accessibility, cookies,
+   * terms). A missing key means the auto-generated default is shown and stays
+   * current; see policies.ts. Absent = every page is on its default.
+   */
+  policies?: Partial<Record<PolicyKind, string>>;
   status: "live" | "removed";
   source: "web" | "advault";
   editKeyHash: string;
@@ -480,6 +489,38 @@ export function parseContent(
       heroPhoto: get("heroPhoto") !== "no",
     },
   };
+}
+
+/** A policy override can be long (a full page of text), but not unbounded. */
+export const MAX_POLICY_CHARS = 20000;
+const POLICY_FIELD_KINDS: PolicyKind[] = ["privacy", "accessibility", "cookies", "terms"];
+
+/**
+ * Read the four policy-page textareas (`policy_<kind>`) from the edit form.
+ * The owner either leaves the generated text as-is or edits it; `oldDefaults`
+ * is the exact default text that was prefilled (built from the pre-save site),
+ * so a submission equal to it — or empty — means "unchanged, keep using the
+ * default" and stores nothing. Only genuine edits are stored as overrides, so
+ * default pages keep tracking the business's details and template improvements.
+ * Policy text may legitimately name the site's own URL, so the no-links rule is
+ * not applied here; the renderer escapes everything, so it can't become a link.
+ */
+export function parsePolicies(
+  fields: Record<string, unknown>,
+  oldDefaults: Record<PolicyKind, string>,
+): { value: Partial<Record<PolicyKind, string>>; errors: FieldErrors } {
+  const value: Partial<Record<PolicyKind, string>> = {};
+  const errors: FieldErrors = {};
+  for (const kind of POLICY_FIELD_KINDS) {
+    const submitted = text(fields[`policy_${kind}`]);
+    if (!submitted || submitted === text(oldDefaults[kind])) continue;
+    if (submitted.length > MAX_POLICY_CHARS) {
+      errors[`policy_${kind}`] = `Keep this page under ${MAX_POLICY_CHARS.toLocaleString()} characters.`;
+      continue;
+    }
+    value[kind] = submitted;
+  }
+  return { value, errors };
 }
 
 /** Headline when the business left the tagline blank. Facts only. */
