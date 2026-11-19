@@ -245,11 +245,6 @@ h2::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;bac
 .ba-handle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:#fff;color:#111;box-shadow:0 2px 10px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700}
 :root.js .ba-divider{cursor:ew-resize}
 :root.js .ba-divider:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.quotes{list-style:none;margin:0;padding:0;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
-.quotes li{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:var(--radius);padding:18px 20px;display:flex;flex-direction:column;gap:10px}
-.quotes blockquote{margin:0;font-size:1.02rem;line-height:1.5;color:var(--ink)}
-.quotes .qby{margin:0;font-weight:700;color:var(--muted);font-size:.9rem}
-.quotes .qby::before{content:"— "}
 .stars{color:#f59e0b;letter-spacing:1px;white-space:nowrap}
 .rev-summary{display:flex;align-items:center;gap:8px;font-size:1.05rem;margin:0 0 18px}
 .rev-summary span{color:var(--muted);font-size:.95rem}
@@ -503,24 +498,6 @@ export function renderSite(site: Site, ctx: RenderContext): string {
 </section>`
     : "";
 
-  const reviews = site.testimonials ?? [];
-  const testimonialsHtml = reviews.length
-    ? `<section aria-labelledby="reviews-h" class="band reveal">
-  <div class="wrap">
-    <p class="kicker">Kind words</p>
-    <h2 id="reviews-h">What customers say</h2>
-    <ul class="quotes">
-      ${reviews
-        .map(
-          (t) =>
-            `<li><blockquote>${esc(t.quote)}</blockquote>${t.name ? `<p class="qby">${esc(t.name)}</p>` : ""}</li>`,
-        )
-        .join("\n      ")}
-    </ul>
-  </div>
-</section>`
-    : "";
-
   // The CSS-only (:target) popup listing every location with its phone + a
   // directions link — no JS needed. Trigger buttons link to #locations.
   const locationsPopup = multiLocation
@@ -636,7 +613,6 @@ ${services}
 ${about}
 ${galleryHtml}
 ${beforeAfterHtml}
-${testimonialsHtml}
 ${reviewsHtml}
 ${visit}
 <section aria-labelledby="contact-h" class="reveal">
