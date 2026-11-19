@@ -95,6 +95,8 @@ import {
   MAX_PHOTOS,
   PHOTO_TYPES,
   beforeAfterAllowed,
+  checkMenu,
+  menuAllowed,
   pickBeforeAfter,
   siteFileKeys,
   type BeforeAfter,
@@ -1257,7 +1259,7 @@ async function claimSite(request: Request, env: Env, ctx: ExecutionContext): Pro
 // Photos and the ad video. Byte ranges are supported because iPhone Safari
 // will not play a <video> whose server ignores Range.
 async function photo(env: Env, key: string, request: Request): Promise<Response> {
-  if (!/^sites\/[a-z0-9-]+\/[A-Za-z0-9_-]+\.(jpg|png|webp|mp4)$/.test(key)) return new Response("Not found", { status: 404 });
+  if (!/^sites\/[a-z0-9-]+\/[A-Za-z0-9_-]+\.(jpg|png|webp|mp4|pdf)$/.test(key)) return new Response("Not found", { status: 404 });
   const headers = new Headers({
     // Keys are random and never reused, so they can be cached forever.
     "cache-control": "public, max-age=31536000, immutable",
@@ -1303,6 +1305,10 @@ type Parsed = {
   ba: Partial<Record<BeforeAfterField, File>>;
   /** Existing before & after pairs to keep, by their "before" key (edit page). */
   keepPair: string[];
+  /** New menu files (name="menu"), non-empty only. */
+  menu: File[];
+  /** Existing menu files to keep, by R2 key (edit page). */
+  keepMenu: string[];
 };
 
 const BA_FIELD_NAMES: readonly string[] = BEFORE_AFTER_FIELDS.flat();
@@ -1315,22 +1321,27 @@ async function readForm(request: Request): Promise<Parsed | null> {
   const files: File[] = [];
   const keep: string[] = [];
   const keepPair: string[] = [];
+  const keepMenu: string[] = [];
   const ba: Partial<Record<BeforeAfterField, File>> = {};
+  const menu: File[] = [];
   let video: File | null = null;
   for (const [k, v] of form as unknown as Iterable<[string, string | File]>) {
     if (typeof v === "string") {
       if (k === "keep") keep.push(v);
       else if (k === "keepPair") keepPair.push(v);
+      else if (k === "keepMenu") keepMenu.push(v);
       else fields[k] = v;
     } else if (k === "photos" && v.size > 0) {
       files.push(v);
     } else if (k === "video" && v.size > 0) {
       video = v;
+    } else if (k === "menu" && v.size > 0) {
+      menu.push(v);
     } else if (BA_FIELD_NAMES.includes(k) && v.size > 0) {
       ba[k as BeforeAfterField] = v;
     }
   }
-  return { fields, files, keep, video, ba, keepPair };
+  return { fields, files, keep, video, ba, keepPair, menu, keepMenu };
 }
 
 function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES): string | null {
@@ -1544,6 +1555,20 @@ async function storeVideo(env: Env, slug: string, file: File | null): Promise<st
   return key;
 }
 
+// Menu files are stored AS-IS (no resize): a menu must stay legible, and a PDF
+// can't go through the image pipeline anyway. The per-file size cap keeps them
+// reasonable. Extension drives the content-type on serve and inline-vs-link.
+async function storeMenu(env: Env, slug: string, files: File[]): Promise<string[]> {
+  const keys: string[] = [];
+  for (const f of files) {
+    const ext = f.type === "application/pdf" ? "pdf" : f.type === "image/png" ? "png" : f.type === "image/webp" ? "webp" : "jpg";
+    const key = `sites/${slug}/${randomKey(9)}.${ext}`;
+    await env.PHOTOS.put(key, await f.arrayBuffer(), { httpMetadata: { contentType: f.type } });
+    keys.push(key);
+  }
+  return keys;
+}
+
 async function deletePhotos(env: Env, keys: string[]): Promise<void> {
   if (keys.length) await env.PHOTOS.delete(keys);
 }
@@ -1696,11 +1721,22 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   const policyDefaults = Object.fromEntries(POLICY_KINDS.map((k) => [k, policyDefault(k, policyData(site, policyUrl))])) as Record<PolicyKind, string>;
   const policies = parsePolicies(form.fields, policyDefaults);
   Object.assign(errors, policies.errors);
-
+  // Menu files (restaurants/bakeries): untick to remove one, upload to add,
+  // image or PDF, stored as-is.
+  const menuNow = site.menu ?? [];
+  const keptMenu = menuNow.filter((k) => form.keepMenu.includes(k));
+  if (form.menu.length && parsed.ok && !menuAllowed(parsed.value.category)) errors.menu = "A menu can't be added for this type of business.";
+  else {
+    const menuProblem = checkMenu(form.menu, keptMenu.length);
+    if (menuProblem) errors.menu = menuProblem;
+  }
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
   const removed = site.photos.filter((k) => !kept.includes(k));
   for (const p of pairsNow) if (!keptPairs.includes(p)) removed.push(p.before, p.after);
+  for (const k of menuNow) if (!keptMenu.includes(k)) removed.push(k);
+  const addedMenu = form.menu.length ? await storeMenu(env, slug, form.menu) : [];
+  const menu = [...keptMenu, ...addedMenu];
   const addedPairs = newPairs.ok ? await storePairs(env, slug, newPairs.pairs) : [];
   const beforeAfter = [...keptPairs, ...addedPairs];
   const added = await storePhotos(env, slug, form.files);
@@ -1734,6 +1770,8 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   else delete next.beforeAfter;
   if (Object.keys(policies.value).length) next.policies = policies.value;
   else delete next.policies;
+  if (menu.length) next.menu = menu;
+  else delete next.menu;
   if (renaming) {
     const aliases = [...new Set([...(site.aliases ?? []), site.slug])].filter((a) => a !== wanted);
     next.slug = wanted;

@@ -9,10 +9,13 @@ import {
   HOURS_TEMPLATE,
   MAX_BEFORE_AFTER,
   MAX_LOCATIONS,
+  MAX_MENU,
   MAX_PHOTOS,
   SERVICE_TEMPLATES,
   beforeAfterAllowed,
+  isMenuPdf,
   locationsToText,
+  menuAllowed,
   servicesToText,
   type CategoryKey,
   type FieldErrors,
@@ -619,6 +622,34 @@ function policyFields(site: Site, siteUrl: string, v: (k: string, fallback?: str
 </fieldset>`;
 }
 
+/**
+ * The edit-only "Menu" section for restaurants & bakeries: upload a PDF or a
+ * photo of the menu (up to MAX_MENU), with keep-boxes to remove existing files.
+ */
+function menuFields(site: Site, photoUrl: (k: string) => string, e: (k: string) => string): string {
+  if (!menuAllowed(site.category)) return "";
+  const files = site.menu ?? [];
+  const current = files.length
+    ? `<p class="hint">Current menu files. Untick to remove one from your website.</p>
+<div class="photos">${files
+        .map((k, i) =>
+          isMenuPdf(k)
+            ? `<div class="photo"><div class="menu-doc">PDF menu ${i + 1}</div><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(k)}" checked> Keep</label><a class="tpl-preview" href="${esc(photoUrl(k))}" target="_blank" rel="noopener">View ↗</a></div></div>`
+            : `<div class="photo"><img src="${esc(photoUrl(k))}" alt="Menu ${i + 1}"><div class="photo-ctl"><label class="pkeep"><input type="checkbox" name="keepMenu" value="${esc(k)}" checked> Keep menu ${i + 1}</label></div></div>`,
+        )
+        .join("")}</div>`
+    : "";
+  const free = Math.max(0, MAX_MENU - files.length);
+  const add = free
+    ? `<div class="field"><label for="menu">Add menu files <span class="hint">Up to ${MAX_MENU} in total. A PDF or a clear photo (JPG, PNG, WebP), up to 10 MB each. A PDF shows as a "View menu" button; a photo shows on the page.</span></label><input type="file" id="menu" name="menu" accept="image/*,application/pdf" multiple>${e("menu")}</div>`
+    : e("menu");
+  return `<fieldset><legend>Menu</legend>
+  <p class="hint">Show your menu on your website — upload a PDF or a clear photo of it.</p>
+  ${current}
+  ${add}
+</fieldset>`;
+}
+
 export function builderPage(
   mode: FormMode,
   nonce: string,
@@ -665,6 +696,7 @@ export function builderPage(
       : "";
 
   const beforeAfter = mode.kind === "edit" ? beforeAfterFields(mode.site, mode.photoUrl, e) : "";
+  const menu = mode.kind === "edit" ? menuFields(mode.site, mode.photoUrl, e) : "";
   const policySection = mode.kind === "edit" ? policyFields(mode.site, mode.siteUrl ?? "", v, e) : "";
 
   const body = `<section>
@@ -729,6 +761,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
   <div class="field"><label for="video">Add a video <span class="hint">Optional. One MP4, up to 40 MB${mode.kind === "edit" && mode.site.video ? " — uploading a new one replaces the current video" : ""}. Shown in a "See us in action" section.</span></label><input type="file" id="video" name="video" accept="video/mp4">${e("video")}</div>
 </fieldset>
 ${beforeAfter}
+${menu}
 ${policySection}
 ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>

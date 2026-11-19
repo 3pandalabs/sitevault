@@ -133,6 +133,11 @@ export type Site = SiteContent & {
    * sites/<slug>/, like photos). Up to MAX_BEFORE_AFTER. Absent = none.
    */
   beforeAfter?: BeforeAfter[];
+  /**
+   * Menu files a restaurant/bakery uploaded (R2 keys under sites/<slug>/, image
+   * or PDF). Shown in a "Menu" section. Up to MAX_MENU. Absent = none.
+   */
+  menu?: string[];
   /** Approved customer reviews (visitor-submitted, owner-moderated). Absent = none. */
   reviews?: Review[];
   /** R2 key of the business's video ad (AdVault sites only). */
@@ -212,6 +217,41 @@ export function beforeAfterAllowed(category: string): boolean {
   return (BEFORE_AFTER_CATEGORIES as readonly string[]).includes(category);
 }
 
+// ---------------------------------------------------------------------------
+// Menu upload (restaurants & bakeries)
+
+export const MAX_MENU = 3; // menu files per site (e.g. food, drinks, specials)
+export const MAX_MENU_BYTES = 10 * 1024 * 1024;
+/** A menu file is an image or a PDF; stored as-is so the text stays legible. */
+export const MENU_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const MENU_TYPES = [...MENU_IMAGE_TYPES, "application/pdf"];
+
+/** The food categories where a "Menu" section fits. The ONE list we check. */
+export const MENU_CATEGORIES: readonly CategoryKey[] = ["restaurant", "bakery"];
+
+export function menuAllowed(category: string): boolean {
+  return (MENU_CATEGORIES as readonly string[]).includes(category);
+}
+
+/** A stored menu key points at a PDF (rendered as a link, not an inline image). */
+export function isMenuPdf(key: string): boolean {
+  return key.toLowerCase().endsWith(".pdf");
+}
+
+/**
+ * Validate newly uploaded menu files against the per-site cap, type and size.
+ * Pure: the caller checks the category. Returns the files unchanged when fine.
+ */
+export function checkMenu<F extends { type: string; size: number }>(files: F[], existing: number): string | null {
+  if (!files.length) return null;
+  if (existing + files.length > MAX_MENU) return `Up to ${MAX_MENU} menu files in total.`;
+  for (const f of files) {
+    if (!MENU_TYPES.includes(f.type)) return "A menu must be a PDF or a JPG, PNG or WebP image.";
+    if (f.size > MAX_MENU_BYTES) return `Each menu file must be under ${Math.round(MAX_MENU_BYTES / 1024 / 1024)} MB.`;
+  }
+  return null;
+}
+
 type PhotoLike = { type: string; size: number };
 
 /**
@@ -239,8 +279,8 @@ export function pickBeforeAfter<F extends PhotoLike>(
 }
 
 /** Every R2 key this site's own host may serve (and removal must delete). */
-export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter">): string[] {
-  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after])];
+export function siteFileKeys(site: Pick<Site, "photos" | "video" | "beforeAfter" | "menu">): string[] {
+  return [...site.photos, ...(site.video ? [site.video] : []), ...(site.beforeAfter ?? []).flatMap((p) => [p.before, p.after]), ...(site.menu ?? [])];
 }
 
 const LIMITS = {
