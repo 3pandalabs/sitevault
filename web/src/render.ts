@@ -237,6 +237,9 @@ header.top .wrap{display:flex;align-items:center;justify-content:space-between;g
 /* Alternating marquee: the offer text bounces side to side within the banner. */
 :root.js .offer{overflow:hidden}
 :root.js .offer .offer-marquee{display:inline-block;white-space:nowrap;animation:offerBounce 9s ease-in-out infinite alternate}
+/* Pause the bounce while the cursor is over (or pressing) the banner; it
+   resumes as soon as the cursor leaves. */
+:root.js .offer:hover .offer-marquee,:root.js .offer:active .offer-marquee{animation-play-state:paused}
 @keyframes offerBounce{from{transform:translateX(calc(-50vw + 50% + 16px))}to{transform:translateX(calc(50vw - 50% - 16px))}}
 .actions{display:flex;flex-wrap:wrap;gap:12px;padding:24px 0}
 section{padding:var(--section-pad) 0}
