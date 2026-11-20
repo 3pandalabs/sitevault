@@ -223,6 +223,9 @@ describe("embed editor", () => {
     expect(page).toContain('name="video"');
     expect(page).toContain('name="faq"');
     expect(page).toContain("sitevault:height");
+    // AdVault opens a new site's editor at the style picker.
+    expect(page).toContain('id="website-style"');
+    expect(page).toContain("sitevault:sections");
     expect(page).not.toContain('<header class="top">');
     expect(page).not.toContain("<footer>");
     expect(page).not.toContain("Sign out");
