@@ -1336,6 +1336,22 @@ describe("website styles (templates)", () => {
     expect(bad).toContain('class="hero spotlight');
   });
 
+  it("dentist & clinic use a professional sans for the hero name and wordmark, not the script font", async () => {
+    const phones: Record<string, string> = { dentist: "(555) 310-0001", clinic: "(555) 310-0002" };
+    for (const category of ["dentist", "clinic"]) {
+      const { slug } = await makeSite({ slug: `med-${category}`, businessName: "Northside Care", category, phone: phones[category]! });
+      const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+      // Header wordmark + hero h1 overridden to a system sans (weight 600).
+      expect(page).toContain('.name{font-family:system-ui,-apple-system,"Segoe UI"');
+      expect(page).toContain('.hero.spotlight h1,.hero.split h1,.hero.editorial h1{font-family:system-ui');
+    }
+    // A non-medical category keeps the script wordmark.
+    const { slug } = await makeSite({ slug: "food-co", businessName: "cvv Kitchen", category: "restaurant", phone: "(555) 310-0003" });
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).not.toContain(".hero.spotlight h1,.hero.split h1,.hero.editorial h1{font-family:system-ui");
+    expect(page).toContain('.name{font-family:"SV Wordmark"');
+  });
+
   it("lists all 10 styles in the builder picker", async () => {
     const page = await (await call(`${ORIGIN}/new`)).text();
     for (const [style] of CASES) {

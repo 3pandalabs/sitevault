@@ -471,6 +471,13 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   // Section-level styling keys off the hero family (e.g. every editorial-family
   // template shares the centred section treatment).
   const templateFamily = TEMPLATE_FAMILY[template];
+  // Medical and dental read as more trustworthy in a clean professional sans
+  // than the script wordmark — override the hero name and header wordmark there.
+  const proWordmark =
+    site.category === "dentist" || site.category === "clinic"
+      ? `.name{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-weight:600;letter-spacing:-.01em;font-size:1.25rem}
+.hero.spotlight h1,.hero.split h1,.hero.editorial h1{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-weight:600;letter-spacing:-.01em}`
+      : "";
   const theme = themeFor(site.category, brand);
   const title = `${site.businessName} | ${cat.label}${site.city ? ` in ${site.city}` : ""}`;
   const description = (site.about || headline(site)).slice(0, 160);
@@ -819,6 +826,7 @@ ${hero ? `<meta property="og:image" content="${esc(hero)}">` : ""}
 <style>
 ${baseCss(theme)}
 ${TEMPLATE_CSS[template]}
+${proWordmark}
 </style>
 ${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=' js'</script>` : ""}
 </head>
