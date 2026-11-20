@@ -4,12 +4,45 @@
 
 import type { CategoryKey } from "./site.js";
 
-export type TemplateKey = "spotlight" | "split" | "editorial";
+export type TemplateKey =
+  | "spotlight"
+  | "split"
+  | "editorial"
+  | "bento"
+  | "minimalist"
+  | "showcase"
+  | "compact"
+  | "storefront"
+  | "modern-bold"
+  | "classic";
+
+// Each new style restyles one of the three base hero structures (its family),
+// so the shared sections and the facts-only rule are untouched — only the hero's
+// arrangement and typography change.
+export const TEMPLATE_FAMILY: Record<TemplateKey, "spotlight" | "split" | "editorial"> = {
+  spotlight: "spotlight",
+  showcase: "spotlight",
+  compact: "spotlight",
+  storefront: "spotlight",
+  split: "split",
+  bento: "split",
+  "modern-bold": "split",
+  editorial: "editorial",
+  minimalist: "editorial",
+  classic: "editorial",
+};
 
 export const TEMPLATES: { key: TemplateKey; label: string; blurb: string }[] = [
   { key: "spotlight", label: "Spotlight", blurb: "A big photo hero — bold and punchy." },
   { key: "split", label: "Split", blurb: "Side-by-side intro — clean and structured." },
   { key: "editorial", label: "Editorial", blurb: "Centred and refined, with elegant type." },
+  { key: "bento", label: "Bento", blurb: "Modular tiles — modern and scannable." },
+  { key: "minimalist", label: "Minimalist", blurb: "Open whitespace — crisp and distraction-free." },
+  { key: "showcase", label: "Showcase", blurb: "Full-bleed backdrop with a floating card — immersive." },
+  { key: "compact", label: "Compact", blurb: "Short action-first header — fast and utilitarian." },
+  { key: "storefront", label: "Storefront", blurb: "Bold top banner — clear and inviting." },
+  { key: "modern-bold", label: "Modern Bold", blurb: "High-contrast blocks — energetic and expressive." },
+  { key: "classic", label: "Classic", blurb: "Framed layout — warm and traditional." },
 ];
 
 export const DEFAULT_TEMPLATE: TemplateKey = "spotlight";
