@@ -1273,13 +1273,16 @@ describe("installable PWA", () => {
 
 describe("motion & offer banner", () => {
   it("services slide from the left, about from the right, and the offer banner flashes", async () => {
-    const { slug } = await makeSite({ slug: "motion-co", services: "Lawn mowing - $35\nCleanup", about: "We are a family business.", offer: "20% off this week!" });
+    const { slug } = await makeSite({ slug: "motion-co", services: "Lawn mowing - $35\nCleanup", about: "We are a family business.", offer: "20% off this week!", hours: "Mon-Fri 9am-5pm" });
     const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
     expect(page).toContain('aria-labelledby="services-h" class="band reveal from-left"');
     expect(page).toContain('aria-labelledby="about-h" class="reveal from-right"');
+    // Hours/location section also slides in from the right.
+    expect(page).toContain('aria-label="Location and hours" class="band reveal from-right"');
     expect(page).toContain('<p class="offer">20% off this week!</p>');
-    // The flashing animation + directional reveal CSS is present.
+    // The flashing animation + directional reveal CSS (slightly slower) is present.
     expect(page).toContain("@keyframes offerFlash");
     expect(page).toContain(".reveal.from-right:not(.in)");
+    expect(page).toContain("transition-duration:1.15s");
   });
 });
