@@ -167,15 +167,15 @@ describe("verifyCreateHandoff", () => {
 });
 
 describe("drafts (server to server)", () => {
-  it("needs the internal token and a real owner email", async () => {
+  it("needs the internal token, an AdVault user and a campaign", async () => {
     const form = new FormData();
     form.set("campaignId", CAMPAIGN);
     expect((await call(`${ORIGIN}/api/internal/drafts`, { method: "POST", body: form })).status).toBe(401);
     const f2 = new FormData();
-    for (const [k, v] of Object.entries({ campaignId: CAMPAIGN, ownerAdvaultUserId: ADV_ID })) f2.set(k, v);
+    f2.set("campaignId", CAMPAIGN);
     const res = await call(`${ORIGIN}/api/internal/drafts`, { method: "POST", headers: auth, body: f2 });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: string }).error).toBe("email_required");
+    expect(((await res.json()) as { error: string }).error).toBe("bad_request");
   });
 
   it("the result is readable only for the draft's own AdVault user", async () => {
@@ -342,5 +342,73 @@ describe("POST /api/embed/sites", () => {
     expect((await submit(builderForm(id), cookie)).status).toBe(200);
     expect((await submit(builderForm(id, [], { phone: "(555) 201-0002" }), cookie)).status).toBe(200);
     expect([...kv.data.keys()].filter((k) => k.startsWith("site:"))).toHaveLength(1);
+  });
+});
+
+// AdVault test customers (2026-11-19): no real email (a *.invalid one, or
+// none), so the builder and the embedded editor link by the AdVault user id
+// alone (acctadv:<id>), never by email.
+describe("test customers (no real email)", () => {
+  const TC_EMAIL = "test-0a1b2c3d4e5f@test.advault.invalid";
+
+  it("drafts, builds, edits and deletes on an id-only account that never merges with an email match", async () => {
+    // Someone already holds an account under the same synthetic address: it
+    // must never be linked to (or receive the site of) the test customer.
+    const victim = { id: "victimacct01", email: TC_EMAIL, pw: null, sites: [], createdAt: new Date().toISOString() };
+    await kv.put("acct:victimacct01", JSON.stringify(victim));
+    await kv.put(`acctemail:${TC_EMAIL}`, "victimacct01");
+    const id = await makeDraft({ ownerEmail: TC_EMAIL });
+    expect(draftJson(id).email).toBe("");
+    const { cookie, page } = await openBuilder(id, { email: TC_EMAIL });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain("Saved to this AdVault account.");
+    expect(html).not.toContain("advault-id:");
+    const acctId = kv.data.get(`acctadv:${ADV_ID}`)!.value;
+    expect(acctId).not.toBe("victimacct01");
+    const acct = JSON.parse(kv.data.get(`acct:${acctId}`)!.value);
+    expect(acct).toMatchObject({ email: `advault-id:${ADV_ID}`, advaultUserId: ADV_ID, pw: null });
+    expect(JSON.parse(kv.data.get("acct:victimacct01")!.value).advaultUserId).toBeUndefined();
+
+    // Create: AdVault-made, owned by the test account.
+    expect((await submit(builderForm(id), cookie)).status).toBe(200);
+    const site = JSON.parse([...kv.data.entries()].find(([k]) => k.startsWith("site:"))![1].value);
+    expect(site.source).toBe("advault");
+    expect(site.ownerId).toBe(acctId);
+    expect(JSON.parse(kv.data.get("acct:victimacct01")!.value).sites).toEqual([]);
+
+    // One website per account still applies.
+    const second = await makeDraft({ ownerEmail: "" });
+    expect((await call(newUrl(await signCreateHandoff(TOKEN, createHandoff(second, { email: "" }))))).status).toBe(409);
+
+    // The account-site lookup finds it by id (not by the synthetic email).
+    const look = await call(`${ORIGIN}/api/internal/account-site?advaultUserId=${ADV_ID}&email=${encodeURIComponent(TC_EMAIL)}`, { headers: auth });
+    expect(await look.json()).toMatchObject({ ok: true, slug: site.slug });
+
+    // The embedded editor signs the test account in by id.
+    const edit = await signHandoff(TOKEN, { v: 1, uid: ADV_ID, email: "", slug: site.slug, iat: now(), exp: now() + 60, jti: "t".repeat(20) });
+    const opened = await call(`${ORIGIN}/embed/session?token=${encodeURIComponent(edit)}`);
+    expect(opened.status).toBe(303);
+    expect(opened.headers.get("location")).toContain(`/edit/${site.slug}?embed=1`);
+    const editor = await call(opened.headers.get("location")!, { headers: { cookie: cookieOf(opened) } });
+    expect(editor.status).toBe(200);
+
+    // Admin "Delete it and make a new one" still works for it.
+    const del = await call(`${ORIGIN}/api/internal/sites/${site.slug}?advaultUserId=${ADV_ID}&email=${encodeURIComponent(TC_EMAIL)}`, { method: "DELETE", headers: auth });
+    expect(await del.json()).toMatchObject({ ok: true, deleted: true });
+  });
+
+  it("two test customers never share an account", async () => {
+    await openBuilder(await makeDraft({ ownerEmail: "" }), { email: "" });
+    await openBuilder(await makeDraft({ ownerAdvaultUserId: OTHER_ID, ownerEmail: "" }), { uid: OTHER_ID, email: "" });
+    expect(kv.data.get(`acctadv:${OTHER_ID}`)!.value).not.toBe(kv.data.get(`acctadv:${ADV_ID}`)!.value);
+  });
+
+  it("an editor token for a test customer with no account is refused, and links nothing", async () => {
+    await kv.put(`acctemail:${TC_EMAIL}`, "victimacct01");
+    await kv.put("acct:victimacct01", JSON.stringify({ id: "victimacct01", email: TC_EMAIL, pw: null, sites: ["green-lawns"], createdAt: "" }));
+    const edit = await signHandoff(TOKEN, { v: 1, uid: OTHER_ID, email: TC_EMAIL, slug: "green-lawns", iat: now(), exp: now() + 60, jti: "u".repeat(20) });
+    expect((await call(`${ORIGIN}/embed/session?token=${encodeURIComponent(edit)}`)).status).toBe(403);
+    expect(kv.data.has(`acctadv:${OTHER_ID}`)).toBe(false);
   });
 });

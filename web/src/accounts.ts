@@ -122,15 +122,43 @@ export async function saveAccount(kv: KVNamespace, a: Account): Promise<void> {
 }
 
 /**
+ * The email an AdVault link may use, or "" for none. AdVault test customers
+ * (2026-11-17) have a synthetic address under the reserved `.invalid` TLD
+ * (RFC 2606): it is never used to find, merge or create an email-keyed
+ * account, so a test customer can never land in a real person's account.
+ */
+export function advaultLinkEmail(raw: string | null | undefined): string {
+  const email = normaliseEmail(raw ?? "");
+  return email && !emailProblem(email) && !/\.invalid$/.test(email) ? email : "";
+}
+
+/**
+ * Id-only accounts (AdVault test customers, 2026-11-19): linked ONLY by
+ * `acctadv:<id>`. Their `email` is this reserved key, which fails
+ * emailProblem, so nobody can sign up, sign in or claim with it, and it can
+ * never equal a real address.
+ */
+const ID_ONLY_PREFIX = "advault-id:";
+export const idOnlyEmail = (advaultUserId: string) => `${ID_ONLY_PREFIX}${advaultUserId}`;
+export const isIdOnlyAccount = (a: { email: string }) => a.email.startsWith(ID_ONLY_PREFIX);
+
+/**
  * The SiteVault account for an AdVault user (same login on both): found by
  * AdVault user id, else by email (and linked), else created with no
- * SiteVault password (they sign in with their AdVault password).
+ * SiteVault password (they sign in with their AdVault password). With no
+ * real email (an AdVault test customer) it is found or made by the AdVault
+ * user id alone, never by email.
  */
-export async function accountForAdvault(kv: KVNamespace, user: { advaultUserId: string; email: string }): Promise<Account> {
+export async function accountForAdvault(kv: KVNamespace, user: { advaultUserId: string; email?: string | null }): Promise<Account> {
   const byAdv = await kv.get(advKey(user.advaultUserId));
   const linked = byAdv ? await loadAccount(kv, byAdv) : null;
   if (linked) return linked;
-  const email = normaliseEmail(user.email);
+  const email = advaultLinkEmail(user.email);
+  if (!email) {
+    const key = idOnlyEmail(user.advaultUserId);
+    const made = await createAccount(kv, key, null, { advaultUserId: user.advaultUserId });
+    return made === "exists" ? ((await accountByEmail(kv, key)) as Account) : made;
+  }
   const byEmail = await accountByEmail(kv, email);
   if (byEmail) {
     const next = { ...byEmail, advaultUserId: user.advaultUserId };
@@ -144,14 +172,14 @@ export async function accountForAdvault(kv: KVNamespace, user: { advaultUserId: 
 
 /**
  * Read-only twin of accountForAdvault: the linked account (by AdVault user id,
- * else by the same email), or null. Never creates or links anything.
+ * else by the same real email), or null. Never creates or links anything.
  */
 export async function findAccountForAdvault(kv: KVNamespace, user: { advaultUserId: string; email?: string | null }): Promise<Account | null> {
   const byAdv = await kv.get(advKey(user.advaultUserId));
   const linked = byAdv ? await loadAccount(kv, byAdv) : null;
   if (linked) return linked;
-  const email = normaliseEmail(user.email ?? "");
-  return email && !emailProblem(email) ? accountByEmail(kv, email) : null;
+  const email = advaultLinkEmail(user.email);
+  return email ? accountByEmail(kv, email) : null;
 }
 
 /** Ask AdVault whether this is a valid AdVault login (server to server). */

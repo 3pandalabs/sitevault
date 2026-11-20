@@ -924,7 +924,7 @@ ${insurance}
 ${listings}
 ${faq}
 ${mode.kind === "new" && !draft ? accountFields(mode.account ?? null, v, e) : ""}
-${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:16px 0">Saved to your 3PandaLabs account, <strong>${esc(mode.account.email)}</strong> (the same login as AdVault).</p>` : ""}
+${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:16px 0">${mode.account.email.includes("@") ? `Saved to your 3PandaLabs account, <strong>${esc(mode.account.email)}</strong> (the same login as AdVault).` : "Saved to this AdVault account."}</p>` : ""}
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>${
   draft
     ? `I run this business, the details are accurate, and I agree to the <a href="/terms" target="_blank" rel="noopener">SiteVault terms</a>. The website is public.`
