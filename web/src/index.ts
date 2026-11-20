@@ -182,7 +182,12 @@ export default {
       return await route(request, env, ctx);
     } catch (err) {
       console.error("unhandled", err instanceof Error ? err.stack : err);
-      return html(messagePage("Something went wrong", "Please try again in a minute.", "Error"), 500);
+      const res = html(messagePage("Something went wrong", "Please try again in a minute.", "Error"), 500);
+      // Inside AdVault's frame, show the error instead of the browser's
+      // "refused to connect" (only the embed editor and its handoff).
+      const u = new URL(request.url);
+      const embedded = u.pathname === "/embed/session" || (u.pathname.startsWith("/edit/") && u.searchParams.get("embed") === "1");
+      return embedded ? allowEmbedFraming(res) : res;
     }
   },
 } satisfies ExportedHandler<Env>;

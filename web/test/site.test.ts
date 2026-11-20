@@ -310,3 +310,14 @@ describe("before & after", () => {
     expect(siteFileKeys({ photos: [], video: null })).toEqual([]);
   });
 });
+
+describe("edit-page list helpers on sites saved without the list (2026-11-20)", () => {
+  it("treat a missing list as empty instead of crashing", async () => {
+    const m = await import("../src/site.js");
+    expect(m.teamToText(undefined)).toBe("");
+    expect(m.faqToText(undefined)).toBe("");
+    expect(m.servicesToText(undefined)).toBe("");
+    expect(m.testimonialsToText(undefined)).toBe("");
+    expect(m.locationsToText(undefined)).toBe("");
+  });
+});

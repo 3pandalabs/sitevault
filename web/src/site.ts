@@ -319,7 +319,10 @@ export function parseTeam(raw: string): TeamMember[] {
     .filter((m) => m.name);
 }
 
-export function teamToText(team: TeamMember[]): string {
+export function teamToText(team: TeamMember[] | undefined): string {
+  // Sites saved before this field existed (and some AdVault-made ones) have no
+  // team list at all; the edit page crashed on them (2026-11-20).
+  team = team ?? [];
   return team.map((m) => [m.name, m.role].filter(Boolean).join(" | ")).join("\n");
 }
 
@@ -344,7 +347,10 @@ export function parseFaq(raw: string): FaqItem[] {
     .filter((f) => f.q && f.a);
 }
 
-export function faqToText(faq: FaqItem[]): string {
+export function faqToText(faq: FaqItem[] | undefined): string {
+  // Sites saved before this field existed (and some AdVault-made ones) have no
+  // faq list at all; the edit page crashed on them (2026-11-20).
+  faq = faq ?? [];
   return faq.map((f) => `${f.q} | ${f.a}`).join("\n");
 }
 
@@ -510,7 +516,10 @@ export function parseServices(raw: string): Service[] {
     });
 }
 
-export function servicesToText(services: Service[]): string {
+export function servicesToText(services: Service[] | undefined): string {
+  // Sites saved before this field existed (and some AdVault-made ones) have no
+  // services list at all; the edit page crashed on them (2026-11-20).
+  services = services ?? [];
   return services.map((s) => (s.price ? `${s.name} - ${s.price}` : s.name)).join("\n");
 }
 
@@ -530,7 +539,10 @@ export function parseTestimonials(raw: string): Testimonial[] {
     });
 }
 
-export function testimonialsToText(testimonials: Testimonial[]): string {
+export function testimonialsToText(testimonials: Testimonial[] | undefined): string {
+  // Sites saved before this field existed (and some AdVault-made ones) have no
+  // testimonials list at all; the edit page crashed on them (2026-11-20).
+  testimonials = testimonials ?? [];
   return testimonials.map((t) => (t.name ? `${t.name} — ${t.quote}` : t.quote)).join("\n");
 }
 
@@ -581,7 +593,10 @@ export function parseLocations(raw: string): Location[] {
     .filter((l) => l.address && l.phone);
 }
 
-export function locationsToText(locations: Location[]): string {
+export function locationsToText(locations: Location[] | undefined): string {
+  // Sites saved before this field existed (and some AdVault-made ones) have no
+  // locations list at all; the edit page crashed on them (2026-11-20).
+  locations = locations ?? [];
   return locations.map((l) => [l.name, l.address, l.phone].filter(Boolean).join(" | ")).join("\n");
 }
 
