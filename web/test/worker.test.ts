@@ -1222,3 +1222,51 @@ describe("edit freshness (no stale browser cache)", () => {
     expect(res.headers.get("cache-control")).not.toContain("max-age=60");
   });
 });
+
+describe("installable PWA", () => {
+  it("serves a valid web manifest", async () => {
+    const res = await call(`${ORIGIN}/manifest.webmanifest`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/manifest+json");
+    const m = (await res.json()) as { name: string; display: string; start_url: string; icons: { sizes: string; purpose?: string }[] };
+    expect(m.name).toBe("SiteVault");
+    expect(m.display).toBe("standalone");
+    expect(m.icons.map((i) => i.sizes)).toEqual(expect.arrayContaining(["192x192", "512x512"]));
+    expect(m.icons.some((i) => i.purpose === "maskable")).toBe(true);
+  });
+
+  it("serves the service worker with the right headers", async () => {
+    const res = await call(`${ORIGIN}/sw.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/javascript");
+    expect(res.headers.get("service-worker-allowed")).toBe("/");
+    const body = await res.text();
+    expect(body).toContain("addEventListener('fetch'");
+    expect(body).toContain("navigate");
+  });
+
+  it("serves PNG app icons", async () => {
+    for (const p of ["/icon-192.png", "/icon-512.png", "/icon-maskable.png"]) {
+      const res = await call(`${ORIGIN}${p}`);
+      expect(res.status, p).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      // PNG magic number.
+      expect([bytes[0], bytes[1], bytes[2], bytes[3]]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    }
+  });
+
+  it("links the manifest and registers the service worker on the home page, and allows them in CSP", async () => {
+    const res = await call(`${ORIGIN}/`);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("manifest-src 'self'");
+    expect(csp).toContain("worker-src 'self'");
+    const html = await res.text();
+    expect(html).toContain('rel="manifest" href="/manifest.webmanifest"');
+    expect(html).toContain("serviceWorker.register('/sw.js')");
+    // The SW-registration script carries the page nonce (CSP compliant).
+    const nonceMatch = csp.match(/script-src 'nonce-([^']+)'/);
+    expect(nonceMatch).toBeTruthy();
+    expect(html).toContain(`<script nonce="${nonceMatch![1]}">`);
+  });
+});
