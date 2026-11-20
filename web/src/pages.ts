@@ -847,7 +847,7 @@ ${embed ? `<input type="hidden" name="embed" value="1">` : ""}
     </details></div>
   </div>
 </fieldset>
-<fieldset><legend>Website style</legend>
+<fieldset id="website-style"><legend>Website style</legend>
   <p class="hint">Your website's look, in your business type's colours. Pick a style, then <strong>Save changes</strong> — it changes how your published website appears (open it in a new tab to see). You can switch anytime.</p>
   <div class="templates"${CAT_THUMB_COLORS[selectedCat] ? ` style="--tp:${CAT_THUMB_COLORS[selectedCat].p};--tb:${CAT_THUMB_COLORS[selectedCat].b}"` : ""}>
     ${(() => {

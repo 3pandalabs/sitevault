@@ -117,7 +117,9 @@ export function allowEmbedFraming(res: Response): Response {
  * The embedded edit page tells AdVault its height (so the iframe fits, no
  * inner scrollbar) and when a save landed. Messages go ONLY to AdVault's
  * origin (postMessage targetOrigin), so another framer learns nothing; it
- * does nothing when not framed.
+ * does nothing when not framed. It also says where the "Website style"
+ * picker starts in the page (`sitevault:sections`, px from the top), so
+ * AdVault can scroll its page to it right after a site is made.
  */
 export const EMBED_SCRIPT = `
 (function(){
@@ -127,6 +129,8 @@ export const EMBED_SCRIPT = `
   send(); window.addEventListener('load',send);
   if(window.ResizeObserver) new ResizeObserver(send).observe(document.body); else setInterval(send,1000);
   document.addEventListener('toggle',send,true);
+  function sections(){ var s=document.getElementById('website-style'); if(s) window.parent.postMessage({type:'sitevault:sections',style:Math.round(s.getBoundingClientRect().top+window.scrollY)},P); }
+  if(document.readyState==='complete') sections(); else window.addEventListener('load',sections);
   var saved=document.getElementById('embed-saved');
   if(saved) window.parent.postMessage({type:'sitevault:saved',slug:saved.getAttribute('data-slug'),siteUrl:saved.getAttribute('data-site-url')},P);
 })();`;
