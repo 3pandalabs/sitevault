@@ -167,6 +167,9 @@ ${o.hero ? `<div class="hero-band"${bg}>${heroImg(o.hero, o.name)}</div>` : ""}`
 /** Shared CSS, driven by the theme's custom properties. */
 const baseCss = (t: Theme) => `:root{--primary:${t.primary};--accent:${t.accent};--ink:${t.ink};--muted:${t.muted};--line:${t.line};--bg:${t.bg};--band:${t.band};--card:${t.card};--head-font:${t.headFont};--radius:${t.radius};--btn-radius:${t.btnRadius};--section-pad:${t.pad};--reveal-dur:${t.revealDur};--head-weight:${t.headWeight};--head-spacing:${t.headSpacing}}
 *{box-sizing:border-box}
+/* Self-hosted brush-script wordmark (Kaushan Script, OFL). font-display:swap
+   so the header name shows immediately in the fallback, then upgrades. */
+@font-face{font-family:"SV Wordmark";src:url("/_f/wordmark.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;font-family:var(--body-font,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif);color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px;overflow-x:hidden}
 .wrap{max-width:960px;margin:0 auto;padding:0 16px}
@@ -225,7 +228,7 @@ header.top .wrap{display:flex;align-items:center;justify-content:space-between;g
 .hactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .btn.small{min-height:38px;padding:7px 14px;font-size:.9rem;gap:5px;border-width:1.5px}
 .btn.small svg{width:16px;height:16px}
-.name{font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;font-weight:800;letter-spacing:-.025em;font-size:1.3rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.name{font-family:"SV Wordmark","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;font-weight:400;letter-spacing:0;font-size:1.6rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;line-height:1}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:11px 20px;border-radius:var(--btn-radius);font-weight:700;text-decoration:none;border:2px solid var(--primary);transition:transform .12s ease,box-shadow .12s ease,background .12s ease}
 .btn.primary{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 82%,#000));color:#fff;box-shadow:0 2px 6px rgba(15,23,42,.18)}
 .btn.primary:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,23,42,.26)}
@@ -237,6 +240,9 @@ header.top .wrap{display:flex;align-items:center;justify-content:space-between;g
 /* Alternating marquee: the offer text bounces side to side within the banner. */
 :root.js .offer{overflow:hidden}
 :root.js .offer .offer-marquee{display:inline-block;white-space:nowrap;animation:offerBounce 9s ease-in-out infinite alternate}
+/* Pause the bounce while the cursor is over (or pressing) the banner; it
+   resumes as soon as the cursor leaves. */
+:root.js .offer:hover .offer-marquee,:root.js .offer:active .offer-marquee{animation-play-state:paused}
 @keyframes offerBounce{from{transform:translateX(calc(-50vw + 50% + 16px))}to{transform:translateX(calc(50vw - 50% - 16px))}}
 .actions{display:flex;flex-wrap:wrap;gap:12px;padding:24px 0}
 section{padding:var(--section-pad) 0}
