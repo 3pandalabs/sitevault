@@ -1212,3 +1212,13 @@ describe("featured listings (real estate)", () => {
     expect(listOf(p.slug)).toBeUndefined();
   });
 });
+
+describe("edit freshness (no stale browser cache)", () => {
+  it("serves customer pages with revalidate, so edits show on the next refresh", async () => {
+    const { slug } = await makeSite({ slug: "fresh-co" });
+    const res = await call(`https://${slug}.3pandasite.test/`);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
+    // No long-lived max-age that would hide an edit for up to a minute.
+    expect(res.headers.get("cache-control")).not.toContain("max-age=60");
+  });
+});
