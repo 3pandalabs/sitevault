@@ -236,7 +236,7 @@ header.top .wrap{display:flex;align-items:center;justify-content:space-between;g
 @keyframes offerFlash{0%,100%{background:#fde68a;box-shadow:0 0 0 0 rgba(245,158,11,0)}50%{background:#fcd34d;box-shadow:0 0 24px 2px rgba(245,158,11,.6)}}
 /* Alternating marquee: the offer text bounces side to side within the banner. */
 :root.js .offer{overflow:hidden}
-:root.js .offer .offer-marquee{display:inline-block;white-space:nowrap;animation:offerBounce 4s ease-in-out infinite alternate}
+:root.js .offer .offer-marquee{display:inline-block;white-space:nowrap;animation:offerBounce 9s ease-in-out infinite alternate}
 @keyframes offerBounce{from{transform:translateX(calc(-50vw + 50% + 16px))}to{transform:translateX(calc(50vw - 50% - 16px))}}
 .actions{display:flex;flex-wrap:wrap;gap:12px;padding:24px 0}
 section{padding:var(--section-pad) 0}
