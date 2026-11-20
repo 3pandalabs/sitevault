@@ -1283,6 +1283,6 @@ describe("motion & offer banner", () => {
     // The flashing animation + directional reveal CSS (slightly slower) is present.
     expect(page).toContain("@keyframes offerFlash");
     expect(page).toContain(".reveal.from-right:not(.in)");
-    expect(page).toContain("transition-duration:1.15s");
+    expect(page).toContain("transition-duration:1.9s");
   });
 });
