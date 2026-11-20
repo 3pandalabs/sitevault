@@ -184,12 +184,6 @@ a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
 :root.js .reveal.from-left:not(.in){transform:translateX(-46px)}
 :root.js .reveal.from-right:not(.in){transform:translateX(46px)}
 :root.js .reveal.from-left,:root.js .reveal.from-right{transition-duration:1.9s}
-/* Hover the hero heading block: the name and tagline grow a touch, then settle
-   back when the cursor leaves. */
-.hero h1,.hero .lede{transition:transform .3s cubic-bezier(.22,1,.36,1);transform-origin:left center}
-.hero.editorial h1,.hero.editorial .lede{transform-origin:center}
-.hero.spotlight .copy:hover h1,.hero.split .hero-text:hover h1,.hero.editorial .wrap:hover h1{transform:scale(1.045)}
-.hero.spotlight .copy:hover .lede,.hero.split .hero-text:hover .lede,.hero.editorial .wrap:hover .lede{transform:scale(1.03)}
 header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox{position:fixed;inset:0;background:rgba(5,8,12,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;cursor:zoom-out}
 .lightbox[hidden]{display:none}
@@ -225,13 +219,13 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.16);border:0;color:#fff;cursor:pointer;font-size:1.6rem;line-height:1;display:flex;align-items:center;justify-content:center}
 .lightbox .lb-nav:hover{background:rgba(255,255,255,.28)}
 .lightbox .lb-prev{left:14px}.lightbox .lb-next{right:14px}
-@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.hero h1,.hero .lede{transform:none !important;transition:none}.btn.primary::after{display:none}.totop{transition:none}:root.js .offer{animation:none;background:#fde68a;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}:root.js .offer{animation:none;background:#fde68a;box-shadow:none}}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;padding-bottom:10px}
 .hactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .btn.small{min-height:38px;padding:7px 14px;font-size:.9rem;gap:5px;border-width:1.5px}
 .btn.small svg{width:16px;height:16px}
-.name{font-family:var(--head-font);font-weight:var(--head-weight);letter-spacing:var(--head-spacing);font-size:1.22rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.name{font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;font-weight:800;letter-spacing:-.025em;font-size:1.3rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:11px 20px;border-radius:var(--btn-radius);font-weight:700;text-decoration:none;border:2px solid var(--primary);transition:transform .12s ease,box-shadow .12s ease,background .12s ease}
 .btn.primary{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 82%,#000));color:#fff;box-shadow:0 2px 6px rgba(15,23,42,.18)}
 .btn.primary:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,23,42,.26)}
