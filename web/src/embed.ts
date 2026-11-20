@@ -58,49 +58,132 @@ export async function signHandoff(secret: string, h: Handoff): Promise<string> {
 }
 
 /**
- * Signature (constant time, via WebCrypto verify), shape and lifetime. Single
- * use and ownership are the caller's (they need KV).
+ * Signature (constant time, via WebCrypto verify) under `prefix`, then the
+ * decoded payload. Shape and lifetime are the typed verifiers' job.
  */
-export async function verifyHandoff(secret: string | undefined, token: string, nowMs = Date.now()): Promise<HandoffCheck> {
-  if (!secret) return { ok: false, error: "not_configured" };
+async function verifySigned(secret: string, token: string, prefix: string): Promise<{ ok: true; payload: Record<string, unknown> } | { ok: false; error: "malformed" | "bad_signature" }> {
   if (token.length > 2048) return { ok: false, error: "malformed" };
   const parts = token.split(".");
   if (parts.length !== 2) return { ok: false, error: "malformed" };
   const [payload, sigText] = parts as [string, string];
   const sig = fromB64url(sigText);
   if (!payload || !sig) return { ok: false, error: "malformed" };
-  const good = await crypto.subtle.verify("HMAC", await hmacKey(secret, "verify"), sig, enc.encode(PREFIX + payload));
+  const good = await crypto.subtle.verify("HMAC", await hmacKey(secret, "verify"), sig, enc.encode(prefix + payload));
   if (!good) return { ok: false, error: "bad_signature" };
-  let h: Partial<Handoff>;
   try {
     const raw = fromB64url(payload);
-    h = raw ? (JSON.parse(new TextDecoder().decode(raw)) as Partial<Handoff>) : {};
+    const h = raw ? (JSON.parse(new TextDecoder().decode(raw)) as unknown) : null;
+    return h && typeof h === "object" && !Array.isArray(h) ? { ok: true, payload: h as Record<string, unknown> } : { ok: false, error: "malformed" };
   } catch {
     return { ok: false, error: "malformed" };
   }
+}
+
+/** Short-lived only: never longer than 60 s, never from the future, never past exp. */
+function lifetimeOk(iat: number, exp: number, nowMs: number): boolean {
+  const now = Math.floor(nowMs / 1000);
+  return !(exp - iat > HANDOFF_MAX_AGE_SECONDS || iat > now + HANDOFF_CLOCK_SKEW_SECONDS || now >= exp);
+}
+
+const UID = /^[A-Za-z0-9-]{8,64}$/;
+const JTI = /^[A-Za-z0-9_-]{16,64}$/;
+
+/**
+ * Signature (constant time, via WebCrypto verify), shape and lifetime. Single
+ * use and ownership are the caller's (they need KV).
+ */
+export async function verifyHandoff(secret: string | undefined, token: string, nowMs = Date.now()): Promise<HandoffCheck> {
+  if (!secret) return { ok: false, error: "not_configured" };
+  const signed = await verifySigned(secret, token, PREFIX);
+  if (!signed.ok) return signed;
+  const h = signed.payload as Partial<Handoff>;
   if (
     h.v !== 1 ||
     typeof h.uid !== "string" ||
-    !/^[A-Za-z0-9-]{8,64}$/.test(h.uid) ||
+    !UID.test(h.uid) ||
     typeof h.email !== "string" ||
     h.email.length > 200 ||
     typeof h.slug !== "string" ||
     !/^[a-z0-9-]{1,63}$/.test(h.slug) ||
     typeof h.jti !== "string" ||
-    !/^[A-Za-z0-9_-]{16,64}$/.test(h.jti) ||
+    !JTI.test(h.jti) ||
     !Number.isInteger(h.iat) ||
     !Number.isInteger(h.exp)
   ) {
     return { ok: false, error: "malformed" };
   }
-  const now = Math.floor(nowMs / 1000);
-  const iat = h.iat as number;
-  const exp = h.exp as number;
-  // Short-lived only: never longer than 60 s, never from the future, never past exp.
-  if (exp - iat > HANDOFF_MAX_AGE_SECONDS || iat > now + HANDOFF_CLOCK_SKEW_SECONDS || now >= exp) {
-    return { ok: false, error: "expired" };
-  }
+  if (!lifetimeOk(h.iat as number, h.exp as number, nowMs)) return { ok: false, error: "expired" };
   return { ok: true, handoff: h as Handoff };
+}
+
+// ---------------------------------------------------------------------------
+// AdVault create mode (2026-11-19): AdVault's "Make me a website" frames THIS
+// Worker's full builder, pre-filled from the campaign. A separate token type:
+//
+//   token   = <payload>.<sig>
+//   payload = base64url(JSON { v: 1, purpose: "create", uid, email, campaignId, draft, pay, iat, exp, jti })
+//   sig     = base64url(HMAC-SHA256(key = INTERNAL_TOKEN, "sv-embed-create-v1." + payload))
+//
+// A different MAC prefix AND an explicit purpose, so an edit token can never
+// open the create builder and a create token can never sign in to an editor.
+// `draft` names the pre-fill AdVault stored here first, server to server
+// (POST /api/internal/drafts); the token carries only its id, never the data.
+
+const CREATE_PREFIX = "sv-embed-create-v1.";
+
+export type CreateHandoff = {
+  v: 1;
+  purpose: "create";
+  uid: string;
+  email: string;
+  campaignId: string;
+  /** The pre-fill draft id (POST /api/internal/drafts). */
+  draft: string;
+  /** AdVault charges the $10 first: the site is made unpublished (pending). */
+  pay: boolean;
+  iat: number;
+  exp: number;
+  jti: string;
+};
+
+export type CreateHandoffCheck = { ok: true; handoff: CreateHandoff } | { ok: false; error: "malformed" | "bad_signature" | "expired" | "not_configured" };
+
+/** Mint a create token (AdVault does this in Node; here for tests and as the reference). */
+export async function signCreateHandoff(secret: string, h: CreateHandoff): Promise<string> {
+  const payload = b64url(enc.encode(JSON.stringify(h)));
+  const sig = await crypto.subtle.sign("HMAC", await hmacKey(secret, "sign"), enc.encode(CREATE_PREFIX + payload));
+  return `${payload}.${b64url(sig)}`;
+}
+
+/** Draft ids: random, url-safe (`randomKey`). */
+export const DRAFT_ID = /^[A-Za-z0-9_-]{16,64}$/;
+
+export async function verifyCreateHandoff(secret: string | undefined, token: string, nowMs = Date.now()): Promise<CreateHandoffCheck> {
+  if (!secret) return { ok: false, error: "not_configured" };
+  const signed = await verifySigned(secret, token, CREATE_PREFIX);
+  if (!signed.ok) return signed;
+  const h = signed.payload as Partial<CreateHandoff>;
+  if (
+    h.v !== 1 ||
+    h.purpose !== "create" ||
+    typeof h.uid !== "string" ||
+    !UID.test(h.uid) ||
+    typeof h.email !== "string" ||
+    h.email.length > 200 ||
+    typeof h.campaignId !== "string" ||
+    !UID.test(h.campaignId) ||
+    typeof h.draft !== "string" ||
+    !DRAFT_ID.test(h.draft) ||
+    typeof h.pay !== "boolean" ||
+    typeof h.jti !== "string" ||
+    !JTI.test(h.jti) ||
+    !Number.isInteger(h.iat) ||
+    !Number.isInteger(h.exp)
+  ) {
+    return { ok: false, error: "malformed" };
+  }
+  if (!lifetimeOk(h.iat as number, h.exp as number, nowMs)) return { ok: false, error: "expired" };
+  return { ok: true, handoff: h as CreateHandoff };
 }
 
 /**
@@ -117,7 +200,8 @@ export function allowEmbedFraming(res: Response): Response {
  * The embedded edit page tells AdVault its height (so the iframe fits, no
  * inner scrollbar) and when a save landed. Messages go ONLY to AdVault's
  * origin (postMessage targetOrigin), so another framer learns nothing; it
- * does nothing when not framed. It also says where the "Website style"
+ * does nothing when not framed. The create builder's "Created" page sends
+ * `sitevault:created` { slug, siteUrl, pending, draft } the same way. It also says where the "Website style"
  * picker starts in the page (`sitevault:sections`, px from the top), so
  * AdVault can scroll its page to it right after a site is made.
  */
@@ -133,4 +217,6 @@ export const EMBED_SCRIPT = `
   if(document.readyState==='complete') sections(); else window.addEventListener('load',sections);
   var saved=document.getElementById('embed-saved');
   if(saved) window.parent.postMessage({type:'sitevault:saved',slug:saved.getAttribute('data-slug'),siteUrl:saved.getAttribute('data-site-url')},P);
+  var made=document.getElementById('embed-created');
+  if(made) window.parent.postMessage({type:'sitevault:created',slug:made.getAttribute('data-slug'),siteUrl:made.getAttribute('data-site-url'),pending:made.getAttribute('data-pending')==='1',draft:made.getAttribute('data-draft')},P);
 })();`;
