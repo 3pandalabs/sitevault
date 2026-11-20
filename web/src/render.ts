@@ -177,9 +177,11 @@ a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
 .reveal{transition:opacity var(--reveal-dur) ease,transform var(--reveal-dur) ease}
 :root.js .reveal{opacity:0;transform:translateY(22px)}
 :root.js .reveal.in{opacity:1;transform:none}
-/* Directional reveals: a section slides in from the left or the right. */
+/* Directional reveals: a section slides in from the left or the right, a touch
+   slower than the default reveal so the motion reads clearly. */
 :root.js .reveal.from-left:not(.in){transform:translateX(-46px)}
 :root.js .reveal.from-right:not(.in){transform:translateX(46px)}
+:root.js .reveal.from-left,:root.js .reveal.from-right{transition-duration:1.15s}
 header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox{position:fixed;inset:0;background:rgba(5,8,12,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;cursor:zoom-out}
 .lightbox[hidden]{display:none}
@@ -497,7 +499,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
     : "";
   const visit =
     locationBlock || hoursBlock
-      ? `<section aria-label="Location and hours" class="band reveal">
+      ? `<section aria-label="Location and hours" class="band reveal from-right">
   <div class="wrap visit">
     ${locationBlock}
     ${hoursBlock}
