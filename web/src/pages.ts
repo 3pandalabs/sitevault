@@ -40,6 +40,7 @@ import {
   type Site,
 } from "./site.js";
 import { DEFAULT_TEMPLATE, TEMPLATES, themeFor } from "./templates.js";
+import { SW_REGISTER } from "./pwa.js";
 
 /** Category -> picker-thumbnail colours (primary + light band), so the style previews match the business type. */
 const CAT_THUMB_COLORS: Record<string, { p: string; b: string }> = Object.fromEntries(
@@ -70,6 +71,10 @@ export function layout(opts: { title: string; body: string; nonce?: string; scri
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+${opts.embed ? "" : `<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SiteVault">`}
 <title>${esc(opts.title)}</title>
 <meta name="description" content="A simple website for your local business in about five minutes. Built from your own details and photos.">
 ${opts.noindex ? '<meta name="robots" content="noindex">' : ""}
@@ -265,7 +270,7 @@ ${opts.embed ? "" : `<footer><div class="wrap">
   <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></div>
   <div class="legal"><span>&copy; 3PandaLabs LLC, USA.</span><span>All rights reserved.</span></div>
 </div></footer>`}
-${opts.script && opts.nonce ? `<script nonce="${opts.nonce}">${opts.script}</script>` : ""}
+${opts.nonce ? `<script nonce="${opts.nonce}">${opts.script ?? ""}${opts.embed ? "" : SW_REGISTER}</script>` : ""}
 </body>
 </html>`;
 }
@@ -321,11 +326,12 @@ function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
 
-export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false, admin = false): string {
+export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false, admin = false, nonce?: string): string {
   return layout({
     owner,
     signedIn,
     admin,
+    nonce,
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>

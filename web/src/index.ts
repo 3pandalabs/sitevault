@@ -43,6 +43,7 @@
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
 import { renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
+import { PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
@@ -255,7 +256,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
       const me = await currentAccount(env.SITES, request);
       const owner = me ? (await accountSites(env, me)).length > 0 : false;
       const admin = me ? isAdminEmail(env, me.email) : false;
-      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me), admin));
+      const n = nonce();
+      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me), admin, n), 200, n);
     }
     if (path === "/new") {
       const me = await currentAccount(env.SITES, request);
@@ -282,6 +284,16 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     // The tab icon: an "S", matching AdVault's "A" (main site only; customer sites are the business's own).
     if (path === "/favicon.svg" || path === "/favicon.ico") {
       return new Response(FAVICON_SVG, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
+    }
+    // PWA: the installable web manifest, the service worker, and the app icons.
+    if (path === "/manifest.webmanifest") {
+      return new Response(JSON.stringify(PWA_MANIFEST), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" } });
+    }
+    if (path === "/sw.js") {
+      return new Response(SERVICE_WORKER, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache", "service-worker-allowed": "/" } });
+    }
+    if (path in PWA_ICONS) {
+      return new Response(pngBytes(PWA_ICONS[path]!), { headers: { "content-type": "image/png", "cache-control": "public, max-age=604800, immutable" } });
     }
     if (path === "/metrics") return metrics(request, env);
     if (path === "/api/admin/sites") return adminList(request, env);
@@ -371,6 +383,9 @@ function html(body: string, status = 200, scriptNonce?: string): Response {
     "media-src 'self'",
     "style-src 'unsafe-inline'",
     scriptNonce ? `script-src 'nonce-${scriptNonce}'` : "script-src 'none'",
+    // PWA: allow the installable manifest and the same-origin service worker.
+    "manifest-src 'self'",
+    "worker-src 'self'",
     "connect-src 'self'",
     // Stripe hosts so a browser follows the checkout/portal form POST's 303 to
     // Stripe — form-action is enforced against the redirect target, not just
