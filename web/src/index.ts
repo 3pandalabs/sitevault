@@ -685,9 +685,11 @@ async function serveSite(
     res.headers.set("x-robots-tag", "noindex");
     res.headers.set("cache-control", "no-store");
   } else {
-    // Short edge cache: edits show within a minute, traffic spikes from an ad
-    // don't hit KV for every visitor.
-    res.headers.set("cache-control", "public, max-age=60");
+    // Always revalidate so an owner's edit shows on the very next refresh (a 60s
+    // browser cache made edits take up to a minute to appear). Ad-traffic spikes
+    // are still cheap: Workers KV edge-caches the hot site record per colo, so
+    // repeated views don't hit KV origin.
+    res.headers.set("cache-control", "public, max-age=0, must-revalidate");
   }
   return res;
 }
@@ -711,7 +713,7 @@ async function servePolicyPage(env: Env, slug: string, preloaded: Site | null | 
     return res;
   }
   const res = html(renderPolicyPage(site, kind, renderCtx(env, slug)));
-  res.headers.set("cache-control", "public, max-age=60");
+  res.headers.set("cache-control", "public, max-age=0, must-revalidate");
   return res;
 }
 
