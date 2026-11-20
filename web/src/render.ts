@@ -369,12 +369,12 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.spotlight.noimg{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 68%,#000))}
 .hero.spotlight.noimg .copy{position:static;padding:72px 0}
 .hero.spotlight .eyebrow{display:inline-block;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);padding:6px 14px;border-radius:999px;backdrop-filter:blur(4px)}
-.hero.spotlight h1{font-family:var(--head-font);margin:14px 0 10px;font-size:clamp(2rem,6vw,3.3rem);line-height:1.08;letter-spacing:-.015em;text-shadow:0 2px 14px rgba(0,0,0,.35)}
+.hero.spotlight h1{font-family:"SV Wordmark",var(--head-font);font-weight:400;margin:14px 0 10px;font-size:clamp(2.2rem,6.6vw,3.7rem);line-height:1.1;letter-spacing:normal;text-shadow:0 2px 14px rgba(0,0,0,.35)}
 .hero.spotlight .lede{margin:0;font-size:1.2rem;max-width:46ch;opacity:.96}`,
   split: `.hero.split{display:grid;grid-template-columns:1.05fr .95fr;background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 78%,#000));color:#fff;align-items:stretch}
 .hero.split .hero-text{padding:52px clamp(18px,5vw,60px);align-self:center}
 .hero.split .eyebrow{color:rgba(255,255,255,.82)}
-.hero.split h1{font-family:var(--head-font);margin:0 0 12px;font-size:clamp(1.9rem,4.4vw,2.8rem);line-height:1.12;letter-spacing:-.01em}
+.hero.split h1{font-family:"SV Wordmark",var(--head-font);font-weight:400;margin:0 0 12px;font-size:clamp(2.1rem,4.8vw,3.1rem);line-height:1.14;letter-spacing:normal}
 .hero.split .lede{margin:0 0 24px;font-size:1.15rem;opacity:.95;max-width:40ch}
 .hero.split .hero-cta{background:#fff;color:var(--primary);border-color:#fff}
 .hero.split .hero-cta:hover{background:var(--band)}
@@ -386,7 +386,7 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
   editorial: `:root{--head-font:Georgia,Cambria,"Times New Roman",serif}
 .hero.editorial{background:var(--band);color:var(--ink);text-align:center;padding:72px 0 56px;border-bottom:1px solid var(--line)}
 .hero.editorial .eyebrow{color:var(--primary)}
-.hero.editorial h1{font-family:var(--head-font);margin:0 0 14px;font-size:clamp(2.2rem,6.4vw,3.4rem);line-height:1.08;letter-spacing:-.015em}
+.hero.editorial h1{font-family:"SV Wordmark",var(--head-font);font-weight:400;margin:0 0 14px;font-size:clamp(2.4rem,6.8vw,3.8rem);line-height:1.1;letter-spacing:normal}
 .hero.editorial .lede{margin:0 auto;max-width:44ch;color:var(--muted);font-size:1.2rem}
 .hero.editorial .eyebrow::before,.hero.editorial .eyebrow::after{content:"";display:inline-block;width:30px;height:1px;background:var(--primary);opacity:.55;vertical-align:middle;margin:0 12px}
 .hero-band{position:relative;overflow:hidden;padding:44px 16px;background:var(--band)}
