@@ -1279,9 +1279,10 @@ describe("motion & offer banner", () => {
     expect(page).toContain('aria-labelledby="about-h" class="reveal from-right"');
     // Hours/location section also slides in from the right.
     expect(page).toContain('aria-label="Location and hours" class="band reveal from-right"');
-    expect(page).toContain('<p class="offer">20% off this week!</p>');
-    // The flashing animation + directional reveal CSS (slightly slower) is present.
+    expect(page).toContain('<p class="offer"><span class="offer-marquee">20% off this week!</span></p>');
+    // The flashing + bouncing-marquee animation and directional reveal CSS (slightly slower) is present.
     expect(page).toContain("@keyframes offerFlash");
+    expect(page).toContain("@keyframes offerBounce");
     expect(page).toContain(".reveal.from-right:not(.in)");
     expect(page).toContain("transition-duration:1.9s");
   });

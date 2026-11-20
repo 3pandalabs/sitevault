@@ -219,7 +219,7 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.16);border:0;color:#fff;cursor:pointer;font-size:1.6rem;line-height:1;display:flex;align-items:center;justify-content:center}
 .lightbox .lb-nav:hover{background:rgba(255,255,255,.28)}
 .lightbox .lb-prev{left:14px}.lightbox .lb-next{right:14px}
-@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}:root.js .offer{animation:none;background:#fde68a;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}:root.js .offer{animation:none;background:#fde68a;box-shadow:none}:root.js .offer .offer-marquee{animation:none;transform:none}}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;padding-bottom:10px}
 .hactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -234,6 +234,10 @@ header.top .wrap{display:flex;align-items:center;justify-content:space-between;g
 .offer{background:#fde68a;color:#78350f;font-weight:800;text-align:center;padding:15px 16px;border-bottom:3px solid var(--accent)}
 :root.js .offer{animation:offerFlash 1.5s ease-in-out infinite}
 @keyframes offerFlash{0%,100%{background:#fde68a;box-shadow:0 0 0 0 rgba(245,158,11,0)}50%{background:#fcd34d;box-shadow:0 0 24px 2px rgba(245,158,11,.6)}}
+/* Alternating marquee: the offer text bounces side to side within the banner. */
+:root.js .offer{overflow:hidden}
+:root.js .offer .offer-marquee{display:inline-block;white-space:nowrap;animation:offerBounce 4s ease-in-out infinite alternate}
+@keyframes offerBounce{from{transform:translateX(calc(-50vw + 50% + 16px))}to{transform:translateX(calc(50vw - 50% - 16px))}}
 .actions{display:flex;flex-wrap:wrap;gap:12px;padding:24px 0}
 section{padding:var(--section-pad) 0}
 section.band{background:var(--band);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -774,7 +778,7 @@ ${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=
 </header>
 <main id="main">
 ${buildHero(template, { eyebrow: cat.label, name: site.businessName, headline: headline(site), hero, phone: site.phone, pingCall: ping("call") })}
-${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
+${site.offer ? `<p class="offer"><span class="offer-marquee">${esc(site.offer)}</span></p>` : ""}
 ${video}
 ${services}
 ${about}
