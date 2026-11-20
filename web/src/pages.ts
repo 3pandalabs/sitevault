@@ -51,13 +51,19 @@ const CAT_THUMB_COLORS: Record<string, { p: string; b: string }> = Object.fromEn
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
+import { EMBED_SCRIPT } from "./embed.js";
 import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
 import type { SiteStats } from "./stats.js";
 
 const CONTACT = "3pandas@3pandalabs.com";
 
 /** `owner`: a signed-in owner who already has their website (one per account): no "Build" button. */
-export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean }): string {
+/**
+ * `embed`: the page sits in AdVault's "Your website" iframe. No SiteVault
+ * header, nav, sign-in or footer (AdVault has its own), and the body takes its
+ * content's height so the iframe can fit it.
+ */
+export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -240,9 +246,10 @@ table.bars th,table.bars td{text-align:left;padding:4px 6px;border-bottom:1px so
 table.bars td.n{text-align:right;white-space:nowrap;width:1%}
 .bar{display:block;height:8px;border-radius:4px;background:var(--accent);min-width:2px}
 </style>
+${opts.embed ? `<style>body{min-height:0}main.wrap{padding-top:8px;padding-bottom:24px}</style>` : ""}
 </head>
-<body>
-<div class="backdrop" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><div class="dots"></div></div>
+<body${opts.embed ? ' class="embed"' : ""}>
+${opts.embed ? "" : `<div class="backdrop" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><div class="dots"></div></div>
 <header class="top"><div class="wrap">
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
   <nav class="links">${
@@ -250,14 +257,14 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
       ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a>${opts.admin || !opts.owner ? `<a class="btn small" href="/new">Build my website</a>` : ""}<form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
       : `<a class="btn small" href="/login">Sign in</a>`
   }</nav>
-</div></header>
+</div></header>`}
 <main id="main" class="wrap">
 ${opts.body}
 </main>
-<footer><div class="wrap">
+${opts.embed ? "" : `<footer><div class="wrap">
   <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></div>
   <div class="legal"><span>&copy; 3PandaLabs LLC, USA.</span><span>All rights reserved.</span></div>
-</div></footer>
+</div></footer>`}
 ${opts.script && opts.nonce ? `<script nonce="${opts.nonce}">${opts.script}</script>` : ""}
 </body>
 </html>`;
@@ -352,7 +359,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
 
 export type FormMode =
   | { kind: "new"; account?: { email: string } | null; admin?: boolean }
-  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; pendingReviews?: Review[]; signedIn?: boolean; siteUrl?: string; admin?: boolean };
+  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; pendingReviews?: Review[]; signedIn?: boolean; siteUrl?: string; admin?: boolean; embed?: boolean; saved?: boolean };
 
 /** Everything the edit page's "Plan & billing" section shows. Only built while BILLING is on. */
 export type BillingView = {
@@ -499,11 +506,11 @@ function barTable(caption: string, head: string, rows: { label: string; n: numbe
 }
 
 /** Edit-page moderation: pending customer reviews to approve/reject, approved ones to remove. */
-export function reviewsModerationSection(slug: string, key: string, pending: Review[], approved: Review[]): string {
+export function reviewsModerationSection(slug: string, key: string, pending: Review[], approved: Review[], embed = false): string {
   const starStr = (n: number) => `${"★".repeat(n)}${"☆".repeat(5 - n)}`;
   const act = (action: string, id: string, label: string, cls = "btn ghost") =>
     `<form method="post" action="/api/sites/${encodeURIComponent(slug)}/reviews" style="display:inline">
-      <input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="action" value="${action}"><input type="hidden" name="reviewId" value="${esc(id)}">
+      <input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="action" value="${action}"><input type="hidden" name="reviewId" value="${esc(id)}">${embed ? `<input type="hidden" name="embed" value="1">` : ""}
       <button class="${cls}" type="submit">${label}</button>
     </form>`;
   const card = (r: Review, buttons: string) =>
@@ -521,13 +528,13 @@ ${approved.length ? `<h3 style="margin:24px 0 8px">Published (${approved.length}
 </section>`;
 }
 
-export function visitorsSection(v: VisitorsView): string {
+export function visitorsSection(v: VisitorsView, embed = false): string {
   const s = v.stats;
   if (!s) return "";
   const total = `<p><strong>${s.total}</strong> visit${s.total === 1 ? "" : "s"} in the last 30 days.</p>`;
   const vt = `${s.total} visit${s.total === 1 ? "" : "s"} in the last 30 days`;
   if (!v.full) {
-    return `<details class="section"><summary>Visitors <span class="sum">— ${vt}</span></summary><div class="section-body">${total}<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p></div></details>`;
+    return `<details class="section"><summary>Visitors <span class="sum">— ${vt}</span></summary><div class="section-body">${total}${embed ? "" : `<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p>`}</div></details>`;
   }
   const place = (p: { city: string; country: string }) => [p.city, p.country].filter(Boolean).join(", ") || "Unknown";
   const tables = [
@@ -573,8 +580,9 @@ export const ADVAULT_ORIGIN = "https://advault.3pandalabs.com";
  * same offer as an AdVault video ad. AdVault-made sites have an AdVault
  * account, so they deep-link to the combo; everyone else gets AdVault's home.
  */
-export function advaultOfferLink(site: Pick<Site, "slug" | "source">): string {
-  const style = ` style="display:inline-block;padding:12px 0;min-height:44px"`;
+export function advaultOfferLink(site: Pick<Site, "slug" | "source">, embed = false): string {
+  // Embedded in AdVault: open AdVault in the whole tab, not inside the frame.
+  const style = ` style="display:inline-block;padding:12px 0;min-height:44px"${embed ? ' target="_top"' : ""}`;
   return site.source === "advault"
     ? `<a${style} href="${esc(`${ADVAULT_ORIGIN}/dashboard?siteOffer=${encodeURIComponent(site.slug)}`)}">Also run this offer as a YouTube ad with AdVault →</a>`
     : `<a${style} href="${esc(ADVAULT_ORIGIN)}">Turn this offer into a video ad</a>`;
@@ -755,6 +763,9 @@ export function builderPage(
   domain: string | null = null,
 ): string {
   const site = mode.kind === "edit" ? mode.site : null;
+  // Inside AdVault's "Your website": no SiteVault chrome, billing or upsell
+  // (AdVault covers AdVault-made sites), and saves come back here.
+  const embed = mode.kind === "edit" && Boolean(mode.embed);
   const v = (k: string, fallback = "") => esc(values[k] ?? fallback);
   const e = (k: string) => `<div class="err" id="err-${k}" role="alert">${esc(errors[k] ?? "")}</div>`;
   // One-tap suggestion chips, from what the form already knows (name, type, town).
@@ -803,8 +814,14 @@ export function builderPage(
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
 <p class="lead">${mode.kind === "edit" ? `Changes go live as soon as you save.` : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>
+${
+  embed && mode.kind === "edit" && mode.saved
+    ? `<div class="notice" id="embed-saved" role="status" data-slug="${esc(mode.site.slug)}" data-site-url="${esc(mode.siteUrl ?? "")}"><p style="margin:0"><strong>Saved.</strong> Your changes are live.${mode.siteUrl ? ` <a href="${esc(mode.siteUrl)}" target="_blank" rel="noopener">Open my website</a>` : ""}</p></div>`
+    : ""
+}
 <form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate>
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
+${embed ? `<input type="hidden" name="embed" value="1">` : ""}
 <fieldset><legend>Your business</legend>
   <div class="field"><label for="businessName">Business name</label><input type="text" id="businessName" name="businessName" maxlength="80" required value="${v("businessName", site?.businessName)}" autocomplete="organization">${sg("businessName")}${e("businessName")}</div>
   ${addressField}
@@ -849,7 +866,7 @@ ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)
     mode.kind === "edit" && mode.billing
       ? ` Changing it uses 1 credit (${mode.billing.billing.credits} left). Clearing it is free.`
       : ""
-  }</span></label><input type="text" id="offer" name="offer" maxlength="160" value="${v("offer", site?.offer ?? "")}" placeholder="Spring cleanup from $149, this month only">${sg("offer")}${e("offer")}${mode.kind === "edit" ? advaultOfferLink(mode.site) : ""}</div>
+  }</span></label><input type="text" id="offer" name="offer" maxlength="160" value="${v("offer", site?.offer ?? "")}" placeholder="Spring cleanup from $149, this month only">${sg("offer")}${e("offer")}${mode.kind === "edit" ? advaultOfferLink(mode.site, mode.embed) : ""}</div>
   <div class="field"><label for="services">Services and prices <span class="hint">Optional. One per line, price after a dash.</span></label><textarea id="services" name="services" placeholder="Lawn mowing - from $35&#10;Spring cleanup - $149&#10;Hedge trimming">${v("services", site ? servicesToText(site.services) : "")}</textarea>${sg("services")}${e("services")}</div>
   <div class="field"><label for="hours">Opening hours <span class="hint">Optional</span></label><textarea id="hours" name="hours" placeholder="Mon-Fri 8am-6pm&#10;Sat 9am-2pm&#10;Sun closed">${v("hours", site?.hours ?? "")}</textarea>${sg("hours")}${e("hours")}</div>
   <div class="field"><label for="about">About your business <span class="hint">Optional. A few sentences in your own words.</span></label><textarea id="about" name="about" maxlength="1200">${v("about", site?.about)}</textarea>${sg("about")}${e("about")}</div>
@@ -873,12 +890,12 @@ ${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
 <div class="buttons">
   <button class="btn" type="submit" id="submit">${mode.kind === "edit" ? "Save changes" : "Create my website"}</button>
-  ${mode.kind === "edit" ? `<a class="btn ghost" href="/edit/${encodeURIComponent(mode.site.slug)}?k=${encodeURIComponent(mode.key)}">Cancel</a>` : ""}
+  ${mode.kind === "edit" ? `<a class="btn ghost" href="/edit/${encodeURIComponent(mode.site.slug)}${embed ? "?embed=1" : `?k=${encodeURIComponent(mode.key)}`}">Cancel</a>` : ""}
 </div>
 </form>
-${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors) : ""}
-${mode.kind === "edit" && mode.billing ? billingSection(mode.site.slug, mode.key, mode.billing) : ""}
-${mode.kind === "edit" ? reviewsModerationSection(mode.site.slug, mode.key, mode.pendingReviews ?? [], mode.site.reviews ?? []) : ""}
+${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors, embed) : ""}
+${mode.kind === "edit" && mode.billing && !embed ? billingSection(mode.site.slug, mode.key, mode.billing) : ""}
+${mode.kind === "edit" ? reviewsModerationSection(mode.site.slug, mode.key, mode.pendingReviews ?? [], mode.site.reviews ?? [], embed) : ""}
 ${
   mode.kind === "edit"
     ? `<div style="margin-top:28px" class="notice">
@@ -896,7 +913,8 @@ ${
     admin: mode.admin,
     signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
     noindex: mode.kind === "edit",
-    script: SUGGEST_SCRIPT + BUILDER_SCRIPT,
+    embed,
+    script: SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : ""),
   });
 }
 
