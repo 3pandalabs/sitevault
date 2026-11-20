@@ -47,6 +47,8 @@ import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, e
 import {
   accountByEmail,
   accountForAdvault,
+  advaultLinkEmail,
+  isIdOnlyAccount,
   changePassword,
   confirmPasswordReset,
   findAccountForAdvault,
@@ -560,7 +562,8 @@ async function ownerInternal(request: Request, env: Env, slug: string): Promise<
   }
   const advaultUserId = typeof body.advaultUserId === "string" && /^[A-Za-z0-9-]{8,64}$/.test(body.advaultUserId) ? body.advaultUserId : null;
   const email = normaliseEmail(typeof body.email === "string" ? body.email : "");
-  if (!advaultUserId || emailProblem(email)) return json({ ok: false, error: "invalid" }, 400);
+  // No email (or a test customer's *.invalid one) = linked by the AdVault user id alone.
+  if (!advaultUserId || (email && emailProblem(email))) return json({ ok: false, error: "invalid" }, 400);
   const site = await liveSiteFollowingAliases(env, slug);
   if (!site) return json({ ok: false, error: "not_found" }, 404);
   if (site.source !== "advault") return json({ ok: false, error: "not_an_advault_site" }, 409);
@@ -933,12 +936,11 @@ async function createDraftInternal(request: Request, env: Env): Promise<Response
   const form = await readForm(request);
   if (!form) return json({ ok: false, error: "bad_request" }, 400);
   const uid = form.fields.ownerAdvaultUserId ?? "";
-  const email = normaliseEmail(form.fields.ownerEmail ?? "");
+  // "" for an AdVault test customer (no email, or its *.invalid one): the
+  // builder then links the account by the AdVault user id alone.
+  const email = advaultLinkEmail(form.fields.ownerEmail);
   const campaignId = form.fields.campaignId ?? "";
   if (!/^[A-Za-z0-9-]{8,64}$/.test(uid) || !/^[A-Za-z0-9-]{8,64}$/.test(campaignId)) return json({ ok: false, error: "bad_request" }, 400);
-  // The builder signs the owner in to their account; that needs a real email
-  // (AdVault test customers have none, and use the quick form instead).
-  if (emailProblem(email)) return json({ ok: false, error: "email_required" }, 400);
   const errors: FieldErrors = {};
   const photoErr = checkPhotos(form.files, 0, INTERNAL_PHOTO_BYTES);
   if (photoErr) errors.photos = photoErr;
@@ -1604,7 +1606,7 @@ async function accountHome(request: Request, env: Env, url: URL, claimError?: st
           ? "Couldn't update your password right now. Please try again."
           : undefined;
   return html(
-    accountPage(account.email, await accountSites(env, account), {
+    accountPage(isIdOnlyAccount(account) ? "an AdVault test customer" : account.email, await accountSites(env, account), {
       claimError,
       claimed: url.searchParams.get("claimed") === "1",
       admin: isAdminEmail(env, account.email),
@@ -1919,9 +1921,9 @@ async function createForAdvault(
   }
   if (!adminTest && content && (await phoneOwner(env, content.phone))) errors.phone = PHONE_TAKEN;
   if (!content || Object.keys(errors).length > 0) return { ok: false, errors };
-  // Same login: the site goes to the AdVault user's SiteVault account.
-  const owner =
-    /^[A-Za-z0-9-]{8,64}$/.test(advId) && !emailProblem(advEmail) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
+  // Same login: the site goes to the AdVault user's SiteVault account (a test
+  // customer with no real email: its id-only account, never an email match).
+  const owner = /^[A-Za-z0-9-]{8,64}$/.test(advId) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
   const made = await insertSite(
     env,
     content,
