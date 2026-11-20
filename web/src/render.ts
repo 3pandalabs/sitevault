@@ -166,7 +166,7 @@ ${o.hero ? `<div class="hero-band"${bg}>${heroImg(o.hero, o.name)}</div>` : ""}`
 const baseCss = (t: Theme) => `:root{--primary:${t.primary};--accent:${t.accent};--ink:${t.ink};--muted:${t.muted};--line:${t.line};--bg:${t.bg};--band:${t.band};--card:${t.card};--head-font:${t.headFont};--radius:${t.radius};--btn-radius:${t.btnRadius};--section-pad:${t.pad};--reveal-dur:${t.revealDur};--head-weight:${t.headWeight};--head-spacing:${t.headSpacing}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;font-family:var(--body-font,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif);color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px}
+body{margin:0;font-family:var(--body-font,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif);color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px;overflow-x:hidden}
 .wrap{max-width:960px;margin:0 auto;padding:0 16px}
 a{color:var(--primary)}
 a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
@@ -177,6 +177,9 @@ a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
 .reveal{transition:opacity var(--reveal-dur) ease,transform var(--reveal-dur) ease}
 :root.js .reveal{opacity:0;transform:translateY(22px)}
 :root.js .reveal.in{opacity:1;transform:none}
+/* Directional reveals: a section slides in from the left or the right. */
+:root.js .reveal.from-left:not(.in){transform:translateX(-46px)}
+:root.js .reveal.from-right:not(.in){transform:translateX(46px)}
 header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox{position:fixed;inset:0;background:rgba(5,8,12,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;cursor:zoom-out}
 .lightbox[hidden]{display:none}
@@ -212,7 +215,7 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.16);border:0;color:#fff;cursor:pointer;font-size:1.6rem;line-height:1;display:flex;align-items:center;justify-content:center}
 .lightbox .lb-nav:hover{background:rgba(255,255,255,.28)}
 .lightbox .lb-prev{left:14px}.lightbox .lb-next{right:14px}
-@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}}
+@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}:root.js .offer{animation:none;background:#fde68a;box-shadow:none}}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;padding-bottom:10px}
 .hactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -224,7 +227,9 @@ header.top .wrap{display:flex;align-items:center;justify-content:space-between;g
 .btn.primary:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,23,42,.26)}
 .btn.ghost{background:var(--card);color:var(--primary)}
 .btn.ghost:hover{background:var(--band)}
-.offer{background:#fef3c7;color:#78350f;font-weight:700;text-align:center;padding:14px 16px;border-bottom:3px solid var(--accent)}
+.offer{background:#fde68a;color:#78350f;font-weight:800;text-align:center;padding:15px 16px;border-bottom:3px solid var(--accent)}
+:root.js .offer{animation:offerFlash 1.5s ease-in-out infinite}
+@keyframes offerFlash{0%,100%{background:#fde68a;box-shadow:0 0 0 0 rgba(245,158,11,0)}50%{background:#fcd34d;box-shadow:0 0 24px 2px rgba(245,158,11,.6)}}
 .actions{display:flex;flex-wrap:wrap;gap:12px;padding:24px 0}
 section{padding:var(--section-pad) 0}
 section.band{background:var(--band);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -435,7 +440,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   };
 
   const services = site.services.length
-    ? `<section aria-labelledby="services-h" class="band reveal">
+    ? `<section aria-labelledby="services-h" class="band reveal from-left">
   <div class="wrap">
     <p class="kicker">What we offer</p>
     <h2 id="services-h">Services</h2>
@@ -452,7 +457,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
     : "";
 
   const about = site.about
-    ? `<section aria-labelledby="about-h" class="reveal">
+    ? `<section aria-labelledby="about-h" class="reveal from-right">
   <div class="wrap">
     <p class="kicker">Our story</p>
     <h2 id="about-h">About us</h2>
