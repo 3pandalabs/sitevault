@@ -1286,4 +1286,22 @@ describe("motion & offer banner", () => {
     expect(page).toContain(".reveal.from-right:not(.in)");
     expect(page).toContain("transition-duration:1.9s");
   });
+
+  it("serves a self-hosted wordmark font and the header uses it", async () => {
+    const { slug } = await makeSite({ slug: "font-co" });
+    const host = `https://${slug}.3pandasite.test`;
+    const page = await (await call(`${host}/`)).text();
+    // The header wordmark uses the self-hosted script font (not a web font).
+    expect(page).toContain('@font-face{font-family:"SV Wordmark";src:url("/_f/wordmark.woff2")');
+    expect(page).toContain('.name{font-family:"SV Wordmark"');
+    // The font byte route returns woff2, immutably cached, same-origin (CSP font-src 'self').
+    const font = await call(`${host}/_f/wordmark.woff2`);
+    expect(font.status).toBe(200);
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+    expect(font.headers.get("cache-control")).toContain("immutable");
+    const buf = await font.arrayBuffer();
+    expect(buf.byteLength).toBeGreaterThan(1000);
+    // Valid woff2 signature "wOF2".
+    expect(new Uint8Array(buf).slice(0, 4)).toEqual(new Uint8Array([0x77, 0x4f, 0x46, 0x32]));
+  });
 });

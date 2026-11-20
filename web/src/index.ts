@@ -44,6 +44,7 @@
 
 import { renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
 import { PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
+import { wordmarkFontBytes } from "./wordmarkFont.js";
 import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
@@ -224,6 +225,16 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (method === "GET" && path === "/robots.txt") {
       return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain" } });
     }
+    // The wordmark font, self-hosted (same for every site, cached forever).
+    if (method === "GET" && path === "/_f/wordmark.woff2") {
+      return new Response(wordmarkFontBytes(), {
+        headers: {
+          "content-type": "font/woff2",
+          "cache-control": "public, max-age=31536000, immutable",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    }
     const tap = path.match(/^\/t\/([a-z]+)$/);
     if (method === "POST" && tap) return countTap(request, env, ctx, slug, tap[1]!);
     // A visitor leaving a review (same-origin form on the customer site).
@@ -382,6 +393,8 @@ function html(body: string, status = 200, scriptNonce?: string): Response {
     "img-src 'self' data: blob:",
     "media-src 'self'",
     "style-src 'unsafe-inline'",
+    // Self-hosted wordmark font (served from this origin at /_f/wordmark.woff2).
+    "font-src 'self'",
     scriptNonce ? `script-src 'nonce-${scriptNonce}'` : "script-src 'none'",
     // PWA: allow the installable manifest and the same-origin service worker.
     "manifest-src 'self'",
