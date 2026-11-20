@@ -43,7 +43,7 @@ export const SITE_JS = `(function(){
   var reduce=w.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   var rev=[].slice.call(d.querySelectorAll('.reveal'));
   if(reduce||!('IntersectionObserver' in w)){rev.forEach(function(e){e.classList.add('in');});}
-  else{var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{rootMargin:'0px 0px -8% 0px',threshold:.08});rev.forEach(function(e){io.observe(e);});}
+  else{var io=new IntersectionObserver(function(es){es.forEach(function(e){e.target.classList.toggle('in',e.isIntersecting);});},{rootMargin:'0px 0px -8% 0px',threshold:.08});rev.forEach(function(e){io.observe(e);});}
   var hdr=d.querySelector('header.top');
   var pb=d.createElement('div');pb.className='progress';d.body.appendChild(pb);
   var tt=d.createElement('button');tt.type='button';tt.className='totop';tt.setAttribute('aria-label','Back to top');tt.innerHTML='\\u2191';d.body.appendChild(tt);
