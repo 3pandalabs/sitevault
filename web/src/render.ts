@@ -181,7 +181,7 @@ a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
    slower than the default reveal so the motion reads clearly. */
 :root.js .reveal.from-left:not(.in){transform:translateX(-46px)}
 :root.js .reveal.from-right:not(.in){transform:translateX(46px)}
-:root.js .reveal.from-left,:root.js .reveal.from-right{transition-duration:1.15s}
+:root.js .reveal.from-left,:root.js .reveal.from-right{transition-duration:1.9s}
 header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox{position:fixed;inset:0;background:rgba(5,8,12,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;cursor:zoom-out}
 .lightbox[hidden]{display:none}
