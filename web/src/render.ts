@@ -43,7 +43,7 @@ export const SITE_JS = `(function(){
   var reduce=w.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
   var rev=[].slice.call(d.querySelectorAll('.reveal'));
   if(reduce||!('IntersectionObserver' in w)){rev.forEach(function(e){e.classList.add('in');});}
-  else{var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{rootMargin:'0px 0px -8% 0px',threshold:.08});rev.forEach(function(e){io.observe(e);});}
+  else{var io=new IntersectionObserver(function(es){es.forEach(function(e){e.target.classList.toggle('in',e.isIntersecting);});},{rootMargin:'0px 0px -8% 0px',threshold:.08});rev.forEach(function(e){io.observe(e);});}
   var hdr=d.querySelector('header.top');
   var pb=d.createElement('div');pb.className='progress';d.body.appendChild(pb);
   var tt=d.createElement('button');tt.type='button';tt.className='totop';tt.setAttribute('aria-label','Back to top');tt.innerHTML='\\u2191';d.body.appendChild(tt);
@@ -140,7 +140,9 @@ function buildHero(
   template: TemplateKey,
   o: { eyebrow: string; name: string; headline: string; hero?: string; phone: string; pingCall: string },
 ): string {
-  const eyebrow = `<p class="eyebrow">${esc(o.eyebrow)}</p>`;
+  // Category label intentionally not shown in the hero (owner's name leads).
+  const eyebrow = "";
+  void o.eyebrow;
   const h1 = `<h1>${esc(o.name)}</h1>`;
   const p = o.headline ? `<p class="lede">${esc(o.headline)}</p>` : "";
   // The same photo, softly blurred, fills the banner behind the sharp (contained) one.
@@ -181,7 +183,7 @@ a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
    slower than the default reveal so the motion reads clearly. */
 :root.js .reveal.from-left:not(.in){transform:translateX(-46px)}
 :root.js .reveal.from-right:not(.in){transform:translateX(46px)}
-:root.js .reveal.from-left,:root.js .reveal.from-right{transition-duration:1.15s}
+:root.js .reveal.from-left,:root.js .reveal.from-right{transition-duration:1.9s}
 header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox{position:fixed;inset:0;background:rgba(5,8,12,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;cursor:zoom-out}
 .lightbox[hidden]{display:none}
@@ -217,13 +219,13 @@ header.top.scrolled{box-shadow:0 6px 24px rgba(15,23,42,.10)}
 .lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.16);border:0;color:#fff;cursor:pointer;font-size:1.6rem;line-height:1;display:flex;align-items:center;justify-content:center}
 .lightbox .lb-nav:hover{background:rgba(255,255,255,.28)}
 .lightbox .lb-prev{left:14px}.lightbox .lb-next{right:14px}
-@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}:root.js .offer{animation:none;background:#fde68a;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){:root.js .reveal{opacity:1;transform:none;transition:none}:root.js .reveal .services li,:root.js .reveal .gallery li{opacity:1;transform:none;transition:none}:root.js .reveal h2::after{width:48px;transition:none}.gallery li:hover img{transform:none}.btn.primary::after{display:none}.totop{transition:none}:root.js .offer{animation:none;background:#fde68a;box-shadow:none}:root.js .offer .offer-marquee{animation:none;transform:none}}
 header.top{border-bottom:1px solid var(--line);background:var(--card);background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.3) blur(8px);position:sticky;top:0;z-index:5}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;padding-bottom:10px}
 .hactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .btn.small{min-height:38px;padding:7px 14px;font-size:.9rem;gap:5px;border-width:1.5px}
 .btn.small svg{width:16px;height:16px}
-.name{font-weight:800;font-size:1.1rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.name{font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;font-weight:800;letter-spacing:-.025em;font-size:1.3rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:11px 20px;border-radius:var(--btn-radius);font-weight:700;text-decoration:none;border:2px solid var(--primary);transition:transform .12s ease,box-shadow .12s ease,background .12s ease}
 .btn.primary{background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 82%,#000));color:#fff;box-shadow:0 2px 6px rgba(15,23,42,.18)}
 .btn.primary:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,23,42,.26)}
@@ -232,6 +234,10 @@ header.top .wrap{display:flex;align-items:center;justify-content:space-between;g
 .offer{background:#fde68a;color:#78350f;font-weight:800;text-align:center;padding:15px 16px;border-bottom:3px solid var(--accent)}
 :root.js .offer{animation:offerFlash 1.5s ease-in-out infinite}
 @keyframes offerFlash{0%,100%{background:#fde68a;box-shadow:0 0 0 0 rgba(245,158,11,0)}50%{background:#fcd34d;box-shadow:0 0 24px 2px rgba(245,158,11,.6)}}
+/* Alternating marquee: the offer text bounces side to side within the banner. */
+:root.js .offer{overflow:hidden}
+:root.js .offer .offer-marquee{display:inline-block;white-space:nowrap;animation:offerBounce 4s ease-in-out infinite alternate}
+@keyframes offerBounce{from{transform:translateX(calc(-50vw + 50% + 16px))}to{transform:translateX(calc(50vw - 50% - 16px))}}
 .actions{display:flex;flex-wrap:wrap;gap:12px;padding:24px 0}
 section{padding:var(--section-pad) 0}
 section.band{background:var(--band);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -772,7 +778,7 @@ ${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=
 </header>
 <main id="main">
 ${buildHero(template, { eyebrow: cat.label, name: site.businessName, headline: headline(site), hero, phone: site.phone, pingCall: ping("call") })}
-${site.offer ? `<p class="offer">${esc(site.offer)}</p>` : ""}
+${site.offer ? `<p class="offer"><span class="offer-marquee">${esc(site.offer)}</span></p>` : ""}
 ${video}
 ${services}
 ${about}
