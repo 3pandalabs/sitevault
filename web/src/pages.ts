@@ -358,8 +358,21 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
 }
 
 export type FormMode =
-  | { kind: "new"; account?: { email: string } | null; admin?: boolean }
+  | { kind: "new"; account?: { email: string } | null; admin?: boolean; embedDraft?: EmbedDraftView }
   | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; pendingReviews?: Review[]; signedIn?: boolean; siteUrl?: string; admin?: boolean; embed?: boolean; saved?: boolean };
+
+/**
+ * AdVault create mode: the builder inside AdVault's "Make me a website",
+ * pre-filled from the campaign's draft (drafts.ts). The draft's photos,
+ * before & after pairs and video are shown to keep or drop; the account is
+ * the AdVault user's, so no sign-up fields, prices or SiteVault chrome.
+ */
+export type EmbedDraftView = {
+  id: string;
+  photos: { key: string; url: string }[];
+  pairs: { before: string; after: string }[];
+  video: boolean;
+};
 
 /** Everything the edit page's "Plan & billing" section shows. Only built while BILLING is on. */
 export type BillingView = {
@@ -765,7 +778,8 @@ export function builderPage(
   const site = mode.kind === "edit" ? mode.site : null;
   // Inside AdVault's "Your website": no SiteVault chrome, billing or upsell
   // (AdVault covers AdVault-made sites), and saves come back here.
-  const embed = mode.kind === "edit" && Boolean(mode.embed);
+  const embed = (mode.kind === "edit" && Boolean(mode.embed)) || (mode.kind === "new" && Boolean(mode.embedDraft));
+  const draft = mode.kind === "new" ? mode.embedDraft : undefined;
   const v = (k: string, fallback = "") => esc(values[k] ?? fallback);
   const e = (k: string) => `<div class="err" id="err-${k}" role="alert">${esc(errors[k] ?? "")}</div>`;
   // One-tap suggestion chips, from what the form already knows (name, type, town).
@@ -777,7 +791,7 @@ export function builderPage(
     serviceArea: values.serviceArea ?? site?.serviceArea ?? "",
   };
   const sg = (f: Parameters<typeof suggestChips>[0]) => suggestChips(f, sctx);
-  const action = mode.kind === "edit" ? `/api/sites/${encodeURIComponent(mode.site.slug)}` : "/api/sites";
+  const action = mode.kind === "edit" ? `/api/sites/${encodeURIComponent(mode.site.slug)}` : draft ? "/api/embed/sites" : "/api/sites";
   const selectedCat = values.category ?? site?.category ?? "";
   const renamesLeft = site ? Math.max(0, MAX_RENAMES - (site.renames ?? 0)) : MAX_RENAMES;
   const addressField = domain
@@ -801,9 +815,31 @@ export function builderPage(
               `<div class="photo" draggable="true"><img src="${esc(mode.photoUrl(k))}" alt="Photo ${i + 1}"><input type="hidden" name="keep" value="${esc(k)}"><div class="photo-ctl"><button type="button" class="pmove" data-dir="up" aria-label="Move earlier">&#8593;</button><button type="button" class="pmove" data-dir="down" aria-label="Move later">&#8595;</button><button type="button" class="premove" aria-label="Remove this photo">&#10005; Remove</button></div></div>`,
           )
           .join("")}</div>`
-      : "";
+      : draft && draft.photos.length
+        ? `<p class="hint">Photos from your ad. The first is the big one at the top — drag them, or use the arrows, to reorder; remove any you don't want.</p>
+<div class="photos" id="photolist">${draft.photos
+            .map(
+              (p, i) =>
+                `<div class="photo" draggable="true"><img src="${esc(p.url)}" alt="Photo ${i + 1}"><input type="hidden" name="keepDraft" value="${esc(p.key)}"><div class="photo-ctl"><button type="button" class="pmove" data-dir="up" aria-label="Move earlier">&#8593;</button><button type="button" class="pmove" data-dir="down" aria-label="Move later">&#8595;</button><button type="button" class="premove" aria-label="Remove this photo">&#10005; Remove</button></div></div>`,
+            )
+            .join("")}</div>`
+        : "";
 
-  const beforeAfter = mode.kind === "edit" ? beforeAfterFields(mode.site, mode.photoUrl, e) : "";
+  const beforeAfter =
+    mode.kind === "edit"
+      ? beforeAfterFields(mode.site, mode.photoUrl, e)
+      : draft && draft.pairs.length
+        ? `<fieldset><legend>Before &amp; after</legend>
+  <p class="hint">From your ad: real photos of your own work. Untick a pair to leave it off your website.</p>
+  ${draft.pairs
+    .map(
+      (p, i) =>
+        `<div class="field"><label class="check"><input type="checkbox" name="keepDraftPair" value="${i}" checked> <span>Show pair ${i + 1}</span></label><div class="photos"><div class="photo"><img src="${esc(p.before)}" alt="Before, pair ${i + 1}"></div><div class="photo"><img src="${esc(p.after)}" alt="After, pair ${i + 1}"></div></div></div>`,
+    )
+    .join("")}
+  ${e("beforeAfter")}
+</fieldset>`
+        : "";
   const menu = menuFields(selectedCat, mode.kind === "edit" ? mode.site.menu ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
   const schedule = scheduleFields(selectedCat, mode.kind === "edit" ? mode.site.schedule ?? null : null, mode.kind === "edit" ? mode.photoUrl : null, e);
   const insurance = insuranceFields(selectedCat, v("insurance", site?.insurance ?? ""), e);
@@ -813,7 +849,7 @@ export function builderPage(
 
   const body = `<section>
 <h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
-<p class="lead">${mode.kind === "edit" ? `Changes go live as soon as you save.` : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>
+<p class="lead">${mode.kind === "edit" ? `Changes go live as soon as you save.` : draft ? "We filled in what your ad already knows. Check it, add anything you like, then create your website. You can change all of it later." : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>
 ${
   embed && mode.kind === "edit" && mode.saved
     ? `<div class="notice" id="embed-saved" role="status" data-slug="${esc(mode.site.slug)}" data-site-url="${esc(mode.siteUrl ?? "")}"><p style="margin:0"><strong>Saved.</strong> Your changes are live.${mode.siteUrl ? ` <a href="${esc(mode.siteUrl)}" target="_blank" rel="noopener">Open my website</a>` : ""}</p></div>`
@@ -821,7 +857,8 @@ ${
 }
 <form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate>
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
-${embed ? `<input type="hidden" name="embed" value="1">` : ""}
+${embed && !draft ? `<input type="hidden" name="embed" value="1">` : ""}
+${draft ? `<input type="hidden" name="draft" value="${esc(draft.id)}">` : ""}
 <fieldset><legend>Your business</legend>
   <div class="field"><label for="businessName">Business name</label><input type="text" id="businessName" name="businessName" maxlength="80" required value="${v("businessName", site?.businessName)}" autocomplete="organization">${sg("businessName")}${e("businessName")}</div>
   ${addressField}
@@ -874,6 +911,7 @@ ${embed ? `<input type="hidden" name="embed" value="1">` : ""}
 <fieldset><legend>Photos &amp; video</legend>
   <label class="check"><input type="hidden" name="heroPhoto" value="no"><input type="checkbox" name="heroPhoto" value="yes"${mode.kind === "new" || mode.site.heroPhoto ? " checked" : ""}> <span>Use my first photo as the big banner at the top. Unticked, the top is a clean coloured banner and every photo goes in the gallery.</span></label>
   ${mode.kind === "edit" && mode.site.video ? `<label class="check"><input type="checkbox" name="keepVideo" value="yes" checked> <span>Keep the current video on my website</span></label>` : ""}
+  ${draft?.video ? `<label class="check"><input type="checkbox" name="keepDraftVideo" value="yes" checked> <span>Show my video from AdVault on my website</span></label>` : ""}
   ${existing}
   <div class="field"><label for="photos">Add photos <span class="hint">Up to ${MAX_PHOTOS} in total. Straight from your phone is fine — we resize them. Use photos you took or have the right to use.</span></label><input type="file" id="photos" name="photos" accept="image/*" multiple>${e("photos")}</div>
   <div class="field"><label for="video">Add a video <span class="hint">Optional. One MP4, up to 40 MB${mode.kind === "edit" && mode.site.video ? " — uploading a new one replaces the current video" : ""}. Shown in a "See us in action" section.</span></label><input type="file" id="video" name="video" accept="video/mp4">${e("video")}</div>
@@ -885,8 +923,13 @@ ${team}
 ${insurance}
 ${listings}
 ${faq}
-${mode.kind === "new" ? accountFields(mode.account ?? null, v, e) : ""}
-<div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.</span></label>${e("attest")}</div>
+${mode.kind === "new" && !draft ? accountFields(mode.account ?? null, v, e) : ""}
+${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:16px 0">Saved to your 3PandaLabs account, <strong>${esc(mode.account.email)}</strong> (the same login as AdVault).</p>` : ""}
+<div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>${
+  draft
+    ? `I run this business, the details are accurate, and I agree to the <a href="/terms" target="_blank" rel="noopener">SiteVault terms</a>. The website is public.`
+    : `I own or run this business (or have its permission), the details are accurate, and I agree to the <a href="/terms" target="_blank">Terms</a>.`
+}</span></label>${e("attest")}</div>
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
 <div class="buttons">
   <button class="btn" type="submit" id="submit">${mode.kind === "edit" ? "Save changes" : "Create my website"}</button>
@@ -912,7 +955,7 @@ ${
     owner: mode.kind === "edit",
     admin: mode.admin,
     signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
-    noindex: mode.kind === "edit",
+    noindex: mode.kind === "edit" || Boolean(draft),
     embed,
     script: SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : ""),
   });
@@ -1092,7 +1135,7 @@ const BUILDER_SCRIPT = `
     slug.addEventListener('input',function(){ touched=true; later(); });
     slug.addEventListener('blur',function(){ touched=slug.value!==''; check(); });
     ['businessName','category','city'].forEach(function(id){ var el=document.getElementById(id); if(el){ el.addEventListener('input',function(){ if(!touched) later(); }); el.addEventListener('change',function(){ if(!touched) later(); }); } });
-    if(slug.value) check();
+    if(slug.value || val('businessName')) check();
   }
   function shrink(file){
     return new Promise(function(resolve){
@@ -1127,6 +1170,22 @@ const BUILDER_SCRIPT = `
     }).catch(function(){ document.getElementById('err-form').textContent='Could not reach SiteVault. Check your connection and try again.'; btn.disabled=false; btn.textContent=label; });
   });
 })();`;
+
+/**
+ * AdVault create mode: the site is made. The embed script posts
+ * `sitevault:created` to AdVault's origin only (data attributes below);
+ * AdVault verifies it server side, then pays or publishes.
+ */
+export function embedCreatedPage(opts: { slug: string; siteUrl: string; pending: boolean; draft: string; nonce: string }): string {
+  const body = `<section>
+<div class="notice" id="embed-created" role="status" data-slug="${esc(opts.slug)}" data-site-url="${esc(opts.siteUrl)}" data-pending="${opts.pending ? "1" : "0"}" data-draft="${esc(opts.draft)}">
+  <h1 style="margin-top:0">Created</h1>
+  <p>Your website is made: <strong>${esc(opts.siteUrl)}</strong></p>
+  <p style="margin-bottom:0">${opts.pending ? "It goes live as soon as you've paid in AdVault." : "It's live. You can change anything on it at any time."}</p>
+</div>
+</section>`;
+  return layout({ title: "Website created | SiteVault", body, nonce: opts.nonce, noindex: true, embed: true, script: EMBED_SCRIPT });
+}
 
 export function donePage(opts: {
   siteUrl: string;
@@ -1411,6 +1470,7 @@ export function privacyPage(): string {
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
   <li><strong>Before &amp; after photos</strong>, if the business provides them (on its edit page, or from AdVault): pairs of photos of the business's own work, shown in a "Before &amp; after" section on its website and stored and resized like its other photos. The owner can remove them at any time on the edit page, which deletes them.</li>
   <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos, any before &amp; after photos you added there and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
+  <li>If you build your website inside AdVault (the full builder shown on AdVault's "Make me a website"), AdVault first sends us those same details and photos as a <strong>draft</strong> so the builder opens filled in. The draft is kept only to build your website: its photos are deleted once the website is made, and an unused draft expires after an hour and is deleted within a day. Building there signs you in to SiteVault with the same sign-in cookie as above, inside AdVault's page.</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
   <li><strong>Your account is one 3PandaLabs account, shared with <a href="https://advault.3pandalabs.com">AdVault</a></strong> (our video-ad app, also by 3PandaLabs): the same email and password sign you in to both, whichever you signed up on. Your sign-in (email and a scrambled, hashed copy of your password, which can't be turned back into the password) is stored by AdVault for both apps; when you sign in here we send AdVault the email and password you typed to check them. SiteVault stores your email, your 3PandaLabs account ID and which websites are yours. Accounts made on SiteVault before 16 November 2026 kept their hashed password here; it moves to the shared account the next time you sign in. While you're signed in we keep a session record that expires after 30 days or when you sign out.</li>
   <li><strong>Which apps you use</strong>: with your account we record which app you created it on (SiteVault or AdVault) and when you first used each one (your first website here, your first ad campaign in AdVault), so we know whether you use SiteVault, AdVault or both and can offer benefits that depend on it, for example to customers who use only SiteVault.</li>

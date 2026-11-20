@@ -13,6 +13,13 @@
 //   GET  /edit/<slug>?embed=1      the same editor inside AdVault's "Your website" (session only; no
 //                                  SiteVault chrome or billing; framable by AdVault only)
 //   GET  /embed/session?token=     AdVault's signed, single-use, 60 s handoff: signs the owner in, -> embed editor
+//   GET  /embed/new?token=         AdVault create mode: create handoff (own token type), -> /embed/new?draft=<id>
+//   GET  /embed/new?draft=<id>     the FULL builder in embed chrome, pre-filled from AdVault's draft (session)
+//   GET  /embed/draft/<id>/<file>  a draft photo (session, that draft's account only)
+//   POST /api/embed/sites          create from the embedded builder (session + draft) -> /embed/created
+//   GET  /embed/created?draft=<id> "Created"; posts sitevault:created to AdVault's origin only
+//   POST /api/internal/drafts      AdVault stores the create pre-fill (INTERNAL_TOKEN) -> draftId
+//   GET  /api/internal/drafts/<id>?advaultUserId=   the draft's create result (INTERNAL_TOKEN)
 //   POST /api/sites/<slug>         update (key in the form)
 //   GET  /p/<key>                  photo (or before & after photo) from R2
 //   GET  /privacy, /terms
@@ -36,7 +43,7 @@
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
 import { renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
-import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
+import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
   accountByEmail,
   accountForAdvault,
@@ -125,7 +132,8 @@ import {
   type SiteContent,
 } from "./site.js";
 import { policyPathKind } from "./policies.js";
-import { HANDOFF_JTI_TTL_SECONDS, allowEmbedFraming, verifyHandoff } from "./embed.js";
+import { DRAFT_ID, HANDOFF_JTI_TTL_SECONDS, allowEmbedFraming, verifyCreateHandoff, verifyHandoff } from "./embed.js";
+import { DRAFT_TTL_MS, draftExpired, draftFileKeys, draftPrefill, loadDraft, saveDraft, type Draft, type DraftFile } from "./drafts.js";
 import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
@@ -186,7 +194,10 @@ export default {
       // Inside AdVault's frame, show the error instead of the browser's
       // "refused to connect" (only the embed editor and its handoff).
       const u = new URL(request.url);
-      const embedded = u.pathname === "/embed/session" || (u.pathname.startsWith("/edit/") && u.searchParams.get("embed") === "1");
+      const embedded =
+        u.pathname.startsWith("/embed/") ||
+        u.pathname === "/api/embed/sites" ||
+        (u.pathname.startsWith("/edit/") && u.searchParams.get("embed") === "1");
       return embedded ? allowEmbedFraming(res) : res;
     }
   },
@@ -276,8 +287,14 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/api/internal/resolve") return resolveInternal(request, env, url);
     if (path === "/api/internal/account-site") return accountSiteInternal(request, env, url);
     if (path === "/embed/session") return embedSession(request, env, url, head);
+    if (path === "/embed/new") return embedNew(request, env, url, head);
+    if (path === "/embed/created") return embedCreated(request, env, url);
     let m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer-status$/);
     if (m) return offerStatusInternal(request, env, m[1]!);
+    m = path.match(/^\/api\/internal\/drafts\/([A-Za-z0-9_-]+)$/);
+    if (m) return getDraftInternal(request, env, url, m[1]!);
+    m = path.match(/^\/embed\/draft\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+\.(?:jpg|png|webp))$/);
+    if (m) return embedDraftFile(request, env, m[1]!, m[2]!);
     m = path.match(/^\/s\/([a-z0-9-]+)\/?$/);
     // Old path links (before the customer-site domain) move to the subdomain.
     if (m) {
@@ -307,6 +324,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/account/change-password") return changePasswordSubmit(request, env);
     if (path === "/account/claim") return claimSite(request, env, ctx);
     if (path === "/api/internal/sites") return createInternal(request, env);
+    if (path === "/api/internal/drafts") return createDraftInternal(request, env);
+    if (path === "/api/embed/sites") return embedCreate(request, env);
     if (path === "/api/billing/checkout") return billingCheckout(request, env);
     if (path === "/api/billing/portal") return billingPortal(request, env);
     if (path === "/webhooks/stripe") return stripeWebhook(request, env);
@@ -748,7 +767,7 @@ async function done(request: Request, env: Env, handoff: string, consume = true)
 function builder(_env: Env, mode: Parameters<typeof builderPage>[0], errors?: FieldErrors, values?: Record<string, string>, status = 200): Response {
   const n = nonce();
   const res = html(builderPage(mode, n, errors, values, _env.SITES_DOMAIN ?? null), status, n);
-  return mode.kind === "edit" && mode.embed ? allowEmbedFraming(res) : res;
+  return (mode.kind === "edit" && mode.embed) || (mode.kind === "new" && mode.embedDraft) ? allowEmbedFraming(res) : res;
 }
 
 /** A plain message page that AdVault may frame (the embed flow's errors). */
@@ -885,6 +904,294 @@ async function embedSession(request: Request, env: Env, url: URL, head: boolean)
   }
   const res = redirectTo(env, `/edit/${encodeURIComponent(site.slug)}?embed=1`, sessionCookie(await startSession(env.SITES, account.id)));
   res.headers.set("referrer-policy", "no-referrer");
+  res.headers.set("cache-control", "no-store");
+  return res;
+}
+
+// ---------------------------------------------------------------------------
+// AdVault create mode (2026-11-19): AdVault's "Make me a website" frames the
+// FULL builder, pre-filled from the campaign (drafts.ts has the pre-fill
+// store, embed.ts the create token). Flow:
+//   1. AdVault  POST /api/internal/drafts         (INTERNAL_TOKEN) -> draftId
+//   2. AdVault  mints a 60 s single-use create token naming the draft
+//   3. iframe   GET /embed/new?token=             -> session cookie, 303 to
+//               GET /embed/new?draft=<id>         the builder in embed chrome
+//   4. owner    POST /api/embed/sites             -> the normal AdVault create
+//               (createForAdvault), then /embed/created posts
+//               {type:"sitevault:created"} to AdVault's origin only
+//   5. AdVault  GET /api/internal/drafts/<id>     (INTERNAL_TOKEN) to verify
+//               the result server side before it trusts the message
+// Every response on these routes may be framed by AdVault only
+// (allowEmbedFraming); every other page keeps frame-ancestors 'none'.
+
+const EMBED_CREATE_EXPIRED = "Go back to AdVault and press Make me a website again.";
+
+/** POST /api/internal/drafts  AdVault stores the pre-fill (multipart, like internal create). */
+async function createDraftInternal(request: Request, env: Env): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const form = await readForm(request);
+  if (!form) return json({ ok: false, error: "bad_request" }, 400);
+  const uid = form.fields.ownerAdvaultUserId ?? "";
+  const email = normaliseEmail(form.fields.ownerEmail ?? "");
+  const campaignId = form.fields.campaignId ?? "";
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(uid) || !/^[A-Za-z0-9-]{8,64}$/.test(campaignId)) return json({ ok: false, error: "bad_request" }, 400);
+  // The builder signs the owner in to their account; that needs a real email
+  // (AdVault test customers have none, and use the quick form instead).
+  if (emailProblem(email)) return json({ ok: false, error: "email_required" }, 400);
+  const errors: FieldErrors = {};
+  const photoErr = checkPhotos(form.files, 0, INTERNAL_PHOTO_BYTES);
+  if (photoErr) errors.photos = photoErr;
+  const pairs = pickBeforeAfter(form.ba, { existing: 0, types: INTERNAL_BEFORE_AFTER_TYPES, maxBytes: INTERNAL_PHOTO_BYTES });
+  if (!pairs.ok) errors.beforeAfter = pairs.error;
+  if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) errors.video = "Video must be an MP4 under 40 MB.";
+  if (Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
+  const id = randomKey(18);
+  const put = async (f: File, resize: boolean) => {
+    const { bytes, type } = resize ? await webSize(env, f) : { bytes: await f.arrayBuffer(), type: f.type };
+    const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "video/mp4" ? "mp4" : "jpg";
+    const key = `drafts/${id}/${randomKey(9)}.${ext}`;
+    await env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: type } });
+    return { key, type };
+  };
+  const photos = [];
+  for (const f of form.files) photos.push(await put(f, true));
+  const pairFiles = [];
+  for (const [b, a] of pairs.ok ? pairs.pairs : []) pairFiles.push({ before: await put(b, true), after: await put(a, true) });
+  const now = Date.now();
+  const draft: Draft = {
+    v: 1,
+    id,
+    uid,
+    email,
+    campaignId,
+    pay: form.fields.awaitingPayment === "1",
+    admin: form.fields.ownerAdmin === "1" || isAdminEmail(env, email),
+    prefill: draftPrefill(form.fields),
+    photos,
+    pairs: pairFiles,
+    video: form.video ? await put(form.video, false) : null,
+    createdAt: new Date(now).toISOString(),
+    exp: now + DRAFT_TTL_MS,
+  };
+  await saveDraft(env.PHOTOS, draft);
+  return json({ ok: true, draftId: id, expiresAt: new Date(draft.exp).toISOString() }, 201);
+}
+
+/**
+ * GET /api/internal/drafts/<id>?advaultUserId=  AdVault reads the result back
+ * (server side) before trusting the frame's "created" message. 404 unless the
+ * draft is this AdVault user's.
+ */
+async function getDraftInternal(request: Request, env: Env, url: URL, id: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const draft = await loadDraft(env.PHOTOS, id);
+  if (!draft || draft.uid !== url.searchParams.get("advaultUserId")) return json({ ok: false, error: "no_draft" }, 404);
+  const r = draft.result;
+  return json({
+    ok: true,
+    campaignId: draft.campaignId,
+    awaitingPayment: draft.pay,
+    result: r ? { slug: r.slug, siteUrl: r.siteUrl, editUrl: r.editUrl, pending: r.pending } : null,
+  });
+}
+
+/** The draft the signed-in owner may build from, or why not. */
+async function sessionDraft(request: Request, env: Env, id: string): Promise<{ draft: Draft; account: Account } | null> {
+  if (!DRAFT_ID.test(id)) return null;
+  const account = await currentAccount(env.SITES, request);
+  if (!account) return null;
+  const draft = await loadDraft(env.PHOTOS, id);
+  if (!draft || draft.accountId !== account.id || draftExpired(draft)) return null;
+  return { draft, account };
+}
+
+/** The builder in AdVault create mode (embed chrome, pre-filled). */
+function embedBuilderMode(env: Env, draft: Draft, account: Account): FormMode {
+  return {
+    kind: "new",
+    account,
+    admin: draft.admin,
+    embedDraft: {
+      id: draft.id,
+      photos: draft.photos.map((p) => ({ key: p.key, url: `${env.PUBLIC_ORIGIN}/embed/draft/${draft.id}/${p.key.split("/").pop()}` })),
+      pairs: draft.pairs.map((p) => ({
+        before: `${env.PUBLIC_ORIGIN}/embed/draft/${draft.id}/${p.before.key.split("/").pop()}`,
+        after: `${env.PUBLIC_ORIGIN}/embed/draft/${draft.id}/${p.after.key.split("/").pop()}`,
+      })),
+      video: Boolean(draft.video),
+    },
+  };
+}
+
+function draftValues(draft: Draft): Record<string, string> {
+  return { ...draft.prefill } as Record<string, string>;
+}
+
+/**
+ * GET /embed/new?token=  AdVault's create handoff: valid signature, at most
+ * 60 s old, never used before, the draft is this user's, for this campaign,
+ * with the same pay flag, and the account has no website yet (admins
+ * excepted). Then the normal session cookie and a 303 to ?draft=<id>.
+ * GET /embed/new?draft=<id>  the builder, for the signed-in account the
+ * handoff linked to that draft.
+ */
+async function embedNew(request: Request, env: Env, url: URL, head: boolean): Promise<Response> {
+  const token = url.searchParams.get("token");
+  if (token === null) {
+    const got = await sessionDraft(request, env, url.searchParams.get("draft") ?? "");
+    if (!got) return embedMessage("Please reopen", EMBED_CREATE_EXPIRED, 403);
+    if (got.draft.result) return redirectTo(env, `/embed/created?draft=${encodeURIComponent(got.draft.id)}`);
+    return builder(env, embedBuilderMode(env, got.draft, got.account), undefined, draftValues(got.draft));
+  }
+  const fail = () => embedMessage("Please reopen", `This link has expired. ${EMBED_CREATE_EXPIRED}`, 403);
+  const checked = await verifyCreateHandoff(env.INTERNAL_TOKEN, token);
+  if (!checked.ok) {
+    if (checked.error === "not_configured") return embedMessage("Not available", "Building from AdVault isn't switched on yet.", 503);
+    console.warn("embed_create_refused", { reason: checked.error });
+    return fail();
+  }
+  const h = checked.handoff;
+  if (head) return embedMessage("Opening the website builder", "One moment.", 200);
+  const jtiKey = `embedjti:${h.jti}`;
+  if (await env.SITES.get(jtiKey)) {
+    console.warn("embed_create_refused", { reason: "reused" });
+    return fail();
+  }
+  await env.SITES.put(jtiKey, "1", { expirationTtl: HANDOFF_JTI_TTL_SECONDS });
+  const draft = await loadDraft(env.PHOTOS, h.draft);
+  if (!draft || draft.uid !== h.uid || draft.campaignId !== h.campaignId || draft.pay !== h.pay || draftExpired(draft)) {
+    console.warn("embed_create_refused", { reason: "bad_draft" });
+    return fail();
+  }
+  const account = await accountForAdvault(env.SITES, { advaultUserId: h.uid, email: h.email });
+  if (draft.accountId && draft.accountId !== account.id) {
+    console.warn("embed_create_refused", { reason: "other_account" });
+    return fail();
+  }
+  if (!draft.result && !draft.admin && (await accountSites(env, account)).length > 0) {
+    return embedMessage("You already have a website", "Your account already has a website (one per account). Go back to AdVault and use it for this campaign.", 409);
+  }
+  if (!draft.accountId) await saveDraft(env.PHOTOS, { ...draft, accountId: account.id });
+  const res = redirectTo(env, `/embed/new?draft=${encodeURIComponent(draft.id)}`, sessionCookie(await startSession(env.SITES, account.id)));
+  res.headers.set("referrer-policy", "no-referrer");
+  res.headers.set("cache-control", "no-store");
+  return res;
+}
+
+/** GET /embed/draft/<id>/<file>  a draft photo, for the account building from it only. */
+async function embedDraftFile(request: Request, env: Env, id: string, file: string): Promise<Response> {
+  const got = await sessionDraft(request, env, id);
+  const key = `drafts/${id}/${file}`;
+  if (!got || !draftFileKeys(got.draft).includes(key)) return new Response("Not found", { status: 404 });
+  const obj = await env.PHOTOS.get(key);
+  if (!obj) return new Response("Not found", { status: 404 });
+  return new Response(obj.body, {
+    headers: {
+      "content-type": obj.httpMetadata?.contentType ?? "image/jpeg",
+      "cache-control": "private, max-age=3600",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+async function draftAsFile(env: Env, f: DraftFile): Promise<File | null> {
+  const obj = await env.PHOTOS.get(f.key);
+  if (!obj || !("arrayBuffer" in obj)) return null;
+  return new File([await (obj as R2ObjectBody).arrayBuffer()], f.key.split("/").pop() ?? "file", { type: f.type });
+}
+
+/**
+ * POST /api/embed/sites  create from the embedded builder. The session and
+ * the draft say who and for which campaign (never the form); the form is the
+ * full builder, validated exactly like the public one (facts only, no links,
+ * address, attest tick, uploads), then made by the SAME createForAdvault as
+ * internal create: source advault, owner linked, pending when AdVault charges,
+ * one website per account, one per phone. The draft's photos, pairs and video
+ * go through that path as files, so they are stored like internal create's.
+ */
+async function embedCreate(request: Request, env: Env): Promise<Response> {
+  const form = await readForm(request);
+  const id = form?.fields.draft ?? "";
+  const got = sameOrigin(request, env.PUBLIC_ORIGIN) ? await sessionDraft(request, env, id) : null;
+  if (!form || !got) {
+    return wantsJson(request)
+      ? json({ ok: false, errors: { form: `This page has expired. ${EMBED_CREATE_EXPIRED}` } }, 403)
+      : embedMessage("Please reopen", EMBED_CREATE_EXPIRED, 403);
+  }
+  const { draft, account } = got;
+  if (draft.result) {
+    const done = `/embed/created?draft=${encodeURIComponent(draft.id)}`;
+    return wantsJson(request) ? json({ ok: true, next: `${env.PUBLIC_ORIGIN}${done}` }) : redirectTo(env, done);
+  }
+  const mode = embedBuilderMode(env, draft, account);
+  const { fields, files } = form;
+  const parsed = parseContent(fields);
+  const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
+  if (fields.attest !== "yes") errors.attest = "Please confirm this.";
+  // The draft's photos the owner kept, in the order they arranged them.
+  const keptPhotos = [...new Set(form.keepDraft)].map((k) => draft.photos.find((p) => p.key === k)).filter((p): p is DraftFile => Boolean(p));
+  const photoErr = checkPhotos(files, keptPhotos.length);
+  if (photoErr) errors.photos = photoErr;
+  if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
+    errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
+  }
+  const listingPick = builderExtrasChecks(form, parsed, errors);
+  const keptPairs = [...new Set(form.keepDraftPair)].map((i) => draft.pairs[Number(i)]).filter((p): p is Draft["pairs"][number] => Boolean(p));
+  // A pair only fits a trade (the ONE allowlist); AdVault already filtered, this
+  // covers the owner changing the business type here.
+  if (keptPairs.length && parsed.ok && !beforeAfterAllowed(parsed.value.category)) errors.beforeAfter = "Before & after photos can't be shown for this type of business. Untick them.";
+  const { acct_password: _pw, ...safeFields } = fields;
+  if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, safeFields);
+
+  const draftFiles = (await Promise.all(keptPhotos.map((p) => draftAsFile(env, p)))).filter((f): f is File => Boolean(f));
+  const pairFiles: [File, File][] = [];
+  for (const p of keptPairs) {
+    const [b, a] = await Promise.all([draftAsFile(env, p.before), draftAsFile(env, p.after)]);
+    if (b && a) pairFiles.push([b, a]);
+  }
+  const video = form.video ?? (draft.video && fields.keepDraftVideo === "yes" ? await draftAsFile(env, draft.video) : null);
+  const result = await createForAdvault(
+    env,
+    {
+      content: parsed.value,
+      requested: fields.slug ? normaliseAddress(fields.slug) : null,
+      advId: draft.uid,
+      advEmail: draft.email,
+      adminTest: draft.admin,
+      awaiting: draft.pay,
+      files: [...draftFiles, ...files],
+      video,
+      pairs: pairFiles,
+      menu: form.menu,
+      schedule: form.schedule,
+      listings: listingPick.ok ? listingPick.items : [],
+    },
+    errors,
+  );
+  if (!result.ok && "conflict" in result) {
+    return rejected(request, env, mode, { form: "Your account already has a website (one per account). Go back to AdVault and use it for this campaign." }, safeFields, 409);
+  }
+  if (!result.ok) return rejected(request, env, mode, result.errors, safeFields);
+  const { made } = result;
+  // Re-read before saving: one site per draft, even if two submits raced.
+  const latest = (await loadDraft(env.PHOTOS, draft.id)) ?? draft;
+  await saveDraft(env.PHOTOS, { ...latest, result: latest.result ?? { slug: made.slug, siteUrl: made.siteUrl, editUrl: made.editUrl, pending: made.pending } });
+  // The media now live under sites/<slug>/; the draft's copies go.
+  await deletePhotos(env, draftFileKeys(draft));
+  console.log("embed_site_created", { slug: made.slug, pending: made.pending });
+  const next = `/embed/created?draft=${encodeURIComponent(draft.id)}`;
+  return wantsJson(request) ? json({ ok: true, next: `${env.PUBLIC_ORIGIN}${next}` }) : redirectTo(env, next);
+}
+
+/** GET /embed/created?draft=<id>  "Created", and the message to AdVault. */
+async function embedCreated(request: Request, env: Env, url: URL): Promise<Response> {
+  const got = await sessionDraft(request, env, url.searchParams.get("draft") ?? "");
+  const r = got?.draft.result;
+  if (!got || !r) return embedMessage("Please reopen", EMBED_CREATE_EXPIRED, 403);
+  const n = nonce();
+  const res = allowEmbedFraming(html(embedCreatedPage({ slug: r.slug, siteUrl: r.siteUrl, pending: r.pending, draft: got.draft.id, nonce: n }), 200, n));
   res.headers.set("cache-control", "no-store");
   return res;
 }
@@ -1394,6 +1701,10 @@ type Parsed = {
   schedule: File | null;
   /** New listing photo slots (listing1Photo … listingNPhoto), non-empty only. */
   listingPhotos: Partial<Record<string, File>>;
+  /** AdVault create mode: draft photos to keep, by draft key, in the page's order. */
+  keepDraft: string[];
+  /** AdVault create mode: draft before & after pairs to keep, by index. */
+  keepDraftPair: string[];
   /** Existing listings to keep, by their photo key (edit page). */
   keepListing: string[];
 };
@@ -1415,6 +1726,8 @@ async function readForm(request: Request): Promise<Parsed | null> {
   const menu: File[] = [];
   const listingPhotos: Partial<Record<string, File>> = {};
   const keepListing: string[] = [];
+  const keepDraft: string[] = [];
+  const keepDraftPair: string[] = [];
   let video: File | null = null;
   let schedule: File | null = null;
   for (const [k, v] of form as unknown as Iterable<[string, string | File]>) {
@@ -1423,6 +1736,8 @@ async function readForm(request: Request): Promise<Parsed | null> {
       else if (k === "keepPair") keepPair.push(v);
       else if (k === "keepMenu") keepMenu.push(v);
       else if (k === "keepListing") keepListing.push(v);
+      else if (k === "keepDraft") keepDraft.push(v);
+      else if (k === "keepDraftPair") keepDraftPair.push(v);
       else fields[k] = v;
     } else if (k === "photos" && v.size > 0) {
       files.push(v);
@@ -1438,7 +1753,7 @@ async function readForm(request: Request): Promise<Parsed | null> {
       ba[k as BeforeAfterField] = v;
     }
   }
-  return { fields, files, keep, video, ba, keepPair, menu, keepMenu, schedule, listingPhotos, keepListing };
+  return { fields, files, keep, video, ba, keepPair, menu, keepMenu, schedule, listingPhotos, keepListing, keepDraft, keepDraftPair };
 }
 
 function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES): string | null {
@@ -1558,6 +1873,75 @@ async function insertSite(
   return { slug, siteUrl: siteUrl(env, slug), editUrl: editUrlFor(env, slug, key), key, pending: billing?.status === "pending" };
 }
 
+type ListingItem = { photo: File; price: string; details: string; status: Listing["status"] };
+
+/**
+ * The ONE AdVault create path, shared by internal create and AdVault create
+ * mode (the embedded builder): address check, one website per account (409
+ * account_has_site, checked before the phone so the reply names the real
+ * reason; AdVault offers "Use my website" on it), one live site per phone,
+ * the owner linked to the AdVault user's account, `source = "advault"`,
+ * pending when AdVault charges first. AdVault admins (ownerAdmin=1, or an
+ * ADMIN_EMAILS owner) make test sites: any number, phone reuse allowed.
+ * `errors` holds the caller's own field checks; any error = nothing made.
+ */
+async function createForAdvault(
+  env: Env,
+  input: {
+    content: SiteContent | null;
+    requested: string | null;
+    advId: string;
+    advEmail: string;
+    adminTest: boolean;
+    awaiting: boolean;
+    files: File[];
+    video: File | null;
+    pairs: [File, File][];
+    menu?: File[];
+    schedule?: File | null;
+    listings?: ListingItem[];
+  },
+  errors: FieldErrors,
+): Promise<
+  | { ok: true; made: Awaited<ReturnType<typeof insertSite>> }
+  | { ok: false; conflict: { slug: string; siteUrl: string } }
+  | { ok: false; errors: FieldErrors }
+> {
+  const { content, requested, advId, advEmail, adminTest } = input;
+  if (requested) {
+    const problem = await requestedAddressProblem(env, requested);
+    if (problem) errors.slug = problem;
+  }
+  if (!adminTest && /^[A-Za-z0-9-]{8,64}$/.test(advId)) {
+    const existing = await findAccountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail });
+    const has = existing ? (await accountSites(env, existing))[0] : undefined;
+    if (has) return { ok: false, conflict: { slug: has.slug, siteUrl: has.siteUrl } };
+  }
+  if (!adminTest && content && (await phoneOwner(env, content.phone))) errors.phone = PHONE_TAKEN;
+  if (!content || Object.keys(errors).length > 0) return { ok: false, errors };
+  // Same login: the site goes to the AdVault user's SiteVault account.
+  const owner =
+    /^[A-Za-z0-9-]{8,64}$/.test(advId) && !emailProblem(advEmail) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
+  const made = await insertSite(
+    env,
+    content,
+    input.files,
+    "advault",
+    input.video,
+    requested,
+    input.awaiting,
+    owner?.id ?? null,
+    false,
+    adminTest,
+    input.pairs,
+    input.menu ?? [],
+    input.schedule ?? null,
+    input.listings ?? [],
+  );
+  if (owner) await addSiteToAccount(env.SITES, owner, made.slug);
+  return { ok: true, made };
+}
+
 // One-click from AdVault. Server to server, bearer INTERNAL_TOKEN. The
 // advertiser attested ownership inside AdVault, so no attest field; no per-IP
 // limit (every call comes from the AdVault box). Photos are AdVault's own
@@ -1569,44 +1953,40 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
   if (!form) return json({ ok: false, error: "bad_request" }, 400);
   const parsed = parseContent(form.fields);
   const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
-  const photoErr = checkPhotos(form.files, 0, 8 * 1024 * 1024);
+  const photoErr = checkPhotos(form.files, 0, INTERNAL_PHOTO_BYTES);
   if (photoErr) errors.photos = photoErr;
   // Optional before & after pairs (AdVault sends only complete pairs, only for
   // trades where they fit, with the owner's "real photos of our own work").
-  const pairs = pickBeforeAfter(form.ba, { existing: 0, types: INTERNAL_BEFORE_AFTER_TYPES, maxBytes: 8 * 1024 * 1024 });
+  const pairs = pickBeforeAfter(form.ba, { existing: 0, types: INTERNAL_BEFORE_AFTER_TYPES, maxBytes: INTERNAL_PHOTO_BYTES });
   if (!pairs.ok) errors.beforeAfter = pairs.error;
   // Only the internal path takes a video (AdVault's finished ad); the public
   // form doesn't, so a stranger can't host arbitrary video on our domain.
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
     errors.video = "Video must be an MP4 under 40 MB.";
   }
-  const requested = form.fields.slug ? normaliseAddress(form.fields.slug) : null;
-  if (requested) {
-    const problem = await requestedAddressProblem(env, requested);
-    if (problem) errors.slug = problem;
-  }
-  // AdVault admins (ownerAdmin=1, sent by AdVault for role 'admin') make test sites: any number of them, phone reuse allowed.
-  const adminTest = form.fields.ownerAdmin === "1" || isAdminEmail(env, form.fields.ownerEmail);
-  const advId = form.fields.ownerAdvaultUserId ?? "";
-  const advEmail = normaliseEmail(form.fields.ownerEmail ?? "");
-  // One website per account, here too (admins exempt): the account may have
-  // built one on SiteVault itself. Checked before the phone so the reply
-  // names the real reason; AdVault offers "Use my website" on this code.
-  if (!adminTest && /^[A-Za-z0-9-]{8,64}$/.test(advId)) {
-    const existing = await findAccountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail });
-    const has = existing ? (await accountSites(env, existing))[0] : undefined;
-    if (has) return json({ ok: false, error: "account_has_site", slug: has.slug, siteUrl: has.siteUrl }, 409);
-  }
-  if (!adminTest && parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
-  if (!parsed.ok || Object.keys(errors).length > 0) return json({ ok: false, error: "invalid", errors }, 400);
-  // "1": AdVault charges $10 first; the site waits unpublished until /paid.
-  const awaiting = form.fields.awaitingPayment === "1";
-  // Same login: the site goes to the AdVault user's SiteVault account.
-  const owner = /^[A-Za-z0-9-]{8,64}$/.test(advId) && !emailProblem(advEmail) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
-  const made = await insertSite(env, parsed.value, form.files, "advault", form.video, requested, awaiting, owner?.id ?? null, false, adminTest, pairs.ok ? pairs.pairs : []);
-  if (owner) await addSiteToAccount(env.SITES, owner, made.slug);
-  return json({ ok: true, slug: made.slug, siteUrl: made.siteUrl, editUrl: made.editUrl }, 201);
+  const result = await createForAdvault(
+    env,
+    {
+      content: parsed.ok ? parsed.value : null,
+      requested: form.fields.slug ? normaliseAddress(form.fields.slug) : null,
+      advId: form.fields.ownerAdvaultUserId ?? "",
+      advEmail: normaliseEmail(form.fields.ownerEmail ?? ""),
+      adminTest: form.fields.ownerAdmin === "1" || isAdminEmail(env, form.fields.ownerEmail),
+      // "1": AdVault charges $10 first; the site waits unpublished until /paid.
+      awaiting: form.fields.awaitingPayment === "1",
+      files: form.files,
+      video: form.video,
+      pairs: pairs.ok ? pairs.pairs : [],
+    },
+    errors,
+  );
+  if (!result.ok && "conflict" in result) return json({ ok: false, error: "account_has_site", ...result.conflict }, 409);
+  if (!result.ok) return json({ ok: false, error: "invalid", errors: result.errors }, 400);
+  return json({ ok: true, slug: result.made.slug, siteUrl: result.made.siteUrl, editUrl: result.made.editUrl }, 201);
 }
+
+/** AdVault's own polished ad photos can be larger than a phone-shrunk upload. */
+const INTERNAL_PHOTO_BYTES = 8 * 1024 * 1024;
 
 // Web size: at most 1600 px on the long side, JPEG q82 (~150-300 KB). A
 // phone photo or AdVault's polished ad photo is 1 MB+, and a page of them is
@@ -1712,6 +2092,30 @@ async function rateLimited(request: Request, env: Env): Promise<boolean> {
   return false;
 }
 
+/**
+ * The builder's category-gated uploads (menu, class schedule, listings), as
+ * checked on create. Shared by the public builder and AdVault create mode.
+ */
+function builderExtrasChecks(form: Parsed, parsed: ReturnType<typeof parseContent>, errors: FieldErrors) {
+  // Menu files (restaurants/bakeries can add one while building).
+  if (form.menu.length && parsed.ok && !menuAllowed(parsed.value.category)) errors.menu = "A menu can't be added for this type of business.";
+  else {
+    const menuProblem = checkMenu(form.menu, 0);
+    if (menuProblem) errors.menu = menuProblem;
+  }
+  // Class schedule (fitness businesses can add one while building).
+  if (form.schedule && parsed.ok && !scheduleAllowed(parsed.value.category)) errors.schedule = "A schedule can't be added for this type of business.";
+  else {
+    const schedProblem = checkScheduleFile(form.schedule);
+    if (schedProblem) errors.schedule = schedProblem;
+  }
+  // Featured listings (real estate).
+  const listingPick = pickListings(listingSlots(form), { existing: 0, types: PHOTO_TYPES, maxBytes: MAX_PHOTO_BYTES });
+  if (!listingPick.ok) errors.listings = listingPick.error;
+  else if (listingPick.items.length && parsed.ok && !listingsAllowed(parsed.value.category)) errors.listings = "Listings can't be added for this type of business.";
+  return listingPick;
+}
+
 async function createSite(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const form = await readForm(request);
   const signedIn = await currentAccount(env.SITES, request);
@@ -1730,22 +2134,7 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
     errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
   }
-  // Menu files (restaurants/bakeries can add one while building).
-  if (form.menu.length && parsed.ok && !menuAllowed(parsed.value.category)) errors.menu = "A menu can't be added for this type of business.";
-  else {
-    const menuProblem = checkMenu(form.menu, 0);
-    if (menuProblem) errors.menu = menuProblem;
-  }
-  // Class schedule (fitness businesses can add one while building).
-  if (form.schedule && parsed.ok && !scheduleAllowed(parsed.value.category)) errors.schedule = "A schedule can't be added for this type of business.";
-  else {
-    const schedProblem = checkScheduleFile(form.schedule);
-    if (schedProblem) errors.schedule = schedProblem;
-  }
-  // Featured listings (real estate).
-  const listingPick = pickListings(listingSlots(form), { existing: 0, types: PHOTO_TYPES, maxBytes: MAX_PHOTO_BYTES });
-  if (!listingPick.ok) errors.listings = listingPick.error;
-  else if (listingPick.items.length && parsed.ok && !listingsAllowed(parsed.value.category)) errors.listings = "Listings can't be added for this type of business.";
+  const listingPick = builderExtrasChecks(form, parsed, errors);
   const requested = fields.slug ? normaliseAddress(fields.slug) : null;
   if (requested) {
     const problem = await requestedAddressProblem(env, requested);
