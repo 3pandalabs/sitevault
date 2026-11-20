@@ -1305,3 +1305,41 @@ describe("motion & offer banner", () => {
     expect(new Uint8Array(buf).slice(0, 4)).toEqual(new Uint8Array([0x77, 0x4f, 0x46, 0x32]));
   });
 });
+
+describe("website styles (templates)", () => {
+  const CASES: [string, string][] = [
+    ["spotlight", "hero spotlight"],
+    ["split", "hero split"],
+    ["editorial", "hero editorial"],
+    ["bento", "hero split bento"],
+    ["modern-bold", "hero split modern-bold"],
+    ["showcase", "hero spotlight showcase"],
+    ["compact", "hero spotlight compact"],
+    ["storefront", "hero spotlight storefront"],
+    ["minimalist", "hero editorial minimalist"],
+    ["classic", "hero editorial classic"],
+  ];
+
+  it("renders each of the 10 styles with the right hero family + restyle class", async () => {
+    const { slug } = await makeSite({ slug: "styles-co", about: "A family business." });
+    const host = `https://${slug}.3pandasite.test`;
+    for (const [style, cls] of CASES) {
+      const page = await (await call(`${host}/?style=${style}`)).text();
+      expect(page).toContain(`class="${cls}`);
+    }
+    // A restyle emits its override CSS layered on the base family.
+    const bento = await (await call(`${host}/?style=bento`)).text();
+    expect(bento).toContain(".hero.bento");
+    expect(bento).toContain(".hero.split"); // base family CSS still present
+    // An unknown style falls back to the saved/default template.
+    const bad = await (await call(`${host}/?style=nope`)).text();
+    expect(bad).toContain('class="hero spotlight');
+  });
+
+  it("lists all 10 styles in the builder picker", async () => {
+    const page = await (await call(`${ORIGIN}/new`)).text();
+    for (const [style] of CASES) {
+      expect(page).toContain(`value="${style}"`);
+    }
+  });
+});

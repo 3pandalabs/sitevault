@@ -237,6 +237,25 @@ details.section .section-body{padding:14px 18px 4px}
 .tpl-split{background:linear-gradient(90deg,var(--tp) 46%,var(--tb) 46%)}
 .tpl-editorial{background:linear-gradient(180deg,#fff 66%,var(--tp) 66%)}
 .tpl-editorial::before{content:"";position:absolute;top:14px;left:50%;transform:translateX(-50%);width:58%;height:5px;background:var(--tp);border-radius:3px;box-shadow:0 9px 0 color-mix(in srgb,var(--tp) 42%,#fff)}
+.tpl-bento{background:var(--tb)}
+.tpl-bento::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:46%;background:var(--tp);border-radius:6px}
+.tpl-bento::after{content:"";position:absolute;right:6px;top:6px;width:40%;height:42%;background:#fff;border-radius:5px;box-shadow:0 26px 0 color-mix(in srgb,var(--tp) 35%,#fff)}
+.tpl-minimalist{background:#fff}
+.tpl-minimalist::before{content:"";position:absolute;left:10px;top:17px;width:48%;height:5px;background:var(--tp);border-radius:3px;box-shadow:0 11px 0 color-mix(in srgb,var(--tp) 38%,#fff)}
+.tpl-minimalist::after{content:"";position:absolute;left:10px;top:40px;width:22%;height:10px;background:var(--tp);border-radius:6px}
+.tpl-showcase{background:var(--tp)}
+.tpl-showcase::before{content:"";position:absolute;inset:13px 26px;background:#fff;border-radius:6px}
+.tpl-compact{background:linear-gradient(180deg,var(--tp) 32%,var(--tb) 32%)}
+.tpl-compact::before{content:"";position:absolute;left:8px;right:8px;top:34px;height:18px;background:#fff;border-radius:4px}
+.tpl-storefront{background:#fff}
+.tpl-storefront::before{content:"";position:absolute;left:0;right:0;top:0;height:11px;background:var(--tp)}
+.tpl-storefront::after{content:"";position:absolute;left:8px;right:8px;top:22px;height:30px;background:var(--tb);border-radius:4px}
+.tpl-modern-bold{background:var(--tb)}
+.tpl-modern-bold::before{content:"";position:absolute;left:0;top:0;bottom:0;width:64%;background:var(--tp)}
+.tpl-modern-bold::after{content:"";position:absolute;left:10px;top:15px;width:40%;height:7px;background:#fff;border-radius:3px;box-shadow:0 13px 0 #fff}
+.tpl-classic{background:color-mix(in srgb,var(--tb) 70%,#fff)}
+.tpl-classic::before{content:"";position:absolute;inset:8px;background:#fff;border:1px solid var(--line);border-radius:5px}
+.tpl-classic::after{content:"";position:absolute;left:8px;right:8px;top:8px;height:12px;background:var(--tp);border-radius:5px 5px 0 0}
 .tpl-name{display:block;font-weight:700}
 .tpl-blurb{display:block;color:var(--fg2);font-size:.85rem;margin-top:2px;line-height:1.35}
 .buttons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}

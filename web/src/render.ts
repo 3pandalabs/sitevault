@@ -14,7 +14,7 @@
 
 import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, listingsAllowed, menuAllowed, reviewStats, scheduleAllowed, teamAllowed, type PolicyKind, type Site } from "./site.js";
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
-import { asTemplate, isTemplate, themeFor, type TemplateKey, type Theme } from "./templates.js";
+import { asTemplate, isTemplate, TEMPLATE_FAMILY, themeFor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
 
 export type RenderContext = {
@@ -147,18 +147,22 @@ function buildHero(
   const p = o.headline ? `<p class="lede">${esc(o.headline)}</p>` : "";
   // The same photo, softly blurred, fills the banner behind the sharp (contained) one.
   const bg = o.hero ? ` style="--photo:url('${o.hero}')"` : "";
-  if (template === "split") {
+  const family = TEMPLATE_FAMILY[template];
+  // The specific key is added as a second class so its restyle CSS can override
+  // the base family (e.g. "hero split bento"). Base families carry one class.
+  const cls = family + (template !== family ? ` ${template}` : "");
+  if (family === "split") {
     const cta = `<a class="btn primary hero-cta" href="${esc(telHref(o.phone))}"${o.pingCall}>Call ${esc(o.phone)}</a>`;
-    return `<div class="hero split${o.hero ? "" : " noimg"}">
+    return `<div class="hero ${cls}${o.hero ? "" : " noimg"}">
   <div class="hero-text">${eyebrow}${h1}${p}${cta}</div>
   ${o.hero ? `<div class="hero-img"${bg}>${heroImg(o.hero, o.name)}</div>` : ""}
 </div>`;
   }
-  if (template === "editorial") {
-    return `<div class="hero editorial"><div class="wrap">${eyebrow}${h1}${p}</div></div>
+  if (family === "editorial") {
+    return `<div class="hero ${cls}"><div class="wrap">${eyebrow}${h1}${p}</div></div>
 ${o.hero ? `<div class="hero-band"${bg}>${heroImg(o.hero, o.name)}</div>` : ""}`;
   }
-  return `<div class="hero spotlight${o.hero ? "" : " noimg"}"${bg}>
+  return `<div class="hero ${cls}${o.hero ? "" : " noimg"}"${bg}>
   ${o.hero ? `${heroImg(o.hero, o.name)}\n  <div class="shade"></div>` : ""}
   <div class="copy"><div class="wrap">${eyebrow}${h1}${p}</div></div>
 </div>`;
@@ -360,8 +364,7 @@ footer a{color:var(--muted)}
 .callbar .btn{flex:1}
 @media (max-width:640px){.callbar{display:flex}body{padding-bottom:72px}header.top .btn{display:none}}`;
 
-const TEMPLATE_CSS: Record<TemplateKey, string> = {
-  spotlight: `.hero.spotlight{position:relative;background:var(--primary);color:#fff;overflow:hidden}
+const SPOTLIGHT_CSS = `.hero.spotlight{position:relative;background:var(--primary);color:#fff;overflow:hidden}
 .hero.spotlight::before{content:"";position:absolute;inset:0;z-index:0;background-image:var(--photo);background-size:cover;background-position:center;filter:blur(30px) brightness(.72);transform:scale(1.15)}
 .hero.spotlight img{position:relative;z-index:1;display:block;width:100%;height:clamp(220px,42vw,380px);object-fit:contain}
 .hero.spotlight .shade{position:absolute;inset:0;z-index:2;background:linear-gradient(180deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.34) 45%,rgba(0,0,0,.80) 100%)}
@@ -370,8 +373,8 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.spotlight.noimg .copy{position:static;padding:72px 0}
 .hero.spotlight .eyebrow{display:inline-block;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);padding:6px 14px;border-radius:999px;backdrop-filter:blur(4px)}
 .hero.spotlight h1{font-family:"SV Wordmark",var(--head-font);font-weight:400;margin:14px 0 10px;font-size:clamp(2.2rem,6.6vw,3.7rem);line-height:1.1;letter-spacing:normal;text-shadow:0 2px 14px rgba(0,0,0,.35)}
-.hero.spotlight .lede{margin:0;font-size:1.2rem;max-width:46ch;opacity:.96}`,
-  split: `.hero.split{display:grid;grid-template-columns:1.05fr .95fr;background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 78%,#000));color:#fff;align-items:stretch}
+.hero.spotlight .lede{margin:0;font-size:1.2rem;max-width:46ch;opacity:.96}`;
+const SPLIT_CSS = `.hero.split{display:grid;grid-template-columns:1.05fr .95fr;background:var(--primary);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 78%,#000));color:#fff;align-items:stretch}
 .hero.split .hero-text{padding:52px clamp(18px,5vw,60px);align-self:center}
 .hero.split .eyebrow{color:rgba(255,255,255,.82)}
 .hero.split h1{font-family:"SV Wordmark",var(--head-font);font-weight:400;margin:0 0 12px;font-size:clamp(2.1rem,4.8vw,3.1rem);line-height:1.14;letter-spacing:normal}
@@ -382,8 +385,8 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .hero.split .hero-img::before{content:"";position:absolute;inset:0;z-index:0;background-image:var(--photo);background-size:cover;background-position:center;filter:blur(26px) brightness(.82);transform:scale(1.15)}
 .hero.split .hero-img img{position:relative;z-index:1;display:block;width:100%;height:clamp(220px,42vw,380px);object-fit:contain}
 .hero.split.noimg{display:block}
-@media(max-width:720px){.hero.split{grid-template-columns:1fr}.hero.split .hero-img{clip-path:none}.hero.split .hero-img img{min-height:240px}}`,
-  editorial: `:root{--head-font:Georgia,Cambria,"Times New Roman",serif}
+@media(max-width:720px){.hero.split{grid-template-columns:1fr}.hero.split .hero-img{clip-path:none}.hero.split .hero-img img{min-height:240px}}`;
+const EDITORIAL_CSS = `:root{--head-font:Georgia,Cambria,"Times New Roman",serif}
 .hero.editorial{background:var(--band);color:var(--ink);text-align:center;padding:72px 0 56px;border-bottom:1px solid var(--line)}
 .hero.editorial .eyebrow{color:var(--primary)}
 .hero.editorial h1{font-family:"SV Wordmark",var(--head-font);font-weight:400;margin:0 0 14px;font-size:clamp(2.4rem,6.8vw,3.8rem);line-height:1.1;letter-spacing:normal}
@@ -401,7 +404,53 @@ const TEMPLATE_CSS: Record<TemplateKey, string> = {
 .t-editorial .services li:hover{transform:none;box-shadow:none}
 .t-editorial .facts{text-align:center}
 .t-editorial .facts h3{justify-content:center}
-.t-editorial section[aria-labelledby="about-h"] p:first-of-type::first-letter{float:left;font-family:var(--head-font);font-size:3.4em;line-height:.72;padding:6px 10px 0 0;color:var(--primary)}`,
+.t-editorial section[aria-labelledby="about-h"] p:first-of-type::first-letter{float:left;font-family:var(--head-font);font-size:3.4em;line-height:.72;padding:6px 10px 0 0;color:var(--primary)}`;
+
+// --- Restyles: each layers over its base family (spotlight / split / editorial).
+// They only change the hero's arrangement and typography — never the content.
+const SHOWCASE_CSS = `.hero.showcase{min-height:340px;display:flex;align-items:center;background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 55%,#000))}
+.hero.showcase::before{filter:blur(34px) brightness(.5)}
+.hero.showcase img,.hero.showcase .shade{display:none}
+.hero.showcase .copy{position:static;width:100%;padding:46px 16px}
+.hero.showcase .copy .wrap{max-width:560px;margin:0 auto;background:#fff;color:var(--ink);border-radius:18px;padding:38px 32px;box-shadow:0 30px 70px rgba(0,0,0,.4);text-align:center}
+.hero.showcase h1{color:var(--ink);text-shadow:none;margin-top:0}
+.hero.showcase .lede{color:var(--muted);max-width:none;margin:10px auto 0}`;
+const COMPACT_CSS = `.hero.compact .copy{padding:24px 0}
+.hero.compact.noimg .copy{position:static;padding:36px 0}
+.hero.compact img{height:clamp(150px,26vw,220px)}
+.hero.compact h1{font-size:clamp(1.7rem,4.6vw,2.6rem);margin:6px 0 6px}
+.hero.compact .lede{font-size:1.02rem}`;
+const STOREFRONT_CSS = `.hero.storefront{border-top:30px solid var(--primary);box-shadow:inset 0 -6px 0 var(--accent)}`;
+const BENTO_CSS = `.hero.bento{background:var(--band);padding:18px;gap:16px;grid-template-columns:1.1fr .9fr;color:var(--ink)}
+.hero.bento .hero-text{background:var(--primary);color:#fff;border-radius:18px;padding:38px clamp(20px,4vw,42px)}
+.hero.bento .hero-img{clip-path:none;border-radius:18px;overflow:hidden}
+.hero.bento .hero-img::before,.hero.bento .hero-img img{border-radius:18px}
+@media(max-width:720px){.hero.bento{grid-template-columns:1fr}}`;
+const MODERN_BOLD_CSS = `.hero.modern-bold{grid-template-columns:1.25fr .75fr}
+.hero.modern-bold h1{font-family:var(--head-font);font-weight:900;text-transform:uppercase;letter-spacing:-.02em;line-height:1.02;font-size:clamp(2.1rem,5.4vw,3.5rem)}
+.hero.modern-bold .hero-img{clip-path:polygon(16% 0,100% 0,100% 100%,0 100%)}`;
+const MINIMALIST_CSS = `:root{--head-font:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.hero.minimalist{background:#fff;text-align:left;padding:86px 0 64px;border-bottom:0}
+.hero.minimalist .wrap{max-width:720px}
+.hero.minimalist h1{font-family:var(--head-font);font-weight:700;letter-spacing:-.02em}
+.hero.minimalist .lede{margin:0;max-width:54ch;color:var(--muted)}`;
+const CLASSIC_CSS = `.hero.classic{background:color-mix(in srgb,var(--band) 68%,var(--primary) 10%);padding:40px 16px;border-bottom:0}
+.hero.classic .wrap{max-width:760px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.1);padding:0}
+.hero.classic .wrap::before{content:"";display:block;height:14px;background:var(--primary)}
+.hero.classic h1{padding:30px 30px 0;margin:0}
+.hero.classic .lede{padding:12px 30px 34px;margin:0 auto;max-width:none}`;
+
+const TEMPLATE_CSS: Record<TemplateKey, string> = {
+  spotlight: SPOTLIGHT_CSS,
+  split: SPLIT_CSS,
+  editorial: EDITORIAL_CSS,
+  showcase: SPOTLIGHT_CSS + SHOWCASE_CSS,
+  compact: SPOTLIGHT_CSS + COMPACT_CSS,
+  storefront: SPOTLIGHT_CSS + STOREFRONT_CSS,
+  bento: SPLIT_CSS + BENTO_CSS,
+  "modern-bold": SPLIT_CSS + MODERN_BOLD_CSS,
+  minimalist: EDITORIAL_CSS + MINIMALIST_CSS,
+  classic: EDITORIAL_CSS + CLASSIC_CSS,
 };
 
 /**
@@ -419,6 +468,9 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   const cat = CATEGORIES[site.category];
   const brand = cat.brand;
   const template = isTemplate(ctx.previewTemplate) ? ctx.previewTemplate : asTemplate(site.template);
+  // Section-level styling keys off the hero family (e.g. every editorial-family
+  // template shares the centred section treatment).
+  const templateFamily = TEMPLATE_FAMILY[template];
   const theme = themeFor(site.category, brand);
   const title = `${site.businessName} | ${cat.label}${site.city ? ` in ${site.city}` : ""}`;
   const description = (site.about || headline(site)).slice(0, 160);
@@ -770,7 +822,7 @@ ${TEMPLATE_CSS[template]}
 </style>
 ${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=' js'</script>` : ""}
 </head>
-<body class="t-${template}">
+<body class="t-${templateFamily}">
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
   <div class="wrap">
