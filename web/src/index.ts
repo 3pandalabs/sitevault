@@ -13,6 +13,8 @@
 //   GET  /edit/<slug>?embed=1      the same editor inside AdVault's "Your website" (session only; no
 //                                  SiteVault chrome or billing; framable by AdVault only)
 //   GET  /embed/session?token=     AdVault's signed, single-use, 60 s handoff: signs the owner in, -> embed editor
+//   GET  /go/advault?to=<path>     one-tap sign-in to AdVault: a 60 s single-use token -> AdVault /auth/handoff
+//   GET  /auth/handoff?t=&to=      one-tap sign-in FROM AdVault: checks AdVault's token, sets the session, -> to
 //   GET  /embed/new?token=         AdVault create mode: create handoff (own token type), -> /embed/new?draft=<id>
 //   GET  /embed/new?draft=<id>     the FULL builder in embed chrome, pre-filled from AdVault's draft (session)
 //   GET  /embed/draft/<id>/<file>  a draft photo (session, that draft's account only)
@@ -47,6 +49,7 @@ import { PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
 import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
 import {
+  accountByAdvaultId,
   accountByEmail,
   accountForAdvault,
   advaultLinkEmail,
@@ -137,6 +140,7 @@ import {
 } from "./site.js";
 import { policyPathKind } from "./policies.js";
 import { DRAFT_ID, HANDOFF_JTI_TTL_SECONDS, allowEmbedFraming, verifyCreateHandoff, verifyHandoff } from "./embed.js";
+import { ADVAULT_WEB_ORIGIN, SIGNIN_NONCE_TTL_SECONDS, mintSigninToken, safeLocalPath, verifySigninToken } from "./signin.js";
 import { DRAFT_TTL_MS, draftExpired, draftFileKeys, draftPrefill, loadDraft, saveDraft, type Draft, type DraftFile } from "./drafts.js";
 import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
@@ -311,6 +315,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/api/address") return addressCheck(env, url);
     if (path === "/api/internal/resolve") return resolveInternal(request, env, url);
     if (path === "/api/internal/account-site") return accountSiteInternal(request, env, url);
+    if (path === "/go/advault") return goAdvault(request, env, url, head);
+    if (path === "/auth/handoff") return signinFromAdvault(request, env, url, head);
     if (path === "/embed/session") return embedSession(request, env, url, head);
     if (path === "/embed/new") return embedNew(request, env, url, head);
     if (path === "/embed/created") return embedCreated(request, env, url);
@@ -939,6 +945,65 @@ async function embedSession(request: Request, env: Env, url: URL, head: boolean)
   res.headers.set("referrer-policy", "no-referrer");
   res.headers.set("cache-control", "no-store");
   return res;
+}
+
+// ---------------------------------------------------------------------------
+// One-tap sign-in between SiteVault and AdVault (2026-11-20, signin.ts has the
+// token format). Admins are refused both ways (they sign in by hand). Any
+// failure lands on the normal sign-in page, never an error that says why.
+
+function noStoreRedirect(location: string, status = 302, cookie?: string): Response {
+  const res = new Response(null, { status, headers: { location, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+  if (cookie) res.headers.append("set-cookie", cookie);
+  return res;
+}
+
+/**
+ * GET /go/advault?to=<AdVault path>  "Video ads" / "Make a YouTube ad" for a
+ * signed-in owner whose account is linked to an AdVault user: mint a 60 s,
+ * single-use "signin-advault" token and send them to AdVault's /auth/handoff,
+ * which signs them in to the same account. Not signed in, not linked, an
+ * id-only test account, an admin, or no INTERNAL_TOKEN: the plain AdVault page
+ * (AdVault asks them to sign in as usual). HEAD mints nothing.
+ */
+async function goAdvault(request: Request, env: Env, url: URL, head: boolean): Promise<Response> {
+  const to = safeLocalPath(url.searchParams.get("to"), "/dashboard");
+  const plain = noStoreRedirect(`${ADVAULT_WEB_ORIGIN}${to}`);
+  if (head || !env.INTERNAL_TOKEN) return plain;
+  const me = await currentAccount(env.SITES, request);
+  if (!me || !me.advaultUserId || isIdOnlyAccount(me) || isAdminEmail(env, me.email)) return plain;
+  const token = await mintSigninToken(env.INTERNAL_TOKEN, "signin-advault", { uid: me.advaultUserId, email: me.email });
+  return noStoreRedirect(`${ADVAULT_WEB_ORIGIN}/auth/handoff?t=${encodeURIComponent(token)}&to=${encodeURIComponent(to)}`);
+}
+
+/**
+ * GET /auth/handoff?t=&to=  AdVault's "signin-sitevault" token (AdVault
+ * POST /auth/sitevault-handoff). Valid signature and purpose, at most 60 s
+ * old, never used before (KV `signinjti:`), and the account linked to that
+ * AdVault user id (`acctadv:` only: never found, created or merged by email)
+ * with the same email (an id-only test account: no email) and not an admin:
+ * then the normal session cookie and a 303 to `to` (a local path; default
+ * /account). Anything else: /login?next=<to>. HEAD never uses a token up.
+ */
+async function signinFromAdvault(request: Request, env: Env, url: URL, head: boolean): Promise<Response> {
+  const to = safeLocalPath(url.searchParams.get("to"), "/account");
+  const toLogin = (reason: string) => {
+    console.warn("signin_handoff_refused", { reason });
+    return noStoreRedirect(`${env.PUBLIC_ORIGIN}/login?next=${encodeURIComponent(to)}`, 303);
+  };
+  const checked = await verifySigninToken(env.INTERNAL_TOKEN, url.searchParams.get("t") ?? "", "signin-sitevault");
+  if (!checked.ok) return toLogin(checked.error);
+  const t = checked.token;
+  if (head) return html(messagePage("Signing you in", "One moment.", "Signing you in"), 200);
+  const nonceKey = `signinjti:${t.nonce}`;
+  if (await env.SITES.get(nonceKey)) return toLogin("reused");
+  await env.SITES.put(nonceKey, "1", { expirationTtl: SIGNIN_NONCE_TTL_SECONDS });
+  const account = await accountByAdvaultId(env.SITES, t.uid);
+  if (!account) return toLogin("no_account");
+  if (isAdminEmail(env, account.email) || isAdminEmail(env, t.email)) return toLogin("admin");
+  const emailOk = isIdOnlyAccount(account) ? advaultLinkEmail(t.email) === "" : normaliseEmail(t.email) === account.email;
+  if (!emailOk) return toLogin("email_mismatch");
+  return noStoreRedirect(`${env.PUBLIC_ORIGIN}${to}`, 303, sessionCookie(await startSession(env.SITES, account.id)));
 }
 
 // ---------------------------------------------------------------------------
