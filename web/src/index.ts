@@ -279,7 +279,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
       // One website per account (admins excepted): an owner who has one goes to it.
       if (me && !isAdminEmail(env, me.email) && (await accountSites(env, me)).length > 0)
         return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
-      return builder(env, { kind: "new", account: me, admin: me ? isAdminEmail(env, me.email) : false });
+      return builder(env, { kind: "new", account: me, admin: me ? isAdminEmail(env, me.email) : false, publishesNow: newSitePublishes(env, me) });
     }
     if (path === "/login" || path === "/signup") {
       if (await currentAccount(env.SITES, request)) return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
@@ -1104,12 +1104,19 @@ async function sessionDraft(request: Request, env: Env, id: string): Promise<{ d
   return { draft, account };
 }
 
+/** A site built here goes live at once while billing is off, or for an admin (comped). */
+function newSitePublishes(env: Env, account: { email: string } | null): boolean {
+  return !billingConfig(env).on || isAdminEmail(env, account?.email);
+}
+
 /** The builder in AdVault create mode (embed chrome, pre-filled). */
 function embedBuilderMode(env: Env, draft: Draft, account: Account): FormMode {
   return {
     kind: "new",
     account,
     admin: draft.admin,
+    // AdVault charges first when `pay`: the site is made unpublished.
+    publishesNow: !draft.pay,
     embedDraft: {
       id: draft.id,
       photos: draft.photos.map((p) => ({ key: p.key, url: `${env.PUBLIC_ORIGIN}/embed/draft/${draft.id}/${p.key.split("/").pop()}` })),
@@ -2228,7 +2235,7 @@ function builderExtrasChecks(form: Parsed, parsed: ReturnType<typeof parseConten
 async function createSite(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const form = await readForm(request);
   const signedIn = await currentAccount(env.SITES, request);
-  const mode = { kind: "new", account: signedIn } as const;
+  const mode = { kind: "new", account: signedIn, publishesNow: newSitePublishes(env, signedIn) } as const;
   if (!form) return rejected(request, env, mode, { form: "Please use the form." }, {});
   const { fields, files } = form;
   // Accounts: signed in = the site goes to that account; otherwise sign up here.

@@ -396,7 +396,14 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
 }
 
 export type FormMode =
-  | { kind: "new"; account?: { email: string } | null; admin?: boolean; embedDraft?: EmbedDraftView }
+  | {
+      kind: "new";
+      account?: { email: string } | null;
+      admin?: boolean;
+      embedDraft?: EmbedDraftView;
+      /** Creating puts the site live at once (billing off, an admin, or an AdVault site with nothing to pay). */
+      publishesNow?: boolean;
+    }
   | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; pendingReviews?: Review[]; signedIn?: boolean; siteUrl?: string; admin?: boolean; embed?: boolean; saved?: boolean };
 
 /**
@@ -431,22 +438,24 @@ export type VisitorsView = { stats: SiteStats | null; full: boolean };
 
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 
-function payButton(slug: string, key: string, kind: CheckoutKind, label: string, ghost = false): string {
-  return `<form method="post" action="/api/billing/checkout"><input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="slug" value="${esc(slug)}"><input type="hidden" name="kind" value="${kind}"><button class="btn${ghost ? " ghost" : ""}" type="submit">${esc(label)}</button></form>`;
+function payButton(slug: string, key: string, kind: CheckoutKind, label: string, ghost = false, confirmAddr?: string): string {
+  // Publishing asks first (PUBLISH_CONFIRM_SCRIPT); renewals don't.
+  const confirm = confirmAddr !== undefined ? ` data-confirm-publish="publish" data-confirm-addr="${esc(confirmAddr)}"` : "";
+  return `<form method="post" action="/api/billing/checkout"${confirm}><input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="slug" value="${esc(slug)}"><input type="hidden" name="kind" value="${kind}"><button class="btn${ghost ? " ghost" : ""}" type="submit">${esc(label)}</button></form>`;
 }
 
-/** Buttons to publish a SiteVault-made site (done page and edit page). */
-function publishButtons(slug: string, key: string, prices: BillingView["prices"]): string {
+/** Buttons to publish a SiteVault-made site (done page and edit page). Each asks "Publish now?" first. */
+function publishButtons(slug: string, key: string, prices: BillingView["prices"], addr = ""): string {
   const festive = prices.festive ? `<p class="hint">Festive season prices (price locked for life): Basic $${prices.basic}/year (normally $${DOLLARS.basic}), Pro $${prices.pro}/year (normally $${DOLLARS.pro}).</p>` : "";
   return `${festive}<div class="buttons">${
-    prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: $${prices.basic}/year`) : ""
-  }${payButton(slug, key, "publish_pro", `Publish with Pro: $${prices.pro}/year`, prices.basic !== null)}</div>`;
+    prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: $${prices.basic}/year`, false, addr) : ""
+  }${payButton(slug, key, "publish_pro", `Publish with Pro: $${prices.pro}/year`, prices.basic !== null, addr)}</div>`;
 }
 
 /** Days before the paid time ends when renewing opens. */
 export const RENEW_WINDOW_DAYS = 45;
 
-export function billingSection(slug: string, key: string, v: BillingView): string {
+export function billingSection(slug: string, key: string, v: BillingView, siteUrl = ""): string {
   const b = v.billing;
   if (b.comp) {
     return `<details class="section" id="billing">
@@ -479,7 +488,7 @@ export function billingSection(slug: string, key: string, v: BillingView): strin
   if (v.state === "unpublished" && v.source === "advault") {
     buttons.push(`<div class="buttons"><a class="btn" href="https://advault.3pandalabs.com/dashboard">Finish in AdVault</a></div>`);
   } else if (v.state === "unpublished") {
-    buttons.push(publishButtons(slug, key, v.prices));
+    buttons.push(publishButtons(slug, key, v.prices, siteUrl));
   } else {
     // Paying again only makes sense near the end of the paid time (or after it):
     // a site paid until next year must not be asked to pay now.
@@ -901,7 +910,8 @@ ${
     ? `<div class="notice" id="embed-saved" role="status" data-slug="${esc(mode.site.slug)}" data-site-url="${esc(mode.siteUrl ?? "")}"><p style="margin:0"><strong>Saved.</strong> Your changes are live.${mode.siteUrl ? ` <a href="${esc(mode.siteUrl)}" target="_blank" rel="noopener">Open my website</a>` : ""}</p></div>`
     : ""
 }
-<form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate>
+${previewBanner(mode)}
+<form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate${createConfirm(mode)}>
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
 ${embed && !draft ? `<input type="hidden" name="embed" value="1">` : ""}
 ${draft ? `<input type="hidden" name="draft" value="${esc(draft.id)}">` : ""}
@@ -928,19 +938,6 @@ ${draft ? `<input type="hidden" name="draft" value="${esc(draft.id)}">` : ""}
       <p class="hint" style="margin:10px 0 6px">One per line, as <strong>Name | Address | Phone</strong> (up to ${MAX_LOCATIONS}). Each gets its own Call and Directions in a "Locations" popup on your site.</p>
       <textarea id="locations" name="locations" placeholder="Downtown | 123 Main St, Springfield | (555) 111-2222&#10;Westside | 456 Oak Ave, Springfield | (555) 333-4444">${v("locations", site ? locationsToText(site.locations ?? []) : "")}</textarea>${e("locations")}
     </details></div>
-  </div>
-</fieldset>
-<fieldset id="website-style"><legend>Website style</legend>
-  <p class="hint">Your website's look, in your business type's colours. Pick a style, then <strong>Save changes</strong> — it changes how your published website appears (open it in a new tab to see). You can switch anytime.</p>
-  <div class="templates"${CAT_THUMB_COLORS[selectedCat] ? ` style="--tp:${CAT_THUMB_COLORS[selectedCat].p};--tb:${CAT_THUMB_COLORS[selectedCat].b}"` : ""}>
-    ${(() => {
-      const selTpl = values.template ?? site?.template ?? DEFAULT_TEMPLATE;
-      const previewBase = mode.kind === "edit" ? mode.siteUrl : undefined;
-      return TEMPLATES.map(
-        (t) =>
-          `<div class="tpl-item"><label class="tpl${selTpl === t.key ? " sel" : ""}"><input type="radio" name="template" value="${t.key}"${selTpl === t.key ? " checked" : ""}><span class="tpl-thumb tpl-${t.key}"></span><span class="tpl-name">${esc(t.label)}</span><span class="tpl-blurb">${esc(t.blurb)}</span></label>${previewBase ? `<a class="tpl-preview" href="${esc(previewBase)}?style=${t.key}" target="_blank" rel="noopener">Preview this style ↗</a>` : ""}</div>`,
-      ).join("");
-    })()}
   </div>
 </fieldset>
 <fieldset><legend>What you offer</legend>
@@ -971,6 +968,19 @@ ${listings}
 ${faq}
 ${mode.kind === "new" && !draft ? accountFields(mode.account ?? null, v, e) : ""}
 ${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:16px 0">${mode.account.email.includes("@") ? `Saved to your 3PandaLabs account, <strong>${esc(mode.account.email)}</strong> (the same login as AdVault).` : "Saved to this AdVault account."}</p>` : ""}
+<fieldset id="website-style"><legend>Preview your website in different styles</legend>
+  <p class="hint">Try each style to see your website with your details, then choose the one you like. You can switch anytime.</p>
+  <div class="templates"${CAT_THUMB_COLORS[selectedCat] ? ` style="--tp:${CAT_THUMB_COLORS[selectedCat].p};--tb:${CAT_THUMB_COLORS[selectedCat].b}"` : ""}>
+    ${(() => {
+      const selTpl = values.template ?? site?.template ?? DEFAULT_TEMPLATE;
+      const previewBase = mode.kind === "edit" ? mode.siteUrl : undefined;
+      return TEMPLATES.map(
+        (t) =>
+          `<div class="tpl-item"><label class="tpl${selTpl === t.key ? " sel" : ""}"><input type="radio" name="template" value="${t.key}"${selTpl === t.key ? " checked" : ""}><span class="tpl-thumb tpl-${t.key}"></span><span class="tpl-name">${esc(t.label)}</span><span class="tpl-blurb">${esc(t.blurb)}</span></label>${previewBase ? `<a class="tpl-preview" href="${esc(previewBase)}?style=${t.key}" target="_blank" rel="noopener">Preview this style ↗</a>` : ""}</div>`,
+      ).join("");
+    })()}
+  </div>
+</fieldset>
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>${
   draft
     ? `I run this business, the details are accurate, and I agree to the <a href="/terms" target="_blank" rel="noopener">SiteVault terms</a>. The website is public.`
@@ -983,7 +993,7 @@ ${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:
 </div>
 </form>
 ${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors, embed) : ""}
-${mode.kind === "edit" && mode.billing && !embed ? billingSection(mode.site.slug, mode.key, mode.billing) : ""}
+${mode.kind === "edit" && mode.billing && !embed ? billingSection(mode.site.slug, mode.key, mode.billing, mode.siteUrl ?? "") : ""}
 ${mode.kind === "edit" ? reviewsModerationSection(mode.site.slug, mode.key, mode.pendingReviews ?? [], mode.site.reviews ?? [], embed) : ""}
 ${
   mode.kind === "edit"
@@ -1003,9 +1013,73 @@ ${
     signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
     noindex: mode.kind === "edit" || Boolean(draft),
     embed,
-    script: SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : ""),
+    script: PUBLISH_CONFIRM_SCRIPT + SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : ""),
   });
 }
+
+/**
+ * The reassurance line above the form. An already-published site: changes
+ * go live only on Save. Otherwise: they'll see it before it goes live.
+ */
+function previewBanner(mode: FormMode): string {
+  const published = mode.kind === "edit" && (!mode.billing || mode.billing.state !== "unpublished");
+  const text = published
+    ? "Changes go live only when you press Save changes."
+    : "Don't worry: you'll see a preview of your website with your details before it goes live.";
+  return `<p class="notice" id="preview-banner" style="margin:0 0 20px">${text}</p>`;
+}
+
+/**
+ * The create form asks before it goes live (PUBLISH_CONFIRM_SCRIPT): "publish"
+ * when the new site is live at once, "create" when it is made unpublished
+ * (it is then published by a pay button, which asks too). Saving edits to a
+ * live site never asks.
+ */
+function createConfirm(mode: FormMode): string {
+  if (mode.kind !== "new") return "";
+  return ` data-confirm-publish="${mode.publishesNow ? "publish" : "create"}"`;
+}
+
+/**
+ * Before a form that publishes is sent: an in-page "Publish now?" panel (never
+ * window.confirm). Only "Yes, publish" sends the form; "Go back" closes the
+ * panel. Registered BEFORE the builder's own submit handler, and it stops the
+ * event, so the builder's fetch runs only after the yes. The address comes
+ * from the form's web-address field, else data-confirm-addr. Without JS the
+ * form posts as before (no confirm): the no-JS path is unchanged.
+ */
+const PUBLISH_CONFIRM_SCRIPT = `
+(function(){
+  [].slice.call(document.querySelectorAll('form[data-confirm-publish]')).forEach(function(f){
+    var panel=null;
+    function addr(){
+      var slug=f.querySelector('#slug');
+      if(slug&&slug.value&&slug.getAttribute('data-domain')) return 'https://'+slug.value.trim().toLowerCase()+'.'+slug.getAttribute('data-domain');
+      return f.getAttribute('data-confirm-addr')||'your web address';
+    }
+    function close(){ if(panel){ panel.parentNode.removeChild(panel); panel=null; } }
+    f.addEventListener('submit',function(ev){
+      if(f.getAttribute('data-confirmed')==='1'){ f.removeAttribute('data-confirmed'); return; }
+      ev.preventDefault(); ev.stopImmediatePropagation();
+      if(panel) return;
+      var publish=f.getAttribute('data-confirm-publish')==='publish';
+      panel=document.createElement('div'); panel.className='notice'; panel.id='publish-confirm'; panel.setAttribute('role','alertdialog'); panel.setAttribute('aria-labelledby','publish-confirm-text'); panel.style.margin='12px 0';
+      var p=document.createElement('p'); p.id='publish-confirm-text';
+      var b=document.createElement('strong'); b.textContent=addr();
+      if(publish){ p.appendChild(document.createTextNode("You're about to publish your website. It will be live at ")); p.appendChild(b); p.appendChild(document.createTextNode(' for anyone to see. Publish now?')); }
+      else { p.appendChild(document.createTextNode("You're about to create your website at ")); p.appendChild(b); p.appendChild(document.createTextNode(". It won't be live until you publish it. Create it now?")); }
+      var row=document.createElement('div'); row.className='buttons';
+      var yes=document.createElement('button'); yes.type='button'; yes.className='btn'; yes.textContent=publish?'Yes, publish':'Yes, create it';
+      var no=document.createElement('button'); no.type='button'; no.className='btn ghost'; no.textContent='Go back';
+      yes.addEventListener('click',function(){ close(); f.setAttribute('data-confirmed','1'); if(f.requestSubmit) f.requestSubmit(); else f.submit(); });
+      no.addEventListener('click',close);
+      row.appendChild(yes); row.appendChild(no); panel.appendChild(p); panel.appendChild(row);
+      var at=f.querySelector('#submit'); var host=at&&at.parentNode&&at.parentNode.parentNode===f?at.parentNode:null;
+      if(host) f.insertBefore(panel,host.nextSibling); else f.parentNode.insertBefore(panel,f.nextSibling);
+      yes.focus();
+    });
+  });
+})();`;
 
 // Shrinks photos client-side, posts with fetch, shows field errors inline.
 // Falls back to the normal multipart post when anything here is unsupported.
@@ -1246,7 +1320,7 @@ export function donePage(opts: {
   const ready = pub
     ? `<div class="notice" style="margin-top:16px">
   <p><strong>Publish your website.</strong> It's saved, but visitors see "This site isn't published yet" until you pay. Pro adds visitor stats: how many people visit, where they come from, and how many tap to call.</p>
-  ${publishButtons(pub.slug, pub.key, pub.prices)}
+  ${publishButtons(pub.slug, pub.key, pub.prices, opts.siteUrl)}
 </div>`
     : "";
   return layout({
@@ -1256,7 +1330,7 @@ export function donePage(opts: {
     admin: opts.admin,
     owner: opts.signedIn,
     nonce: opts.nonce,
-    script: `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='Copied';});});});`,
+    script: PUBLISH_CONFIRM_SCRIPT + `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='Copied';});});});`,
     body: `<section>
 <h1>${pub ? "Your website is ready" : "Your website is live 🎉"}</h1>
 <div class="notice ok">
