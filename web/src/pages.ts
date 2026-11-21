@@ -144,8 +144,6 @@ h2{font-size:1.5rem;font-weight:600;letter-spacing:-.015em}
 .card h3{margin:0 0 6px;font-size:1rem;font-weight:600}
 .card p{margin:0;color:var(--muted);font-size:.95rem}
 .pill{display:inline-block;border:1px solid rgba(56,189,248,.3);background:rgba(56,189,248,.10);color:#bae6fd;font-weight:500;border-radius:999px;padding:4px 12px;font-size:.75rem;letter-spacing:.05em;text-transform:uppercase;margin-bottom:16px}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
-.chips span{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:4px 12px;font-size:.875rem}
 section{padding:24px 0}
 form .field{margin:0 0 18px}
 label{display:block;font-weight:500;margin-bottom:6px;color:var(--fg)}
@@ -373,13 +371,15 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
     <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included.</span></p>
     <a class="btn" href="${signedIn ? "/go/advault?to=/dashboard" : "https://advault.3pandalabs.com"}">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
   </div>
-  <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
-<div class="steps">
-  <div class="card"><h3>1. Tell us the basics</h3><p>Name, phone, what you offer, where you work, your hours.</p></div>
-  <div class="card"><h3>2. Add photos</h3><p>Your shop, your team, your work. Straight from your phone.</p></div>
-  <div class="card"><h3>3. Share your link</h3><p>Put it on Google, your ads, your van, your business cards.</p></div>
-</div>
+<section id="how-it-works">
+  <h2>Three simple steps</h2>
+  <div class="steps">
+    <div class="card"><h3>1. Tell us the basics</h3><p>Name, phone, what you offer, where you work, your hours.</p></div>
+    <div class="card"><h3>2. Add photos</h3><p>Your shop, your team, your work. Straight from your phone.</p></div>
+    <div class="card"><h3>3. Share your link</h3><p>Put it on Google, your ads, your van, your business cards.</p></div>
+  </div>
+</section>
 <section id="features">
   <h2>What's on your site</h2>
   <div class="steps">
