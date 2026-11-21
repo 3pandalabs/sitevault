@@ -127,10 +127,11 @@ describe("/account visitor stats", () => {
     expect(html).not.toContain("Where visitors came from");
   });
 
-  it("the edit page keeps its collapsed section; the customer site never shows stats", async () => {
+  it("the edit page shows them in its Stats tab; the customer site never shows stats", async () => {
     const { cookie, slug } = await ownerWithSite("pro");
     const edit = await (await call(`${ORIGIN}/edit/${slug}`, { headers: { cookie } })).text();
-    expect(edit).toMatch(/<details class="section"><summary>Visitors <span class="sum">— 42 visits/);
+    expect(edit).toMatch(/<div class="opanel" role="tabpanel" id="stats"[^>]*>\s*<h2>Visitors \(last 30 days\)<\/h2>\s*<p><strong>42<\/strong> visits/);
+    expect(edit).not.toContain('<details class="section"><summary>Visitors');
     const pub = await (await call(`https://${slug}.3pandasite.test/`)).text();
     expect(pub).not.toContain("visits in the last 30 days");
     expect(pub).not.toContain("Visitors (last 30 days)");

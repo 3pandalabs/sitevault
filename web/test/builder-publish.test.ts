@@ -51,7 +51,7 @@ describe("reassurance banner", () => {
     for (const h of [builderPage({ kind: "new" }, "N"), draft(true)]) {
       expect(h).toMatch(/<p class="notice" id="preview-banner"[^>]*>Don't worry: you'll see a preview of your website with your details before it goes live\. Press <strong>Preview my website<\/strong> at the bottom any time\.<\/p>\s*<form id="builder"/);
       // ...and the button is there, posting to /preview in a new tab without validation.
-      expect(h).toMatch(/<button class="btn ghost" type="submit" id="preview-btn" formaction="\/preview" formtarget="_blank" formnovalidate>Preview my website<\/button>/);
+      expect(h).toMatch(/<button class="btn ghost" type="submit" id="preview-btn" data-preview formaction="\/preview" formtarget="_blank" formnovalidate>Preview my website<\/button>/);
     }
   });
 

@@ -53,6 +53,7 @@ import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
 import { EMBED_SCRIPT } from "./embed.js";
+import { chartCard, type Row } from "./charts.js";
 import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
 import type { SiteStats } from "./stats.js";
 
@@ -267,6 +268,40 @@ table.bars{width:100%;border-collapse:collapse;font-size:.9rem}
 table.bars caption{text-align:left;font-weight:600;padding-bottom:6px;color:var(--fg)}
 table.bars th,table.bars td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);color:var(--fg2);font-weight:400}
 table.bars td.n{text-align:right;white-space:nowrap;width:1%}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* Owner edit page: 3 tabs; form + live view side by side from 1024px (2026-11-20). */
+.otabs{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0 20px;border-bottom:1px solid var(--line)}
+.otab{display:inline-flex;align-items:center;min-height:44px;padding:8px 16px;color:var(--fg2);text-decoration:none;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-1px}
+.otab:hover{color:var(--fg)}.otab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.otab[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
+.opanels{display:grid;gap:28px;grid-template-columns:minmax(0,1fr)}
+.opanels[data-tab]>.opanel{display:none}
+.opanels[data-tab=edit]>#edit,.opanels[data-tab=view]>#view,.opanels[data-tab=stats]>#stats{display:block}
+.viewbar{display:grid;gap:8px;margin:0 0 12px}.viewbar .buttons{margin:0}
+.sv-frame{display:block;width:100%;height:75vh;min-height:480px;border:1px solid var(--line2);border-radius:14px;background:#fff}
+@media (min-width:1024px){
+  section.owner{width:min(calc(100vw - 48px),92rem);margin-left:calc((100% - min(calc(100vw - 48px),92rem))/2)}
+  .opanels:not([data-tab]),.opanels[data-tab=edit]{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .opanels:not([data-tab])>#stats{grid-column:1/-1}
+  .opanels[data-tab=edit]>#view{display:block}
+  .opanels:not([data-tab])>#view,.opanels[data-tab=edit]>#view{position:sticky;top:12px;align-self:start}
+  .opanels:not([data-tab])>#view .sv-frame,.opanels[data-tab=edit]>#view .sv-frame{height:calc(100vh - 190px)}
+}
+.statgrid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin:0 0 12px}
+.statcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.statcard-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
+.statcard h3{margin:0;font-size:1rem}
+.viewtoggle{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.viewtoggle[hidden]{display:none}
+.viewtoggle button{background:transparent;color:var(--fg2);border:0;font:inherit;font-size:.85rem;font-weight:600;padding:6px 12px;min-height:36px;min-width:44px;cursor:pointer}
+.viewtoggle button+button{border-left:1px solid var(--line2)}
+.viewtoggle button[aria-pressed=true]{background:var(--accent);color:var(--on-accent)}
+.viewtoggle button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.chart{margin:0}.chart svg{display:block;max-width:100%;height:auto}
+.chart.pie{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+.legend{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:.9rem;color:var(--fg2)}
+.legend .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:middle}
+.legend .pv{color:var(--muted);margin-left:4px}
 .bar{display:block;height:8px;border-radius:4px;background:var(--accent);min-width:2px}
 </style>
 ${opts.embed ? `<style>body{min-height:0}main.wrap{padding-top:8px;padding-bottom:24px}</style>` : ""}
@@ -617,6 +652,142 @@ export function visitorsSection(v: VisitorsView, embed = false, open = false): s
   <p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p>`);
 }
 
+/** The owner's edit page tabs (2026-11-20). Hash ids: #edit, #view, #stats. */
+export const OWNER_TABS = [
+  { id: "edit", label: "Edit your website" },
+  { id: "view", label: "View your website" },
+  { id: "stats", label: "Stats" },
+] as const;
+
+/**
+ * Opens the tabbed edit page: the heading, the tablist (links to the panels,
+ * so without JS they jump to the stacked sections) and the Edit panel.
+ */
+function ownerTabsHead(): string {
+  const tabs = OWNER_TABS.map(
+    (t, i) => `<a class="otab" role="tab" id="tab-${t.id}" href="#${t.id}" aria-controls="${t.id}" aria-selected="${i === 0}">${esc(t.label)}</a>`,
+  ).join("");
+  return `<h1>Your website</h1>
+<div class="otabs" role="tablist" aria-label="Your website">${tabs}</div>
+<div class="opanels" id="owner-panels">
+<div class="opanel" role="tabpanel" id="edit" aria-labelledby="tab-edit">`;
+}
+
+/**
+ * Closes the Edit panel and adds "View your website" (an iframe of the saved
+ * site through GET /edit/<slug>/view, same origin; "Refresh preview" posts
+ * the form as it is to /preview into the same frame) and "Stats".
+ */
+function ownerTabsTail(mode: FormMode & { kind: "edit" }): string {
+  const slug = encodeURIComponent(mode.site.slug);
+  const viewUrl = `/edit/${slug}/view${mode.key ? `?k=${encodeURIComponent(mode.key)}` : ""}`;
+  const published = !mode.billing || (mode.billing.state !== "unpublished" && mode.billing.state !== "paused");
+  const status = published
+    ? `Your website as it is saved${mode.siteUrl ? `, live at <a href="${esc(mode.siteUrl)}" target="_blank" rel="noopener">${esc(mode.siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a>` : ""}.`
+    : mode.billing?.state === "paused"
+      ? "Your website is paused. This is how it looks."
+      : "Not published yet. This is how your website will look.";
+  return `</div>
+<div class="opanel" role="tabpanel" id="view" aria-labelledby="tab-view">
+<h2 class="sr">View your website</h2>
+<div class="viewbar">
+  <p class="hint" id="view-status" style="margin:0">${status}</p>
+  <div class="buttons">
+    <button class="btn ghost" type="submit" form="builder" id="refresh-preview" data-preview formaction="/preview?site=${slug}" formtarget="sv-view" formnovalidate>Refresh preview</button>
+    <a class="btn ghost" id="view-saved" href="${esc(viewUrl)}" target="sv-view">Show saved version</a>
+    ${published && mode.siteUrl ? `<a class="btn ghost" href="${esc(mode.siteUrl)}" target="_blank" rel="noopener">Open in a new tab ↗</a>` : ""}
+  </div>
+  <p class="hint" style="margin:0">Refresh preview shows your changes before you save them. Nothing goes live until you press <strong>Save changes</strong>.</p>
+</div>
+<iframe class="sv-frame" name="sv-view" id="sv-view" title="Your website" src="${esc(viewUrl)}" loading="lazy"></iframe>
+</div>
+<div class="opanel" role="tabpanel" id="stats" aria-labelledby="tab-stats">
+<h2>Visitors (last 30 days)</h2>
+${statsPanel(mode.visitors)}
+</div>
+</div>`;
+}
+
+const fmtShortDate = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+/**
+ * The Stats tab. Basic: the 30-day count and the upgrade note (no charts).
+ * Pro (or billing off): every breakdown as a card with Bars | Pie | Table
+ * (visits by day: Line | Bars | Table), charts as server-side SVG (charts.ts).
+ */
+export function statsPanel(v: VisitorsView | undefined): string {
+  const s = v?.stats;
+  if (!v || !s) return `<p class="hint">Visitor numbers aren't available right now. Please check back later.</p>`;
+  const total = `<p><strong>${s.total}</strong> visit${s.total === 1 ? "" : "s"} in the last 30 days.</p>`;
+  if (!v.full) return `${total}<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p>`;
+  const place = (p: { city: string; country: string }) => [p.city, p.country].filter(Boolean).join(", ") || "Unknown";
+  const rows = (list: { label: string; n: number }[]): Row[] => list.map((r) => ({ label: r.label, n: Number(r.n) }));
+  const taps: Row[] = [
+    { label: "Taps to call", n: Number(s.taps.calls) },
+    { label: "Taps for directions", n: Number(s.taps.directions) },
+    ...(s.taps.offer ? [{ label: "Taps on the offer", n: Number(s.taps.offer) }] : []),
+  ];
+  const cards = [
+    chartCard("st-sources", "Where visitors came from", "Source", rows(s.sources.map((r) => ({ label: SOURCE_LABELS[r.source] ?? r.source, n: r.views }))), "category"),
+    chartCard("st-places", "Where visitors are", "Place", rows(s.places.map((r) => ({ label: place(r), n: r.views }))), "category"),
+    chartCard("st-devices", "Devices", "Device", rows(s.devices.map((r) => ({ label: r.device.charAt(0).toUpperCase() + r.device.slice(1), n: r.views }))), "category"),
+    chartCard("st-days", "Visits by day", "Day", rows(s.days.map((r) => ({ label: fmtShortDate(r.day), n: r.views }))), "time"),
+    chartCard("st-taps", "Taps", "Tap", taps, "category"),
+  ];
+  return `${total}
+<div class="tiles" style="margin:0 0 16px"><div class="tile"><div class="tile-n">${s.taps.calls}</div><div class="tile-l">Taps to call</div></div><div class="tile"><div class="tile-n">${s.taps.directions}</div><div class="tile-l">Taps for directions</div></div></div>
+<div class="statgrid">${cards.join("")}</div>
+<p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p>`;
+}
+
+/**
+ * The tabbed edit page: tabs without reloading (role=tab, aria-selected,
+ * roving tabindex, Left/Right/Home/End), the tab in the URL hash (#edit,
+ * #view, #stats; any other id, e.g. #reviews or #website-style, opens the tab
+ * that holds it), and each stats card's Bars | Pie | Table toggle. Without
+ * JS nothing is hidden: the panels stack and the tabs are jump links.
+ */
+const OWNER_TABS_SCRIPT = `
+(function(){
+  var box=document.getElementById('owner-panels'); if(!box) return;
+  var tabs=[].slice.call(document.querySelectorAll('.otabs [role=tab]'));
+  var ids=tabs.map(function(t){ return t.getAttribute('aria-controls'); });
+  function show(id){
+    if(ids.indexOf(id)<0) id='edit';
+    box.setAttribute('data-tab',id);
+    tabs.forEach(function(t){ var on=t.getAttribute('aria-controls')===id; t.setAttribute('aria-selected',on?'true':'false'); t.tabIndex=on?0:-1; });
+  }
+  function fromHash(){
+    var h=''; try{ h=decodeURIComponent((location.hash||'').slice(1)); }catch(_){}
+    if(!h){ show('edit'); return; }
+    if(ids.indexOf(h)>=0){ show(h); return; }
+    var el=document.getElementById(h), p=el&&el.closest?el.closest('[role=tabpanel]'):null;
+    show(p?p.id:'edit'); if(el&&p) setTimeout(function(){ el.scrollIntoView({block:'start'}); },0);
+  }
+  tabs.forEach(function(t,i){
+    t.addEventListener('click',function(ev){ ev.preventDefault(); var id=t.getAttribute('aria-controls'); show(id); try{ history.replaceState(null,'','#'+id); }catch(_){ location.hash=id; } });
+    t.addEventListener('keydown',function(ev){
+      var j=ev.key==='ArrowRight'?i+1:ev.key==='ArrowLeft'?i-1:ev.key==='Home'?0:ev.key==='End'?tabs.length-1:null;
+      if(j===null) return; ev.preventDefault(); j=(j+tabs.length)%tabs.length; tabs[j].click(); tabs[j].focus();
+    });
+  });
+  window.addEventListener('hashchange',fromHash);
+  fromHash();
+  // "Refresh preview" on a phone: switch to the View tab so the result is seen.
+  var rp=document.getElementById('refresh-preview');
+  if(rp) rp.addEventListener('click',function(){ if(box.getAttribute('data-tab')==='edit'&&!(window.matchMedia&&window.matchMedia('(min-width:1024px)').matches)) show('view'); });
+  // Stats: Bars | Pie | Table (Line | Bars | Table for days). Every view is in the page; this only switches.
+  [].forEach.call(document.querySelectorAll('[data-chart]'),function(card){
+    var group=card.querySelector('.viewtoggle'); if(!group) return; group.hidden=false;
+    var btns=[].slice.call(group.querySelectorAll('button[data-view]')), views=[].slice.call(card.querySelectorAll('.view[data-view]'));
+    btns.forEach(function(b){ b.addEventListener('click',function(){
+      var v=b.getAttribute('data-view');
+      btns.forEach(function(x){ x.setAttribute('aria-pressed',x===b?'true':'false'); });
+      views.forEach(function(x){ x.hidden=x.getAttribute('data-view')!==v; });
+    }); });
+  });
+})();`;
+
 const FIELD_ORDER = [
   "businessName",
   "slug",
@@ -902,8 +1073,13 @@ export function builderPage(
   const faq = faqFields(v("faq", site ? faqToText(site.faq) : ""), e);
   const listings = listingsFields(selectedCat, mode.kind === "edit" ? mode.site.listings ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
 
-  const body = `<section>
-<h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>
+  // The owner's edit page on SiteVault (not inside AdVault): three tabs, the
+  // form beside a live view on wide screens (ownerTabsHead / ownerTabsTail).
+  const tabbed = mode.kind === "edit" && !embed;
+  const body = `<section${tabbed ? ' class="owner"' : ""}>
+${tabbed ? ownerTabsHead() : ""}
+${tabbed ? `<h2 class="sr">Edit your website</h2>` : `<h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>`}
+${tabbed && mode.kind === "edit" && mode.saved ? `<p class="notice ok" role="status" id="owner-saved"><strong>Saved.</strong> Your changes are live.</p>` : ""}
 <p class="lead">${mode.kind === "edit" ? `Changes go live as soon as you save.` : draft ? "We filled in what your ad already knows. Check it, add anything you like, then create your website. You can change all of it later." : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>
 ${
   embed && mode.kind === "edit" && mode.saved
@@ -911,7 +1087,7 @@ ${
     : ""
 }
 ${previewBanner(mode)}
-<form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate${createConfirm(mode)}>
+<form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate${createConfirm(mode)}${tabbed ? " data-owner-tabs" : ""}>
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
 ${embed && !draft ? `<input type="hidden" name="embed" value="1">` : ""}
 ${draft ? `<input type="hidden" name="draft" value="${esc(draft.id)}">` : ""}
@@ -989,11 +1165,11 @@ ${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
 <div class="buttons">
   <button class="btn" type="submit" id="submit">${mode.kind === "edit" ? "Save changes" : "Create my website"}</button>
-  <button class="btn ghost" type="submit" id="preview-btn" formaction="${esc(previewAction(mode))}" formtarget="_blank" formnovalidate>Preview my website</button>
+  <button class="btn ghost" type="submit" id="preview-btn" data-preview formaction="${esc(previewAction(mode))}" formtarget="_blank" formnovalidate>Preview my website</button>
   ${mode.kind === "edit" ? `<a class="btn ghost" href="/edit/${encodeURIComponent(mode.site.slug)}${embed ? "?embed=1" : `?k=${encodeURIComponent(mode.key)}`}">Cancel</a>` : ""}
 </div>
 </form>
-${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors, embed) : ""}
+${mode.kind === "edit" && mode.visitors && !tabbed ? visitorsSection(mode.visitors, embed) : ""}
 ${mode.kind === "edit" && mode.billing && !embed ? billingSection(mode.site.slug, mode.key, mode.billing, mode.siteUrl ?? "") : ""}
 ${mode.kind === "edit" ? reviewsModerationSection(mode.site.slug, mode.key, mode.pendingReviews ?? [], mode.site.reviews ?? [], embed) : ""}
 ${
@@ -1003,6 +1179,7 @@ ${
 </div>`
     : ""
 }
+${tabbed && mode.kind === "edit" ? ownerTabsTail(mode) : ""}
 </section>`;
 
   return layout({
@@ -1014,7 +1191,7 @@ ${
     signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
     noindex: mode.kind === "edit" || Boolean(draft),
     embed,
-    script: PUBLISH_CONFIRM_SCRIPT + SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : ""),
+    script: PUBLISH_CONFIRM_SCRIPT + SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : "") + (tabbed ? OWNER_TABS_SCRIPT : ""),
   });
 }
 
@@ -1282,10 +1459,11 @@ const BUILDER_SCRIPT = `
     });
   }
   // "Preview my website": a normal post to /preview in a new tab, never the fetch below.
-  var previewing=false, pvBtn=document.getElementById('preview-btn');
-  if(pvBtn) pvBtn.addEventListener('click',function(){ previewing=true; setTimeout(function(){ previewing=false; },0); });
+  // "Refresh preview" (edit page, right side) is the same kind of button, aimed at the view frame.
+  var previewing=false;
+  [].forEach.call(document.querySelectorAll('[data-preview]'),function(b){ b.addEventListener('click',function(){ previewing=true; setTimeout(function(){ previewing=false; },0); }); });
   form.addEventListener('submit', function(ev){
-    if(previewing||(ev.submitter&&ev.submitter.id==='preview-btn')) return;
+    if(previewing||(ev.submitter&&ev.submitter.hasAttribute('data-preview'))) return;
     ev.preventDefault();
     var btn=document.getElementById('submit'); btn.disabled=true; var label=btn.textContent; btn.textContent='Working…';
     FIELDS.concat(['form']).forEach(function(f){ var el=document.getElementById('err-'+f); if(el) el.textContent=''; });
@@ -1299,7 +1477,11 @@ const BUILDER_SCRIPT = `
       return fetch(form.action,{method:'POST',body:fd,headers:{accept:'application/json'}});
     }).then(function(r){ return r.json().catch(function(){ return {ok:false,errors:{form:'Something went wrong. Please try again.'}}; }); })
     .then(function(res){
-      if(res.ok){ window.location.href=res.next; return; }
+      if(res.ok){
+        // Tabbed edit page: back to the edit page (fresh form, the right side shows the saved site), same tab.
+        if(res.edit&&form.hasAttribute('data-owner-tabs')){ var k=form.querySelector('input[name=key]'); window.location.href=res.edit+'?'+(k&&k.value?'k='+encodeURIComponent(k.value)+'&':'')+'saved=1'+(location.hash||'#edit'); return; }
+        window.location.href=res.next; return;
+      }
       var first=null;
       Object.keys(res.errors||{}).forEach(function(k){ var el=document.getElementById('err-'+k)||document.getElementById('err-form'); el.textContent=res.errors[k]; if(!first) first=el; });
       if(first) first.scrollIntoView({behavior:'smooth',block:'center'});
@@ -1493,7 +1675,7 @@ export function accountPage(
           return `<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><h3 style="margin:0">${esc(s.name)}</h3>${bell}</div>
   <p class="hint" style="margin:6px 0 10px"><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">${esc(s.siteUrl)}</a> · ${esc(STATE[s.state] ?? s.state)}</p>
   ${s.visitors ? visitorsSection(s.visitors, false, true) : ""}
-  <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}">Edit, billing and visitors</a><a class="btn ghost" href="${esc(s.siteUrl)}" target="_blank" rel="noopener">View</a></div></div>`;
+  <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}#edit">Edit your website</a><a class="btn ghost" href="/edit/${esc(s.slug)}#view">View your website</a><a class="btn ghost" href="/edit/${esc(s.slug)}#stats">Stats</a></div></div>`;
         })
         .join("")
     : `<p>No website on this account yet. <a href="/new">Build it</a>, or add one you already made below.</p>`;
