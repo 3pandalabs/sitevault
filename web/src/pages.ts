@@ -989,6 +989,7 @@ ${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
 <div class="buttons">
   <button class="btn" type="submit" id="submit">${mode.kind === "edit" ? "Save changes" : "Create my website"}</button>
+  <button class="btn ghost" type="submit" id="preview-btn" formaction="${esc(previewAction(mode))}" formtarget="_blank" formnovalidate>Preview my website</button>
   ${mode.kind === "edit" ? `<a class="btn ghost" href="/edit/${encodeURIComponent(mode.site.slug)}${embed ? "?embed=1" : `?k=${encodeURIComponent(mode.key)}`}">Cancel</a>` : ""}
 </div>
 </form>
@@ -1025,8 +1026,17 @@ function previewBanner(mode: FormMode): string {
   const published = mode.kind === "edit" && (!mode.billing || mode.billing.state !== "unpublished");
   const text = published
     ? "Changes go live only when you press Save changes."
-    : "Don't worry: you'll see a preview of your website with your details before it goes live.";
+    : "Don't worry: you'll see a preview of your website with your details before it goes live. Press <strong>Preview my website</strong> at the bottom any time.";
   return `<p class="notice" id="preview-banner" style="margin:0 0 20px">${text}</p>`;
+}
+
+/**
+ * "Preview my website" posts the form as it is to POST /preview in a new tab
+ * (index.ts previewSite): rendered, nothing saved. The edit page names its
+ * site so kept photos can be shown.
+ */
+function previewAction(mode: FormMode): string {
+  return mode.kind === "edit" ? `/preview?site=${encodeURIComponent(mode.site.slug)}` : "/preview";
 }
 
 /**
@@ -1051,7 +1061,9 @@ function createConfirm(mode: FormMode): string {
 const PUBLISH_CONFIRM_SCRIPT = `
 (function(){
   [].slice.call(document.querySelectorAll('form[data-confirm-publish]')).forEach(function(f){
-    var panel=null;
+    var panel=null, previewing=false;
+    // "Preview my website" (formaction /preview) never publishes: no confirm.
+    var pv=f.querySelector('#preview-btn'); if(pv) pv.addEventListener('click',function(){ previewing=true; setTimeout(function(){ previewing=false; },0); });
     function addr(){
       var slug=f.querySelector('#slug');
       if(slug&&slug.value&&slug.getAttribute('data-domain')) return 'https://'+slug.value.trim().toLowerCase()+'.'+slug.getAttribute('data-domain');
@@ -1059,6 +1071,7 @@ const PUBLISH_CONFIRM_SCRIPT = `
     }
     function close(){ if(panel){ panel.parentNode.removeChild(panel); panel=null; } }
     f.addEventListener('submit',function(ev){
+      if(previewing||(ev.submitter&&ev.submitter.id==='preview-btn')) return;
       if(f.getAttribute('data-confirmed')==='1'){ f.removeAttribute('data-confirmed'); return; }
       ev.preventDefault(); ev.stopImmediatePropagation();
       if(panel) return;
@@ -1268,7 +1281,11 @@ const BUILDER_SCRIPT = `
       }).catch(function(){ resolve(file); });
     });
   }
+  // "Preview my website": a normal post to /preview in a new tab, never the fetch below.
+  var previewing=false, pvBtn=document.getElementById('preview-btn');
+  if(pvBtn) pvBtn.addEventListener('click',function(){ previewing=true; setTimeout(function(){ previewing=false; },0); });
   form.addEventListener('submit', function(ev){
+    if(previewing||(ev.submitter&&ev.submitter.id==='preview-btn')) return;
     ev.preventDefault();
     var btn=document.getElementById('submit'); btn.disabled=true; var label=btn.textContent; btn.textContent='Working…';
     FIELDS.concat(['form']).forEach(function(f){ var el=document.getElementById('err-'+f); if(el) el.textContent=''; });
@@ -1569,6 +1586,19 @@ export function adminPage(sites: AdminSite[], nonce: string): string {
   <div class="tablewrap"><table class="atable"><thead><tr><th>Business</th><th>Category</th><th>Status</th><th>Made with</th><th></th></tr></thead><tbody>${siteRows}</tbody></table></div>
 </div>
 </section>`,
+  });
+}
+
+/** POST /preview refused the form: what to fix, on a plain page. */
+export function previewErrorsPage(errors: Record<string, string>): string {
+  const items = Object.values(errors)
+    .filter(Boolean)
+    .map((e) => `<li>${esc(e)}</li>`)
+    .join("");
+  return layout({
+    title: "Can't preview yet | SiteVault",
+    noindex: true,
+    body: `<section><h1>Fix these to see your preview</h1><ul>${items}</ul><p>Go back to the other tab, change them, then press <strong>Preview my website</strong> again. Nothing was saved.</p></section>`,
   });
 }
 

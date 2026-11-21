@@ -34,6 +34,12 @@ export type RenderContext = {
   previewTemplate?: string;
   /** CSP nonce; when set, the motion script is included (customer sites). */
   nonce?: string;
+  /**
+   * The builder's "Preview my website" (POST /preview): photo keys are already
+   * the URL to show (a data: URI of a photo in that request, or a draft photo
+   * the session may see), never an R2 key looked up here.
+   */
+  photoSrc?: (key: string) => string;
 };
 
 // First-party, no-network motion for customer sites. Progressive: adds `.js` to
@@ -92,6 +98,7 @@ export const SITE_JS = `(function(){
 })();`;
 
 export function photoUrl(ctx: RenderContext, key: string): string {
+  if (ctx.photoSrc) return ctx.photoSrc(key);
   return `${ctx.assetOrigin}/p/${key.split("/").map(encodeURIComponent).join("/")}`;
 }
 

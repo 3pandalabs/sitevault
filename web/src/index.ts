@@ -13,6 +13,7 @@
 //   GET  /edit/<slug>?embed=1      the same editor inside AdVault's "Your website" (session only; no
 //                                  SiteVault chrome or billing; framable by AdVault only)
 //   GET  /embed/session?token=     AdVault's signed, single-use, 60 s handoff: signs the owner in, -> embed editor
+//   POST /preview[?site=<slug>]    the builder's "Preview my website": renders the posted form, saves NOTHING
 //   GET  /go/advault?to=<path>     one-tap sign-in to AdVault: a 60 s single-use token -> AdVault /auth/handoff
 //   GET  /auth/handoff?t=&to=      one-tap sign-in FROM AdVault: checks AdVault's token, sets the session, -> to
 //   GET  /embed/new?token=         AdVault create mode: create handoff (own token type), -> /embed/new?draft=<id>
@@ -44,10 +45,10 @@
 // D1 STATS (optional): aggregate visit counters, see stats.ts. Writes go
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
-import { renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
+import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
 import { PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
-import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
+import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
 import {
   accountByAdvaultId,
   accountByEmail,
@@ -142,7 +143,7 @@ import { policyPathKind } from "./policies.js";
 import { DRAFT_ID, HANDOFF_JTI_TTL_SECONDS, allowEmbedFraming, verifyCreateHandoff, verifyHandoff } from "./embed.js";
 import { ADVAULT_WEB_ORIGIN, SIGNIN_NONCE_TTL_SECONDS, mintSigninToken, safeLocalPath, verifySigninToken } from "./signin.js";
 import { DRAFT_TTL_MS, draftExpired, draftFileKeys, draftPrefill, loadDraft, saveDraft, type Draft, type DraftFile } from "./drafts.js";
-import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
+import { esc, phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
 export interface Env {
@@ -348,6 +349,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
 
   if (method === "POST") {
     if (path === "/api/sites") return createSite(request, env, ctx);
+    if (path === "/preview") return previewSite(request, env, url);
     if (path === "/login" || path === "/signup") return authSubmit(request, env, ctx, path === "/login" ? "login" : "signup");
     if (path === "/logout") return logout(request, env);
     if (path === "/forgot-password") return forgotPasswordSubmit(request, env);
@@ -2230,6 +2232,99 @@ function builderExtrasChecks(form: Parsed, parsed: ReturnType<typeof parseConten
   if (!listingPick.ok) errors.listings = listingPick.error;
   else if (listingPick.items.length && parsed.ok && !listingsAllowed(parsed.value.category)) errors.listings = "Listings can't be added for this type of business.";
   return listingPick;
+}
+
+/** Inline preview photos stop at this many bytes in total (they ride in the page as data: URIs). */
+const PREVIEW_INLINE_BYTES = 12 * 1024 * 1024;
+/** Browsers can show these inline (HEIC/HEIF can't). */
+const PREVIEW_INLINE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * POST /preview[?site=<slug>]  "Preview my website" (2026-11-20): the builder
+ * posts the form as it is (new tab) and gets the site rendered by the SAME
+ * renderSite as the live site, with a "Preview — not published yet" bar and
+ * noindex. It NEVER writes: no KV, R2 or D1, no account, no site, no address
+ * reserved, no charge, no rate-limit counter.
+ *
+ * The text goes through parseContent, exactly as create validates it (facts
+ * only, no links, sizes); errors -> a page listing what to fix. Photos are
+ * never R2 keys from the form: new uploads are shown inline from this request
+ * (data: URIs, checked like create, JPEG/PNG/WebP, 12 MB total); an AdVault
+ * draft's photos only when the draft is the signed-in account's
+ * (`sessionDraft`) and only its own keys (served by the session-gated draft
+ * route); the edit page's kept photos only when the caller may edit that site
+ * (`authorize`: edit key or owner session) and only keys that site has.
+ * Video, before & after, menu, schedule and listings are not previewed (a
+ * note says they show after saving). Same-origin posts only.
+ */
+async function previewSite(request: Request, env: Env, url: URL): Promise<Response> {
+  if (!sameOrigin(request, env.PUBLIC_ORIGIN)) return html(messagePage("Preview", "Please use the Preview button on the build page.", "Preview"), 403);
+  const form = await readForm(request);
+  if (!form) return html(previewErrorsPage({ form: "Please use the Preview button on the build page." }), 400);
+  const parsed = parseContent(form.fields);
+  const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
+  const photoErr = checkPhotos(form.files, 0);
+  if (photoErr) errors.photos = photoErr;
+  if (!parsed.ok || Object.keys(errors).length) return html(previewErrorsPage(errors), 400);
+
+  // Existing photos the caller may show (never an arbitrary key).
+  const shown: string[] = [];
+  let base: Site | null = null;
+  const editSlug = url.searchParams.get("site");
+  if (editSlug && /^[a-z0-9-]+$/.test(editSlug)) {
+    base = await authorize(env, editSlug, form.fields.key ?? "", request);
+    if (base) for (const k of form.keep) if (base.photos.includes(k)) shown.push(photoUrl(renderCtx(env, base.slug), k));
+  } else if (form.fields.draft) {
+    const own = await sessionDraft(request, env, form.fields.draft);
+    if (own) {
+      const keys = new Set(own.draft.photos.map((p) => p.key));
+      for (const k of form.keepDraft) if (keys.has(k)) shown.push(`${env.PUBLIC_ORIGIN}/embed/draft/${own.draft.id}/${k.split("/").pop()}`);
+    }
+  }
+  // New uploads, inline from this request only.
+  let inlineBytes = 0;
+  let skipped = 0;
+  for (const f of form.files) {
+    if (shown.length >= MAX_PHOTOS || !PREVIEW_INLINE_TYPES.includes(f.type) || inlineBytes + f.size > PREVIEW_INLINE_BYTES) {
+      skipped += 1;
+      continue;
+    }
+    inlineBytes += f.size;
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    shown.push(`data:${f.type};base64,${btoa(bin)}`);
+  }
+
+  const slug = (form.fields.slug && normaliseAddress(form.fields.slug)) || base?.slug || "your-business";
+  const now = new Date().toISOString();
+  const site: Site = {
+    ...(base ? { reviews: base.reviews, policies: base.policies } : {}),
+    ...parsed.value,
+    slug,
+    photos: shown,
+    status: "live",
+    source: base?.source ?? (form.fields.draft ? "advault" : "web"),
+    editKeyHash: "",
+    createdAt: base?.createdAt ?? now,
+    updatedAt: now,
+  };
+  const n = nonce();
+  const ctx = { ...renderCtx(env, slug), ping: false, nonce: n, photoSrc: (k: string) => k };
+  const notes = [
+    "Preview — not published yet. Nothing is saved until you press the button on the build page.",
+    skipped ? `${skipped} photo${skipped === 1 ? "" : "s"} can't be shown here and will appear after you save.` : "",
+    "Video, before & after photos, menus and listings show after you save.",
+  ].filter(Boolean);
+  const bar = `<div role="status" style="position:sticky;top:0;z-index:9999;background:#111827;color:#fff;font:600 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:10px 16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.25)">${notes.map((t, i) => (i === 0 ? `<span>${esc(t)}</span>` : `<span style="display:block;font-weight:400;opacity:.85">${esc(t)}</span>`)).join("")}</div>`;
+  let page = renderSite(site, ctx);
+  page = page.includes('<meta name="robots"') ? page : page.replace("<head>", '<head><meta name="robots" content="noindex">');
+  page = page.replace(/<body([^>]*)>/, (m) => `${m}${bar}`);
+  const res = html(page, 200, n);
+  res.headers.set("x-robots-tag", "noindex");
+  res.headers.set("cache-control", "no-store");
+  res.headers.set("referrer-policy", "no-referrer");
+  return res;
 }
 
 async function createSite(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
