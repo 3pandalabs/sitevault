@@ -329,7 +329,7 @@ function plansBlock(billingOn: boolean, festive: boolean): string {
     : festive
       ? `$${DOLLARS.festivePro}/year <s>$${DOLLARS.pro}</s> <span class="tag">price locked for life</span>`
       : `$${DOLLARS.pro}/year`;
-  return `<div class="plans">
+  return `<div class="plans" id="plans">
   <div class="included"><h2>Basic</h2><p class="plan-price">${basicPrice}</p><p class="plan-sub">Everything included:</p>${list(INCLUDED)}</div>
   <div class="included pro"><h2>Pro</h2><p class="plan-price">${proPrice}</p><p class="plan-sub">Everything in Basic, plus visitor stats:</p>${list(PRO_EXTRAS)}</div>
 </div>
@@ -377,7 +377,10 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
     <div class="card"><h3>Services and prices</h3><p>Exactly what you offer, in your own words.</p></div>
     <div class="card"><h3>Hours, area, directions</h3><p>Everything a customer checks before they call.</p></div>
     <div class="card"><h3>Fast and private</h3><p>Loads quickly on any phone. No cookies, no trackers.</p></div>
+    <div class="card"><h3>Visitor stats <span class="pill" style="margin:0 0 0 6px;padding:2px 8px;vertical-align:middle">Pro</span></h3><p>How many people visit each day, and how many tapped Call or Directions.</p></div>
+    <div class="card"><h3>Where they found you <span class="pill" style="margin:0 0 0 6px;padding:2px 8px;vertical-align:middle">Pro</span></h3><p>Google, YouTube, Facebook, WhatsApp or your AdVault ad, and which towns they're in.</p></div>
   </div>
+  <p class="plan-note">Pro features come with the Pro plan. <a href="#plans">Compare Basic and Pro</a>.</p>
 </section>`,
   });
 }
