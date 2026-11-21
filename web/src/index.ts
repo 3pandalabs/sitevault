@@ -268,7 +268,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
       const owner = me ? (await accountSites(env, me)).length > 0 : false;
       const admin = me ? isAdminEmail(env, me.email) : false;
       const n = nonce();
-      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me), admin, n), 200, n);
+      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me), admin, n, me?.email), 200, n);
     }
     if (path === "/new") {
       const me = await currentAccount(env.SITES, request);

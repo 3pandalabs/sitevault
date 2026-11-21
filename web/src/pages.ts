@@ -64,7 +64,7 @@ const CONTACT = "3pandas@3pandalabs.com";
  * header, nav, sign-in or footer (AdVault has its own), and the body takes its
  * content's height so the iframe can fit it.
  */
-export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean }): string {
+export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean; email?: string | null }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -100,6 +100,7 @@ body{margin:0;font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe U
 main{flex:1}
 a{color:var(--accent-hi)}
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.signed-in{max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2);font-size:.875rem}@media (max-width:640px){.signed-in{display:none}}
 header.top .wrap{display:flex;justify-content:space-between;align-items:center;padding-top:24px;padding-bottom:24px;gap:12px}
 .brand{font-size:1.125rem;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
 .logo{color:var(--fg);text-decoration:none}
@@ -278,7 +279,7 @@ ${opts.embed ? "" : `<div class="backdrop" aria-hidden="true"><i class="b1"></i>
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
   <nav class="links">${
     opts.signedIn
-      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a>${opts.admin || !opts.owner ? `<a class="btn small" href="/new">Build my website</a>` : ""}<form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
+      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a>${opts.admin || !opts.owner ? `<a class="btn small" href="/new">Build my website</a>` : ""}${shownEmail(opts.email) ? `<span class="plain signed-in" title="Signed in">${esc(shownEmail(opts.email)!)}</span>` : ""}<form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
       : `<a class="btn small" href="/login">Sign in</a>`
   }</nav>
 </div></header>`}
@@ -345,12 +346,20 @@ function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
 
-export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false, admin = false, nonce?: string): string {
+/** A real address to show as "Signed in as"; AdVault test accounts (empty or *.invalid) show none. */
+export function shownEmail(email?: string | null): string | null {
+  const e = (email ?? "").trim();
+  return e && !/\.invalid$/i.test(e) ? e : null;
+}
+
+export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false, admin = false, nonce?: string, email?: string | null): string {
+  const who = shownEmail(email);
   return layout({
     owner,
     signedIn,
     admin,
     nonce,
+    email,
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>
@@ -358,6 +367,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
   ${plansBlock(billingOn, festiveUntil !== null)}
+  ${signedIn ? `<p class="notice" style="margin:0 0 16px">✓ You're signed in${who ? ` as <b>${esc(who)}</b>` : ""}. ${owner ? "Your website is one tap away." : "Pick up where you left off."}</p>` : ""}
   <div style="display:flex;flex-wrap:wrap;gap:12px">${signedIn ? `<a class="btn" href="/account">${owner ? "Go to my website" : "Go to my account"}</a>` : `<a class="btn" href="/login">Sign in to get started</a>`}<a class="btn ghost" href="#features">What you get</a></div>
   <div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
     <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included.</span></p>
