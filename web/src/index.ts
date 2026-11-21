@@ -13,6 +13,9 @@
 //   GET  /edit/<slug>?embed=1      the same editor inside AdVault's "Your website" (session only; no
 //                                  SiteVault chrome or billing; framable by AdVault only)
 //   GET  /embed/session?token=     AdVault's signed, single-use, 60 s handoff: signs the owner in, -> embed editor
+//   POST /preview[?site=<slug>]    the builder's "Preview my website": renders the posted form, saves NOTHING
+//   GET  /go/advault?to=<path>     one-tap sign-in to AdVault: a 60 s single-use token -> AdVault /auth/handoff
+//   GET  /auth/handoff?t=&to=      one-tap sign-in FROM AdVault: checks AdVault's token, sets the session, -> to
 //   GET  /embed/new?token=         AdVault create mode: create handoff (own token type), -> /embed/new?draft=<id>
 //   GET  /embed/new?draft=<id>     the FULL builder in embed chrome, pre-filled from AdVault's draft (session)
 //   GET  /embed/draft/<id>/<file>  a draft photo (session, that draft's account only)
@@ -42,11 +45,12 @@
 // D1 STATS (optional): aggregate visit counters, see stats.ts. Writes go
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
-import { renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
+import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
 import { PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
-import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
+import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
 import {
+  accountByAdvaultId,
   accountByEmail,
   accountForAdvault,
   advaultLinkEmail,
@@ -137,8 +141,9 @@ import {
 } from "./site.js";
 import { policyPathKind } from "./policies.js";
 import { DRAFT_ID, HANDOFF_JTI_TTL_SECONDS, allowEmbedFraming, verifyCreateHandoff, verifyHandoff } from "./embed.js";
+import { ADVAULT_WEB_ORIGIN, SIGNIN_NONCE_TTL_SECONDS, mintSigninToken, safeLocalPath, verifySigninToken } from "./signin.js";
 import { DRAFT_TTL_MS, draftExpired, draftFileKeys, draftPrefill, loadDraft, saveDraft, type Draft, type DraftFile } from "./drafts.js";
-import { phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
+import { esc, phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
 export interface Env {
@@ -268,14 +273,14 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
       const owner = me ? (await accountSites(env, me)).length > 0 : false;
       const admin = me ? isAdminEmail(env, me.email) : false;
       const n = nonce();
-      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me), admin, n), 200, n);
+      return html(homePage(cfg.on, cfg.on && festiveOpen(cfg, new Date()) ? endOf(cfg.festiveUntil!) : null, owner, Boolean(me), admin, n, me?.email), 200, n);
     }
     if (path === "/new") {
       const me = await currentAccount(env.SITES, request);
       // One website per account (admins excepted): an owner who has one goes to it.
       if (me && !isAdminEmail(env, me.email) && (await accountSites(env, me)).length > 0)
         return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
-      return builder(env, { kind: "new", account: me, admin: me ? isAdminEmail(env, me.email) : false });
+      return builder(env, { kind: "new", account: me, admin: me ? isAdminEmail(env, me.email) : false, publishesNow: newSitePublishes(env, me) });
     }
     if (path === "/login" || path === "/signup") {
       if (await currentAccount(env.SITES, request)) return Response.redirect(`${env.PUBLIC_ORIGIN}/account`, 302);
@@ -311,6 +316,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/api/address") return addressCheck(env, url);
     if (path === "/api/internal/resolve") return resolveInternal(request, env, url);
     if (path === "/api/internal/account-site") return accountSiteInternal(request, env, url);
+    if (path === "/go/advault") return goAdvault(request, env, url, head);
+    if (path === "/auth/handoff") return signinFromAdvault(request, env, url, head);
     if (path === "/embed/session") return embedSession(request, env, url, head);
     if (path === "/embed/new") return embedNew(request, env, url, head);
     if (path === "/embed/created") return embedCreated(request, env, url);
@@ -342,6 +349,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
 
   if (method === "POST") {
     if (path === "/api/sites") return createSite(request, env, ctx);
+    if (path === "/preview") return previewSite(request, env, url);
     if (path === "/login" || path === "/signup") return authSubmit(request, env, ctx, path === "/login" ? "login" : "signup");
     if (path === "/logout") return logout(request, env);
     if (path === "/forgot-password") return forgotPasswordSubmit(request, env);
@@ -942,6 +950,65 @@ async function embedSession(request: Request, env: Env, url: URL, head: boolean)
 }
 
 // ---------------------------------------------------------------------------
+// One-tap sign-in between SiteVault and AdVault (2026-11-20, signin.ts has the
+// token format). Admins are refused both ways (they sign in by hand). Any
+// failure lands on the normal sign-in page, never an error that says why.
+
+function noStoreRedirect(location: string, status = 302, cookie?: string): Response {
+  const res = new Response(null, { status, headers: { location, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+  if (cookie) res.headers.append("set-cookie", cookie);
+  return res;
+}
+
+/**
+ * GET /go/advault?to=<AdVault path>  "Video ads" / "Make a YouTube ad" for a
+ * signed-in owner whose account is linked to an AdVault user: mint a 60 s,
+ * single-use "signin-advault" token and send them to AdVault's /auth/handoff,
+ * which signs them in to the same account. Not signed in, not linked, an
+ * id-only test account, an admin, or no INTERNAL_TOKEN: the plain AdVault page
+ * (AdVault asks them to sign in as usual). HEAD mints nothing.
+ */
+async function goAdvault(request: Request, env: Env, url: URL, head: boolean): Promise<Response> {
+  const to = safeLocalPath(url.searchParams.get("to"), "/dashboard");
+  const plain = noStoreRedirect(`${ADVAULT_WEB_ORIGIN}${to}`);
+  if (head || !env.INTERNAL_TOKEN) return plain;
+  const me = await currentAccount(env.SITES, request);
+  if (!me || !me.advaultUserId || isIdOnlyAccount(me) || isAdminEmail(env, me.email)) return plain;
+  const token = await mintSigninToken(env.INTERNAL_TOKEN, "signin-advault", { uid: me.advaultUserId, email: me.email });
+  return noStoreRedirect(`${ADVAULT_WEB_ORIGIN}/auth/handoff?t=${encodeURIComponent(token)}&to=${encodeURIComponent(to)}`);
+}
+
+/**
+ * GET /auth/handoff?t=&to=  AdVault's "signin-sitevault" token (AdVault
+ * POST /auth/sitevault-handoff). Valid signature and purpose, at most 60 s
+ * old, never used before (KV `signinjti:`), and the account linked to that
+ * AdVault user id (`acctadv:` only: never found, created or merged by email)
+ * with the same email (an id-only test account: no email) and not an admin:
+ * then the normal session cookie and a 303 to `to` (a local path; default
+ * /account). Anything else: /login?next=<to>. HEAD never uses a token up.
+ */
+async function signinFromAdvault(request: Request, env: Env, url: URL, head: boolean): Promise<Response> {
+  const to = safeLocalPath(url.searchParams.get("to"), "/account");
+  const toLogin = (reason: string) => {
+    console.warn("signin_handoff_refused", { reason });
+    return noStoreRedirect(`${env.PUBLIC_ORIGIN}/login?next=${encodeURIComponent(to)}`, 303);
+  };
+  const checked = await verifySigninToken(env.INTERNAL_TOKEN, url.searchParams.get("t") ?? "", "signin-sitevault");
+  if (!checked.ok) return toLogin(checked.error);
+  const t = checked.token;
+  if (head) return html(messagePage("Signing you in", "One moment.", "Signing you in"), 200);
+  const nonceKey = `signinjti:${t.nonce}`;
+  if (await env.SITES.get(nonceKey)) return toLogin("reused");
+  await env.SITES.put(nonceKey, "1", { expirationTtl: SIGNIN_NONCE_TTL_SECONDS });
+  const account = await accountByAdvaultId(env.SITES, t.uid);
+  if (!account) return toLogin("no_account");
+  if (isAdminEmail(env, account.email) || isAdminEmail(env, t.email)) return toLogin("admin");
+  const emailOk = isIdOnlyAccount(account) ? advaultLinkEmail(t.email) === "" : normaliseEmail(t.email) === account.email;
+  if (!emailOk) return toLogin("email_mismatch");
+  return noStoreRedirect(`${env.PUBLIC_ORIGIN}${to}`, 303, sessionCookie(await startSession(env.SITES, account.id)));
+}
+
+// ---------------------------------------------------------------------------
 // AdVault create mode (2026-11-19): AdVault's "Make me a website" frames the
 // FULL builder, pre-filled from the campaign (drafts.ts has the pre-fill
 // store, embed.ts the create token). Flow:
@@ -1039,12 +1106,19 @@ async function sessionDraft(request: Request, env: Env, id: string): Promise<{ d
   return { draft, account };
 }
 
+/** A site built here goes live at once while billing is off, or for an admin (comped). */
+function newSitePublishes(env: Env, account: { email: string } | null): boolean {
+  return !billingConfig(env).on || isAdminEmail(env, account?.email);
+}
+
 /** The builder in AdVault create mode (embed chrome, pre-filled). */
 function embedBuilderMode(env: Env, draft: Draft, account: Account): FormMode {
   return {
     kind: "new",
     account,
     admin: draft.admin,
+    // AdVault charges first when `pay`: the site is made unpublished.
+    publishesNow: !draft.pay,
     embedDraft: {
       id: draft.id,
       photos: draft.photos.map((p) => ({ key: p.key, url: `${env.PUBLIC_ORIGIN}/embed/draft/${draft.id}/${p.key.split("/").pop()}` })),
@@ -1245,14 +1319,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false, emb
       justPaid,
     };
   }
-  let stats = null;
-  if (env.STATS) {
-    try {
-      stats = await readStats(env.STATS, [site.slug, ...(site.aliases ?? [])], now);
-    } catch (err) {
-      console.warn("stats read failed", String(err));
-    }
-  }
+  const visitors = await visitorsFor(env, site, cfg, now);
   const owner = site.ownerId ? await loadAccount(env.SITES, site.ownerId) : null;
   return {
     kind: "edit",
@@ -1260,7 +1327,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false, emb
     key,
     photoUrl: (k) => `${env.PUBLIC_ORIGIN}/p/${k}`,
     billing,
-    visitors: stats ? { stats, full: statsVisible(site, cfg, now) } : undefined,
+    visitors,
     pendingReviews: await listPendingReviews(env, site.slug),
     siteUrl: siteUrl(env, site.slug),
     admin: isAdminEmail(env, owner?.email),
@@ -1564,7 +1631,8 @@ async function ownedSite(env: Env, account: Account, slug: string): Promise<Site
   return site && site.status === "live" && site.ownerId === account.id ? site : null;
 }
 
-async function accountSites(env: Env, account: Account): Promise<AccountSite[]> {
+/** `withStats`: also each site's visitor stats (the owner's My website page). */
+async function accountSites(env: Env, account: Account, withStats = false): Promise<AccountSite[]> {
   const cfg = billingConfig(env);
   const now = new Date();
   const out: AccountSite[] = [];
@@ -1579,6 +1647,7 @@ async function accountSites(env: Env, account: Account): Promise<AccountSite[]> 
       siteUrl: siteUrl(env, site.slug),
       state: siteState(site, cfg, now),
       pendingReviews: (await listPendingReviews(env, site.slug)).length,
+      ...(withStats ? { visitors: await visitorsFor(env, site, cfg, now) } : {}),
     });
   }
   return out;
@@ -1623,6 +1692,22 @@ async function adminDashboard(request: Request, env: Env): Promise<Response> {
   return html(adminPage(sites, n), 200, n);
 }
 
+/**
+ * The owner's visitor stats for a site (edit page and My website): the full
+ * breakdown on Pro (or billing off), the 30-day count on Basic. undefined
+ * without the D1 binding or on a read error. Never shown on the customer site.
+ */
+async function visitorsFor(env: Env, site: Site, cfg: ReturnType<typeof billingConfig>, now: Date): Promise<VisitorsView | undefined> {
+  if (!env.STATS) return undefined;
+  try {
+    const stats = await readStats(env.STATS, [site.slug, ...(site.aliases ?? [])], now);
+    return stats ? { stats, full: statsVisible(site, cfg, now) } : undefined;
+  } catch (err) {
+    console.warn("stats read failed", String(err));
+    return undefined;
+  }
+}
+
 async function accountHome(request: Request, env: Env, url: URL, claimError?: string): Promise<Response> {
   const account = await currentAccount(env.SITES, request);
   if (!account) return Response.redirect(`${env.PUBLIC_ORIGIN}/login`, 302);
@@ -1636,7 +1721,8 @@ async function accountHome(request: Request, env: Env, url: URL, claimError?: st
           ? "Couldn't update your password right now. Please try again."
           : undefined;
   return html(
-    accountPage(isIdOnlyAccount(account) ? "an AdVault test customer" : account.email, await accountSites(env, account), {
+    // Admins (many sites) see the list as before; an owner sees their site's visitors.
+    accountPage(isIdOnlyAccount(account) ? "an AdVault test customer" : account.email, await accountSites(env, account, !isAdminEmail(env, account.email)), {
       claimError,
       claimed: url.searchParams.get("claimed") === "1",
       admin: isAdminEmail(env, account.email),
@@ -2148,10 +2234,103 @@ function builderExtrasChecks(form: Parsed, parsed: ReturnType<typeof parseConten
   return listingPick;
 }
 
+/** Inline preview photos stop at this many bytes in total (they ride in the page as data: URIs). */
+const PREVIEW_INLINE_BYTES = 12 * 1024 * 1024;
+/** Browsers can show these inline (HEIC/HEIF can't). */
+const PREVIEW_INLINE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * POST /preview[?site=<slug>]  "Preview my website" (2026-11-20): the builder
+ * posts the form as it is (new tab) and gets the site rendered by the SAME
+ * renderSite as the live site, with a "Preview — not published yet" bar and
+ * noindex. It NEVER writes: no KV, R2 or D1, no account, no site, no address
+ * reserved, no charge, no rate-limit counter.
+ *
+ * The text goes through parseContent, exactly as create validates it (facts
+ * only, no links, sizes); errors -> a page listing what to fix. Photos are
+ * never R2 keys from the form: new uploads are shown inline from this request
+ * (data: URIs, checked like create, JPEG/PNG/WebP, 12 MB total); an AdVault
+ * draft's photos only when the draft is the signed-in account's
+ * (`sessionDraft`) and only its own keys (served by the session-gated draft
+ * route); the edit page's kept photos only when the caller may edit that site
+ * (`authorize`: edit key or owner session) and only keys that site has.
+ * Video, before & after, menu, schedule and listings are not previewed (a
+ * note says they show after saving). Same-origin posts only.
+ */
+async function previewSite(request: Request, env: Env, url: URL): Promise<Response> {
+  if (!sameOrigin(request, env.PUBLIC_ORIGIN)) return html(messagePage("Preview", "Please use the Preview button on the build page.", "Preview"), 403);
+  const form = await readForm(request);
+  if (!form) return html(previewErrorsPage({ form: "Please use the Preview button on the build page." }), 400);
+  const parsed = parseContent(form.fields);
+  const errors: FieldErrors = parsed.ok ? {} : { ...parsed.errors };
+  const photoErr = checkPhotos(form.files, 0);
+  if (photoErr) errors.photos = photoErr;
+  if (!parsed.ok || Object.keys(errors).length) return html(previewErrorsPage(errors), 400);
+
+  // Existing photos the caller may show (never an arbitrary key).
+  const shown: string[] = [];
+  let base: Site | null = null;
+  const editSlug = url.searchParams.get("site");
+  if (editSlug && /^[a-z0-9-]+$/.test(editSlug)) {
+    base = await authorize(env, editSlug, form.fields.key ?? "", request);
+    if (base) for (const k of form.keep) if (base.photos.includes(k)) shown.push(photoUrl(renderCtx(env, base.slug), k));
+  } else if (form.fields.draft) {
+    const own = await sessionDraft(request, env, form.fields.draft);
+    if (own) {
+      const keys = new Set(own.draft.photos.map((p) => p.key));
+      for (const k of form.keepDraft) if (keys.has(k)) shown.push(`${env.PUBLIC_ORIGIN}/embed/draft/${own.draft.id}/${k.split("/").pop()}`);
+    }
+  }
+  // New uploads, inline from this request only.
+  let inlineBytes = 0;
+  let skipped = 0;
+  for (const f of form.files) {
+    if (shown.length >= MAX_PHOTOS || !PREVIEW_INLINE_TYPES.includes(f.type) || inlineBytes + f.size > PREVIEW_INLINE_BYTES) {
+      skipped += 1;
+      continue;
+    }
+    inlineBytes += f.size;
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    shown.push(`data:${f.type};base64,${btoa(bin)}`);
+  }
+
+  const slug = (form.fields.slug && normaliseAddress(form.fields.slug)) || base?.slug || "your-business";
+  const now = new Date().toISOString();
+  const site: Site = {
+    ...(base ? { reviews: base.reviews, policies: base.policies } : {}),
+    ...parsed.value,
+    slug,
+    photos: shown,
+    status: "live",
+    source: base?.source ?? (form.fields.draft ? "advault" : "web"),
+    editKeyHash: "",
+    createdAt: base?.createdAt ?? now,
+    updatedAt: now,
+  };
+  const n = nonce();
+  const ctx = { ...renderCtx(env, slug), ping: false, nonce: n, photoSrc: (k: string) => k };
+  const notes = [
+    "Preview — not published yet. Nothing is saved until you press the button on the build page.",
+    skipped ? `${skipped} photo${skipped === 1 ? "" : "s"} can't be shown here and will appear after you save.` : "",
+    "Video, before & after photos, menus and listings show after you save.",
+  ].filter(Boolean);
+  const bar = `<div role="status" style="position:sticky;top:0;z-index:9999;background:#111827;color:#fff;font:600 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:10px 16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.25)">${notes.map((t, i) => (i === 0 ? `<span>${esc(t)}</span>` : `<span style="display:block;font-weight:400;opacity:.85">${esc(t)}</span>`)).join("")}</div>`;
+  let page = renderSite(site, ctx);
+  page = page.includes('<meta name="robots"') ? page : page.replace("<head>", '<head><meta name="robots" content="noindex">');
+  page = page.replace(/<body([^>]*)>/, (m) => `${m}${bar}`);
+  const res = html(page, 200, n);
+  res.headers.set("x-robots-tag", "noindex");
+  res.headers.set("cache-control", "no-store");
+  res.headers.set("referrer-policy", "no-referrer");
+  return res;
+}
+
 async function createSite(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const form = await readForm(request);
   const signedIn = await currentAccount(env.SITES, request);
-  const mode = { kind: "new", account: signedIn } as const;
+  const mode = { kind: "new", account: signedIn, publishesNow: newSitePublishes(env, signedIn) } as const;
   if (!form) return rejected(request, env, mode, { form: "Please use the form." }, {});
   const { fields, files } = form;
   // Accounts: signed in = the site goes to that account; otherwise sign up here.

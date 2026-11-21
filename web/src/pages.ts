@@ -64,7 +64,7 @@ const CONTACT = "3pandas@3pandalabs.com";
  * header, nav, sign-in or footer (AdVault has its own), and the body takes its
  * content's height so the iframe can fit it.
  */
-export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean }): string {
+export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean; email?: string | null }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -100,6 +100,7 @@ body{margin:0;font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe U
 main{flex:1}
 a{color:var(--accent-hi)}
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.signed-in{max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2);font-size:.875rem}@media (max-width:640px){.signed-in{display:none}}
 header.top .wrap{display:flex;justify-content:space-between;align-items:center;padding-top:24px;padding-bottom:24px;gap:12px}
 .brand{font-size:1.125rem;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
 .logo{color:var(--fg);text-decoration:none}
@@ -143,8 +144,6 @@ h2{font-size:1.5rem;font-weight:600;letter-spacing:-.015em}
 .card h3{margin:0 0 6px;font-size:1rem;font-weight:600}
 .card p{margin:0;color:var(--muted);font-size:.95rem}
 .pill{display:inline-block;border:1px solid rgba(56,189,248,.3);background:rgba(56,189,248,.10);color:#bae6fd;font-weight:500;border-radius:999px;padding:4px 12px;font-size:.75rem;letter-spacing:.05em;text-transform:uppercase;margin-bottom:16px}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
-.chips span{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:4px 12px;font-size:.875rem}
 section{padding:24px 0}
 form .field{margin:0 0 18px}
 label{display:block;font-weight:500;margin-bottom:6px;color:var(--fg)}
@@ -278,7 +277,7 @@ ${opts.embed ? "" : `<div class="backdrop" aria-hidden="true"><i class="b1"></i>
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
   <nav class="links">${
     opts.signedIn
-      ? `<a class="plain" href="https://advault.3pandalabs.com">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a>${opts.admin || !opts.owner ? `<a class="btn small" href="/new">Build my website</a>` : ""}<form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
+      ? `<a class="plain" href="/go/advault?to=/dashboard">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a>${opts.admin || !opts.owner ? `<a class="btn small" href="/new">Build my website</a>` : ""}${shownEmail(opts.email) ? `<span class="plain signed-in" title="Signed in">${esc(shownEmail(opts.email)!)}</span>` : ""}<form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
       : `<a class="btn small" href="/login">Sign in</a>`
   }</nav>
 </div></header>`}
@@ -329,7 +328,7 @@ function plansBlock(billingOn: boolean, festive: boolean): string {
     : festive
       ? `$${DOLLARS.festivePro}/year <s>$${DOLLARS.pro}</s> <span class="tag">price locked for life</span>`
       : `$${DOLLARS.pro}/year`;
-  return `<div class="plans">
+  return `<div class="plans" id="plans">
   <div class="included"><h2>Basic</h2><p class="plan-price">${basicPrice}</p><p class="plan-sub">Everything included:</p>${list(INCLUDED)}</div>
   <div class="included pro"><h2>Pro</h2><p class="plan-price">${proPrice}</p><p class="plan-sub">Everything in Basic, plus visitor stats:</p>${list(PRO_EXTRAS)}</div>
 </div>
@@ -345,12 +344,20 @@ function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
 
-export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false, admin = false, nonce?: string): string {
+/** A real address to show as "Signed in as"; AdVault test accounts (empty or *.invalid) show none. */
+export function shownEmail(email?: string | null): string | null {
+  const e = (email ?? "").trim();
+  return e && !/\.invalid$/i.test(e) ? e : null;
+}
+
+export function homePage(billingOn = false, festiveUntil: Date | null = null, owner = false, signedIn = false, admin = false, nonce?: string, email?: string | null): string {
+  const who = shownEmail(email);
   return layout({
     owner,
     signedIn,
     admin,
     nonce,
+    email,
     title: "SiteVault: a website for your business in 5 minutes",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>
@@ -358,18 +365,21 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
   ${plansBlock(billingOn, festiveUntil !== null)}
+  ${signedIn ? `<p class="notice" style="margin:0 0 16px">✓ You're signed in${who ? ` as <b>${esc(who)}</b>` : ""}. ${owner ? "Your website is one tap away." : "Pick up where you left off."}</p>` : ""}
   <div style="display:flex;flex-wrap:wrap;gap:12px">${signedIn ? `<a class="btn" href="/account">${owner ? "Go to my website" : "Go to my account"}</a>` : `<a class="btn" href="/login">Sign in to get started</a>`}<a class="btn ghost" href="#features">What you get</a></div>
   <div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
     <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included.</span></p>
-    <a class="btn" href="https://advault.3pandalabs.com">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
+    <a class="btn" href="${signedIn ? "/go/advault?to=/dashboard" : "https://advault.3pandalabs.com"}">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
   </div>
-  <div class="chips"><span>Landscapers</span><span>Salons</span><span>Plumbers</span><span>Cleaners</span><span>Dentists</span><span>Restaurants</span><span>Realtors</span></div>
 </section>
-<div class="steps">
-  <div class="card"><h3>1. Tell us the basics</h3><p>Name, phone, what you offer, where you work, your hours.</p></div>
-  <div class="card"><h3>2. Add photos</h3><p>Your shop, your team, your work. Straight from your phone.</p></div>
-  <div class="card"><h3>3. Share your link</h3><p>Put it on Google, your ads, your van, your business cards.</p></div>
-</div>
+<section id="how-it-works">
+  <h2>Three simple steps</h2>
+  <div class="steps">
+    <div class="card"><h3>1. Tell us the basics</h3><p>Name, phone, what you offer, where you work, your hours.</p></div>
+    <div class="card"><h3>2. Add photos</h3><p>Your shop, your team, your work. Straight from your phone.</p></div>
+    <div class="card"><h3>3. Share your link</h3><p>Put it on Google, your ads, your van, your business cards.</p></div>
+  </div>
+</section>
 <section id="features">
   <h2>What's on your site</h2>
   <div class="steps">
@@ -377,13 +387,23 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
     <div class="card"><h3>Services and prices</h3><p>Exactly what you offer, in your own words.</p></div>
     <div class="card"><h3>Hours, area, directions</h3><p>Everything a customer checks before they call.</p></div>
     <div class="card"><h3>Fast and private</h3><p>Loads quickly on any phone. No cookies, no trackers.</p></div>
+    <div class="card"><h3>Visitor stats <span class="pill" style="margin:0 0 0 6px;padding:2px 8px;vertical-align:middle">Pro</span></h3><p>How many people visit each day, and how many tapped Call or Directions.</p></div>
+    <div class="card"><h3>Where they found you <span class="pill" style="margin:0 0 0 6px;padding:2px 8px;vertical-align:middle">Pro</span></h3><p>Google, YouTube, Facebook, WhatsApp or your AdVault ad, and which towns they're in.</p></div>
   </div>
+  <p class="plan-note">Pro features come with the Pro plan. <a href="#plans">Compare Basic and Pro</a>.</p>
 </section>`,
   });
 }
 
 export type FormMode =
-  | { kind: "new"; account?: { email: string } | null; admin?: boolean; embedDraft?: EmbedDraftView }
+  | {
+      kind: "new";
+      account?: { email: string } | null;
+      admin?: boolean;
+      embedDraft?: EmbedDraftView;
+      /** Creating puts the site live at once (billing off, an admin, or an AdVault site with nothing to pay). */
+      publishesNow?: boolean;
+    }
   | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; pendingReviews?: Review[]; signedIn?: boolean; siteUrl?: string; admin?: boolean; embed?: boolean; saved?: boolean };
 
 /**
@@ -418,22 +438,24 @@ export type VisitorsView = { stats: SiteStats | null; full: boolean };
 
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 
-function payButton(slug: string, key: string, kind: CheckoutKind, label: string, ghost = false): string {
-  return `<form method="post" action="/api/billing/checkout"><input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="slug" value="${esc(slug)}"><input type="hidden" name="kind" value="${kind}"><button class="btn${ghost ? " ghost" : ""}" type="submit">${esc(label)}</button></form>`;
+function payButton(slug: string, key: string, kind: CheckoutKind, label: string, ghost = false, confirmAddr?: string): string {
+  // Publishing asks first (PUBLISH_CONFIRM_SCRIPT); renewals don't.
+  const confirm = confirmAddr !== undefined ? ` data-confirm-publish="publish" data-confirm-addr="${esc(confirmAddr)}"` : "";
+  return `<form method="post" action="/api/billing/checkout"${confirm}><input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="slug" value="${esc(slug)}"><input type="hidden" name="kind" value="${kind}"><button class="btn${ghost ? " ghost" : ""}" type="submit">${esc(label)}</button></form>`;
 }
 
-/** Buttons to publish a SiteVault-made site (done page and edit page). */
-function publishButtons(slug: string, key: string, prices: BillingView["prices"]): string {
+/** Buttons to publish a SiteVault-made site (done page and edit page). Each asks "Publish now?" first. */
+function publishButtons(slug: string, key: string, prices: BillingView["prices"], addr = ""): string {
   const festive = prices.festive ? `<p class="hint">Festive season prices (price locked for life): Basic $${prices.basic}/year (normally $${DOLLARS.basic}), Pro $${prices.pro}/year (normally $${DOLLARS.pro}).</p>` : "";
   return `${festive}<div class="buttons">${
-    prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: $${prices.basic}/year`) : ""
-  }${payButton(slug, key, "publish_pro", `Publish with Pro: $${prices.pro}/year`, prices.basic !== null)}</div>`;
+    prices.basic !== null ? payButton(slug, key, "publish_basic", `Publish: $${prices.basic}/year`, false, addr) : ""
+  }${payButton(slug, key, "publish_pro", `Publish with Pro: $${prices.pro}/year`, prices.basic !== null, addr)}</div>`;
 }
 
 /** Days before the paid time ends when renewing opens. */
 export const RENEW_WINDOW_DAYS = 45;
 
-export function billingSection(slug: string, key: string, v: BillingView): string {
+export function billingSection(slug: string, key: string, v: BillingView, siteUrl = ""): string {
   const b = v.billing;
   if (b.comp) {
     return `<details class="section" id="billing">
@@ -466,7 +488,7 @@ export function billingSection(slug: string, key: string, v: BillingView): strin
   if (v.state === "unpublished" && v.source === "advault") {
     buttons.push(`<div class="buttons"><a class="btn" href="https://advault.3pandalabs.com/dashboard">Finish in AdVault</a></div>`);
   } else if (v.state === "unpublished") {
-    buttons.push(publishButtons(slug, key, v.prices));
+    buttons.push(publishButtons(slug, key, v.prices, siteUrl));
   } else {
     // Paying again only makes sense near the end of the paid time (or after it):
     // a site paid until next year must not be asked to pay now.
@@ -566,13 +588,21 @@ ${approved.length ? `<h3 style="margin:24px 0 8px">Published (${approved.length}
 </section>`;
 }
 
-export function visitorsSection(v: VisitorsView, embed = false): string {
+/**
+ * The visitor stats. Edit page: a collapsed section. `open` (the owner's My
+ * website page, 2026-11-20): the same content, shown open under a heading.
+ */
+export function visitorsSection(v: VisitorsView, embed = false, open = false): string {
   const s = v.stats;
   if (!s) return "";
+  const wrap = (summary: string, body: string) =>
+    open
+      ? `<section class="visitors" aria-labelledby="visitors-h" style="padding:8px 0 4px"><h3 id="visitors-h" style="margin:0 0 6px;font-size:1rem">Visitors (last 30 days)</h3>${body}</section>`
+      : `<details class="section"><summary>Visitors <span class="sum">— ${summary}</span></summary><div class="section-body">${body}</div></details>`;
   const total = `<p><strong>${s.total}</strong> visit${s.total === 1 ? "" : "s"} in the last 30 days.</p>`;
   const vt = `${s.total} visit${s.total === 1 ? "" : "s"} in the last 30 days`;
   if (!v.full) {
-    return `<details class="section"><summary>Visitors <span class="sum">— ${vt}</span></summary><div class="section-body">${total}${embed ? "" : `<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p>`}</div></details>`;
+    return wrap(vt, `${total}${embed ? "" : `<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p>`}`);
   }
   const place = (p: { city: string; country: string }) => [p.city, p.country].filter(Boolean).join(", ") || "Unknown";
   const tables = [
@@ -581,10 +611,10 @@ export function visitorsSection(v: VisitorsView, embed = false): string {
     barTable("Devices", "Device", s.devices.map((r) => ({ label: r.device.charAt(0).toUpperCase() + r.device.slice(1), n: Number(r.views) }))),
     barTable("Visits by day", "Day", s.days.map((r) => ({ label: fmtDate(new Date(`${r.day}T00:00:00Z`)), n: Number(r.views) }))),
   ].filter(Boolean);
-  return `<details class="section"><summary>Visitors <span class="sum">— ${vt}</span></summary><div class="section-body">${total}
+  return wrap(vt, `${total}
   <dl class="facts"><dt>Taps to call</dt><dd>${s.taps.calls}</dd><dt>Taps for directions</dt><dd>${s.taps.directions}</dd></dl>
   ${tables.length ? `<div class="stats">${tables.join("")}</div>` : ""}
-  <p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p></div></details>`;
+  <p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p>`);
 }
 
 const FIELD_ORDER = [
@@ -880,7 +910,8 @@ ${
     ? `<div class="notice" id="embed-saved" role="status" data-slug="${esc(mode.site.slug)}" data-site-url="${esc(mode.siteUrl ?? "")}"><p style="margin:0"><strong>Saved.</strong> Your changes are live.${mode.siteUrl ? ` <a href="${esc(mode.siteUrl)}" target="_blank" rel="noopener">Open my website</a>` : ""}</p></div>`
     : ""
 }
-<form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate>
+${previewBanner(mode)}
+<form id="builder" method="post" action="${action}" enctype="multipart/form-data" novalidate${createConfirm(mode)}>
 ${mode.kind === "edit" ? `<input type="hidden" name="key" value="${esc(mode.key)}">` : ""}
 ${embed && !draft ? `<input type="hidden" name="embed" value="1">` : ""}
 ${draft ? `<input type="hidden" name="draft" value="${esc(draft.id)}">` : ""}
@@ -907,19 +938,6 @@ ${draft ? `<input type="hidden" name="draft" value="${esc(draft.id)}">` : ""}
       <p class="hint" style="margin:10px 0 6px">One per line, as <strong>Name | Address | Phone</strong> (up to ${MAX_LOCATIONS}). Each gets its own Call and Directions in a "Locations" popup on your site.</p>
       <textarea id="locations" name="locations" placeholder="Downtown | 123 Main St, Springfield | (555) 111-2222&#10;Westside | 456 Oak Ave, Springfield | (555) 333-4444">${v("locations", site ? locationsToText(site.locations ?? []) : "")}</textarea>${e("locations")}
     </details></div>
-  </div>
-</fieldset>
-<fieldset id="website-style"><legend>Website style</legend>
-  <p class="hint">Your website's look, in your business type's colours. Pick a style, then <strong>Save changes</strong> — it changes how your published website appears (open it in a new tab to see). You can switch anytime.</p>
-  <div class="templates"${CAT_THUMB_COLORS[selectedCat] ? ` style="--tp:${CAT_THUMB_COLORS[selectedCat].p};--tb:${CAT_THUMB_COLORS[selectedCat].b}"` : ""}>
-    ${(() => {
-      const selTpl = values.template ?? site?.template ?? DEFAULT_TEMPLATE;
-      const previewBase = mode.kind === "edit" ? mode.siteUrl : undefined;
-      return TEMPLATES.map(
-        (t) =>
-          `<div class="tpl-item"><label class="tpl${selTpl === t.key ? " sel" : ""}"><input type="radio" name="template" value="${t.key}"${selTpl === t.key ? " checked" : ""}><span class="tpl-thumb tpl-${t.key}"></span><span class="tpl-name">${esc(t.label)}</span><span class="tpl-blurb">${esc(t.blurb)}</span></label>${previewBase ? `<a class="tpl-preview" href="${esc(previewBase)}?style=${t.key}" target="_blank" rel="noopener">Preview this style ↗</a>` : ""}</div>`,
-      ).join("");
-    })()}
   </div>
 </fieldset>
 <fieldset><legend>What you offer</legend>
@@ -950,6 +968,19 @@ ${listings}
 ${faq}
 ${mode.kind === "new" && !draft ? accountFields(mode.account ?? null, v, e) : ""}
 ${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:16px 0">${mode.account.email.includes("@") ? `Saved to your 3PandaLabs account, <strong>${esc(mode.account.email)}</strong> (the same login as AdVault).` : "Saved to this AdVault account."}</p>` : ""}
+<fieldset id="website-style"><legend>Preview your website in different styles</legend>
+  <p class="hint">Try each style to see your website with your details, then choose the one you like. You can switch anytime.</p>
+  <div class="templates"${CAT_THUMB_COLORS[selectedCat] ? ` style="--tp:${CAT_THUMB_COLORS[selectedCat].p};--tb:${CAT_THUMB_COLORS[selectedCat].b}"` : ""}>
+    ${(() => {
+      const selTpl = values.template ?? site?.template ?? DEFAULT_TEMPLATE;
+      const previewBase = mode.kind === "edit" ? mode.siteUrl : undefined;
+      return TEMPLATES.map(
+        (t) =>
+          `<div class="tpl-item"><label class="tpl${selTpl === t.key ? " sel" : ""}"><input type="radio" name="template" value="${t.key}"${selTpl === t.key ? " checked" : ""}><span class="tpl-thumb tpl-${t.key}"></span><span class="tpl-name">${esc(t.label)}</span><span class="tpl-blurb">${esc(t.blurb)}</span></label>${previewBase ? `<a class="tpl-preview" href="${esc(previewBase)}?style=${t.key}" target="_blank" rel="noopener">Preview this style ↗</a>` : ""}</div>`,
+      ).join("");
+    })()}
+  </div>
+</fieldset>
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>${
   draft
     ? `I run this business, the details are accurate, and I agree to the <a href="/terms" target="_blank" rel="noopener">SiteVault terms</a>. The website is public.`
@@ -958,11 +989,12 @@ ${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:
 <div class="err" id="err-form" role="alert">${esc(errors.form ?? "")}</div>
 <div class="buttons">
   <button class="btn" type="submit" id="submit">${mode.kind === "edit" ? "Save changes" : "Create my website"}</button>
+  <button class="btn ghost" type="submit" id="preview-btn" formaction="${esc(previewAction(mode))}" formtarget="_blank" formnovalidate>Preview my website</button>
   ${mode.kind === "edit" ? `<a class="btn ghost" href="/edit/${encodeURIComponent(mode.site.slug)}${embed ? "?embed=1" : `?k=${encodeURIComponent(mode.key)}`}">Cancel</a>` : ""}
 </div>
 </form>
 ${mode.kind === "edit" && mode.visitors ? visitorsSection(mode.visitors, embed) : ""}
-${mode.kind === "edit" && mode.billing && !embed ? billingSection(mode.site.slug, mode.key, mode.billing) : ""}
+${mode.kind === "edit" && mode.billing && !embed ? billingSection(mode.site.slug, mode.key, mode.billing, mode.siteUrl ?? "") : ""}
 ${mode.kind === "edit" ? reviewsModerationSection(mode.site.slug, mode.key, mode.pendingReviews ?? [], mode.site.reviews ?? [], embed) : ""}
 ${
   mode.kind === "edit"
@@ -982,9 +1014,85 @@ ${
     signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
     noindex: mode.kind === "edit" || Boolean(draft),
     embed,
-    script: SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : ""),
+    script: PUBLISH_CONFIRM_SCRIPT + SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : ""),
   });
 }
+
+/**
+ * The reassurance line above the form. An already-published site: changes
+ * go live only on Save. Otherwise: they'll see it before it goes live.
+ */
+function previewBanner(mode: FormMode): string {
+  const published = mode.kind === "edit" && (!mode.billing || mode.billing.state !== "unpublished");
+  const text = published
+    ? "Changes go live only when you press Save changes."
+    : "Don't worry: you'll see a preview of your website with your details before it goes live. Press <strong>Preview my website</strong> at the bottom any time.";
+  return `<p class="notice" id="preview-banner" style="margin:0 0 20px">${text}</p>`;
+}
+
+/**
+ * "Preview my website" posts the form as it is to POST /preview in a new tab
+ * (index.ts previewSite): rendered, nothing saved. The edit page names its
+ * site so kept photos can be shown.
+ */
+function previewAction(mode: FormMode): string {
+  return mode.kind === "edit" ? `/preview?site=${encodeURIComponent(mode.site.slug)}` : "/preview";
+}
+
+/**
+ * The create form asks before it goes live (PUBLISH_CONFIRM_SCRIPT): "publish"
+ * when the new site is live at once, "create" when it is made unpublished
+ * (it is then published by a pay button, which asks too). Saving edits to a
+ * live site never asks.
+ */
+function createConfirm(mode: FormMode): string {
+  if (mode.kind !== "new") return "";
+  return ` data-confirm-publish="${mode.publishesNow ? "publish" : "create"}"`;
+}
+
+/**
+ * Before a form that publishes is sent: an in-page "Publish now?" panel (never
+ * window.confirm). Only "Yes, publish" sends the form; "Go back" closes the
+ * panel. Registered BEFORE the builder's own submit handler, and it stops the
+ * event, so the builder's fetch runs only after the yes. The address comes
+ * from the form's web-address field, else data-confirm-addr. Without JS the
+ * form posts as before (no confirm): the no-JS path is unchanged.
+ */
+const PUBLISH_CONFIRM_SCRIPT = `
+(function(){
+  [].slice.call(document.querySelectorAll('form[data-confirm-publish]')).forEach(function(f){
+    var panel=null, previewing=false;
+    // "Preview my website" (formaction /preview) never publishes: no confirm.
+    var pv=f.querySelector('#preview-btn'); if(pv) pv.addEventListener('click',function(){ previewing=true; setTimeout(function(){ previewing=false; },0); });
+    function addr(){
+      var slug=f.querySelector('#slug');
+      if(slug&&slug.value&&slug.getAttribute('data-domain')) return 'https://'+slug.value.trim().toLowerCase()+'.'+slug.getAttribute('data-domain');
+      return f.getAttribute('data-confirm-addr')||'your web address';
+    }
+    function close(){ if(panel){ panel.parentNode.removeChild(panel); panel=null; } }
+    f.addEventListener('submit',function(ev){
+      if(previewing||(ev.submitter&&ev.submitter.id==='preview-btn')) return;
+      if(f.getAttribute('data-confirmed')==='1'){ f.removeAttribute('data-confirmed'); return; }
+      ev.preventDefault(); ev.stopImmediatePropagation();
+      if(panel) return;
+      var publish=f.getAttribute('data-confirm-publish')==='publish';
+      panel=document.createElement('div'); panel.className='notice'; panel.id='publish-confirm'; panel.setAttribute('role','alertdialog'); panel.setAttribute('aria-labelledby','publish-confirm-text'); panel.style.margin='12px 0';
+      var p=document.createElement('p'); p.id='publish-confirm-text';
+      var b=document.createElement('strong'); b.textContent=addr();
+      if(publish){ p.appendChild(document.createTextNode("You're about to publish your website. It will be live at ")); p.appendChild(b); p.appendChild(document.createTextNode(' for anyone to see. Publish now?')); }
+      else { p.appendChild(document.createTextNode("You're about to create your website at ")); p.appendChild(b); p.appendChild(document.createTextNode(". It won't be live until you publish it. Create it now?")); }
+      var row=document.createElement('div'); row.className='buttons';
+      var yes=document.createElement('button'); yes.type='button'; yes.className='btn'; yes.textContent=publish?'Yes, publish':'Yes, create it';
+      var no=document.createElement('button'); no.type='button'; no.className='btn ghost'; no.textContent='Go back';
+      yes.addEventListener('click',function(){ close(); f.setAttribute('data-confirmed','1'); if(f.requestSubmit) f.requestSubmit(); else f.submit(); });
+      no.addEventListener('click',close);
+      row.appendChild(yes); row.appendChild(no); panel.appendChild(p); panel.appendChild(row);
+      var at=f.querySelector('#submit'); var host=at&&at.parentNode&&at.parentNode.parentNode===f?at.parentNode:null;
+      if(host) f.insertBefore(panel,host.nextSibling); else f.parentNode.insertBefore(panel,f.nextSibling);
+      yes.focus();
+    });
+  });
+})();`;
 
 // Shrinks photos client-side, posts with fetch, shows field errors inline.
 // Falls back to the normal multipart post when anything here is unsupported.
@@ -1173,7 +1281,11 @@ const BUILDER_SCRIPT = `
       }).catch(function(){ resolve(file); });
     });
   }
+  // "Preview my website": a normal post to /preview in a new tab, never the fetch below.
+  var previewing=false, pvBtn=document.getElementById('preview-btn');
+  if(pvBtn) pvBtn.addEventListener('click',function(){ previewing=true; setTimeout(function(){ previewing=false; },0); });
   form.addEventListener('submit', function(ev){
+    if(previewing||(ev.submitter&&ev.submitter.id==='preview-btn')) return;
     ev.preventDefault();
     var btn=document.getElementById('submit'); btn.disabled=true; var label=btn.textContent; btn.textContent='Working…';
     FIELDS.concat(['form']).forEach(function(f){ var el=document.getElementById('err-'+f); if(el) el.textContent=''; });
@@ -1225,7 +1337,7 @@ export function donePage(opts: {
   const ready = pub
     ? `<div class="notice" style="margin-top:16px">
   <p><strong>Publish your website.</strong> It's saved, but visitors see "This site isn't published yet" until you pay. Pro adds visitor stats: how many people visit, where they come from, and how many tap to call.</p>
-  ${publishButtons(pub.slug, pub.key, pub.prices)}
+  ${publishButtons(pub.slug, pub.key, pub.prices, opts.siteUrl)}
 </div>`
     : "";
   return layout({
@@ -1235,7 +1347,7 @@ export function donePage(opts: {
     admin: opts.admin,
     owner: opts.signedIn,
     nonce: opts.nonce,
-    script: `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='Copied';});});});`,
+    script: PUBLISH_CONFIRM_SCRIPT + `document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function(){b.textContent='Copied';});});});`,
     body: `<section>
 <h1>${pub ? "Your website is ready" : "Your website is live 🎉"}</h1>
 <div class="notice ok">
@@ -1342,7 +1454,7 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
   return layout({ title: "Choose a new password | SiteVault", noindex: true, body });
 }
 
-export type AccountSite = { slug: string; name: string; siteUrl: string; state: string; pendingReviews?: number };
+export type AccountSite = { slug: string; name: string; siteUrl: string; state: string; pendingReviews?: number; visitors?: VisitorsView };
 
 /** "My websites": every site on the account, and a way to add one made before accounts. */
 export function accountPage(
@@ -1380,6 +1492,7 @@ export function accountPage(
             : "";
           return `<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><h3 style="margin:0">${esc(s.name)}</h3>${bell}</div>
   <p class="hint" style="margin:6px 0 10px"><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">${esc(s.siteUrl)}</a> · ${esc(STATE[s.state] ?? s.state)}</p>
+  ${s.visitors ? visitorsSection(s.visitors, false, true) : ""}
   <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}">Edit, billing and visitors</a><a class="btn ghost" href="${esc(s.siteUrl)}" target="_blank" rel="noopener">View</a></div></div>`;
         })
         .join("")
@@ -1476,6 +1589,19 @@ export function adminPage(sites: AdminSite[], nonce: string): string {
   });
 }
 
+/** POST /preview refused the form: what to fix, on a plain page. */
+export function previewErrorsPage(errors: Record<string, string>): string {
+  const items = Object.values(errors)
+    .filter(Boolean)
+    .map((e) => `<li>${esc(e)}</li>`)
+    .join("");
+  return layout({
+    title: "Can't preview yet | SiteVault",
+    noindex: true,
+    body: `<section><h1>Fix these to see your preview</h1><ul>${items}</ul><p>Go back to the other tab, change them, then press <strong>Preview my website</strong> again. Nothing was saved.</p></section>`,
+  });
+}
+
 export function messagePage(title: string, message: string, status = "Not found"): string {
   return layout({
     title: `${title} | SiteVault`,
@@ -1497,7 +1623,7 @@ export function privacyPage(): string {
   <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos, any before &amp; after photos you added there and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
   <li>If you build your website inside AdVault (the full builder shown on AdVault's "Make me a website"), AdVault first sends us those same details and photos as a <strong>draft</strong> so the builder opens filled in. The draft is kept only to build your website: its photos are deleted once the website is made, and an unused draft expires after an hour and is deleted within a day. Building there signs you in to SiteVault with the same sign-in cookie as above, inside AdVault's page.</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
-  <li><strong>Your account is one 3PandaLabs account, shared with <a href="https://advault.3pandalabs.com">AdVault</a></strong> (our video-ad app, also by 3PandaLabs): the same email and password sign you in to both, whichever you signed up on. Your sign-in (email and a scrambled, hashed copy of your password, which can't be turned back into the password) is stored by AdVault for both apps; when you sign in here we send AdVault the email and password you typed to check them. SiteVault stores your email, your 3PandaLabs account ID and which websites are yours. Accounts made on SiteVault before 16 November 2026 kept their hashed password here; it moves to the shared account the next time you sign in. While you're signed in we keep a session record that expires after 30 days or when you sign out.</li>
+  <li><strong>Your account is one 3PandaLabs account, shared with <a href="https://advault.3pandalabs.com">AdVault</a></strong> (our video-ad app, also by 3PandaLabs): the same email and password sign you in to both, whichever you signed up on. Your sign-in (email and a scrambled, hashed copy of your password, which can't be turned back into the password) is stored by AdVault for both apps; when you sign in here we send AdVault the email and password you typed to check them. SiteVault stores your email, your 3PandaLabs account ID and which websites are yours. Accounts made on SiteVault before 16 November 2026 kept their hashed password here; it moves to the shared account the next time you sign in. While you're signed in we keep a session record that expires after 30 days or when you sign out. When you follow a link between SiteVault and AdVault while signed in, we pass a one-time sign-in code (it works once, for 60 seconds, and contains your account ID and email, never your password) so you arrive signed in to the same account.</li>
   <li><strong>Which apps you use</strong>: with your account we record which app you created it on (SiteVault or AdVault) and when you first used each one (your first website here, your first ad campaign in AdVault), so we know whether you use SiteVault, AdVault or both and can offer benefits that depend on it, for example to customers who use only SiteVault.</li>
   <li><strong>A short-lived counter per network address</strong> to limit how many sites can be created in a day. It expires after about a day.</li>
   <li><strong>Visit counts for each website, in total only</strong>: per day, the number of visits and of taps on the call and directions buttons, grouped by rough location (country and city, as worked out by Cloudflare), device type (phone, tablet or computer) and where visitors came from (for example YouTube, Google or a typed-in address). We don't store visitors' IP addresses, the full address of the page they came from, or their browser details, and we keep no record of any individual visitor. The business owner sees these totals on their edit page.</li>

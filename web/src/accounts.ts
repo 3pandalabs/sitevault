@@ -182,6 +182,17 @@ export async function findAccountForAdvault(kv: KVNamespace, user: { advaultUser
   return email ? accountByEmail(kv, email) : null;
 }
 
+/**
+ * The account linked to this AdVault user id, or null. By `acctadv:<id>`
+ * ONLY: never by email, never creates or links (the one-tap sign-in from
+ * AdVault, GET /auth/handoff, must not merge accounts).
+ */
+export async function accountByAdvaultId(kv: KVNamespace, advaultUserId: string): Promise<Account | null> {
+  const id = await kv.get(advKey(advaultUserId));
+  const a = id ? await loadAccount(kv, id) : null;
+  return a && a.advaultUserId === advaultUserId ? a : null;
+}
+
 /** Ask AdVault whether this is a valid AdVault login (server to server). */
 export async function verifyAdvaultLogin(
   apiUrl: string | undefined,

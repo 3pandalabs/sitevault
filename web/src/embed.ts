@@ -32,7 +32,7 @@ export type HandoffCheck = { ok: true; handoff: Handoff } | { ok: false; error: 
 
 const enc = new TextEncoder();
 
-function b64url(bytes: ArrayBuffer | Uint8Array): string {
+export function b64url(bytes: ArrayBuffer | Uint8Array): string {
   return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
@@ -46,7 +46,7 @@ function fromB64url(s: string): Uint8Array<ArrayBuffer> | null {
   }
 }
 
-async function hmacKey(secret: string, usage: "sign" | "verify"): Promise<CryptoKey> {
+export async function hmacKey(secret: string, usage: "sign" | "verify"): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [usage]);
 }
 
@@ -61,7 +61,7 @@ export async function signHandoff(secret: string, h: Handoff): Promise<string> {
  * Signature (constant time, via WebCrypto verify) under `prefix`, then the
  * decoded payload. Shape and lifetime are the typed verifiers' job.
  */
-async function verifySigned(secret: string, token: string, prefix: string): Promise<{ ok: true; payload: Record<string, unknown> } | { ok: false; error: "malformed" | "bad_signature" }> {
+export async function verifySigned(secret: string, token: string, prefix: string): Promise<{ ok: true; payload: Record<string, unknown> } | { ok: false; error: "malformed" | "bad_signature" }> {
   if (token.length > 2048) return { ok: false, error: "malformed" };
   const parts = token.split(".");
   if (parts.length !== 2) return { ok: false, error: "malformed" };
