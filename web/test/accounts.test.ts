@@ -39,7 +39,7 @@ describe("accounts", () => {
     expect(login).toContain('value="/account"');
     const page = accountPage("o@x.test", [{ slug: "bellas", name: "Bella's <Salon>", siteUrl: "https://bellas.3pandasite.com/", state: "live" }]);
     expect(page).toContain("Bella&#39;s &lt;Salon&gt;");
-    expect(page).toContain('href="/edit/bellas"');
+    expect(page).toContain('href="/edit/bellas#edit"');
     expect(page).toContain("Sign out");
   });
 

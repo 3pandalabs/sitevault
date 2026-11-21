@@ -333,6 +333,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
       const current = (await aliasTarget(env, m[1]!)) ?? m[1]!;
       return env.SITES_DOMAIN ? Response.redirect(siteUrl(env, current), 301) : serveSite(env, current, undefined, { request, ctx, ping: false, count: !head });
     }
+    m = path.match(/^\/edit\/([a-z0-9-]+)\/view$/);
+    if (m) return ownerView(request, env, m[1]!, url.searchParams.get("k") ?? "");
     m = path.match(/^\/edit\/([a-z0-9-]+)$/);
     if (m) {
       const target = (await env.SITES.get(siteKey(m[1]!))) ? null : await aliasTarget(env, m[1]!);
@@ -340,7 +342,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
       const embed = url.searchParams.get("embed") === "1";
       if (target) return Response.redirect(`${env.PUBLIC_ORIGIN}/edit/${target}?${embed ? "embed=1" : `k=${encodeURIComponent(k)}`}`, 302);
       if (embed) return embedEditPage(request, env, m[1]!, url.searchParams.get("saved") === "1");
-      return editPage(request, env, m[1]!, k, url.searchParams.get("paid") === "1");
+      return editPage(request, env, m[1]!, k, url.searchParams.get("paid") === "1", url.searchParams.get("saved") === "1");
     }
     if (path.startsWith("/p/")) return photo(env, decodeURIComponent(path.slice(3)), request);
     m = path.match(/^\/done\/([A-Za-z0-9_-]+)$/);
@@ -349,7 +351,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
 
   if (method === "POST") {
     if (path === "/api/sites") return createSite(request, env, ctx);
-    if (path === "/preview") return previewSite(request, env, url);
+    // Framable by our own pages only: the edit page's "Refresh preview" posts into its right-side view.
+    if (path === "/preview") return allowSelfFraming(await previewSite(request, env, url));
     if (path === "/login" || path === "/signup") return authSubmit(request, env, ctx, path === "/login" ? "login" : "signup");
     if (path === "/logout") return logout(request, env);
     if (path === "/forgot-password") return forgotPasswordSubmit(request, env);
@@ -808,7 +811,11 @@ async function done(request: Request, env: Env, handoff: string, consume = true)
 function builder(_env: Env, mode: Parameters<typeof builderPage>[0], errors?: FieldErrors, values?: Record<string, string>, status = 200): Response {
   const n = nonce();
   const res = html(builderPage(mode, n, errors, values, _env.SITES_DOMAIN ?? null), status, n);
-  return (mode.kind === "edit" && mode.embed) || (mode.kind === "new" && mode.embedDraft) ? allowEmbedFraming(res) : res;
+  if ((mode.kind === "edit" && mode.embed) || (mode.kind === "new" && mode.embedDraft)) return allowEmbedFraming(res);
+  // The tabbed edit page frames its own right-side view (same origin only);
+  // it still can't be framed itself (frame-ancestors 'none').
+  if (mode.kind === "edit") res.headers.set("content-security-policy", `${res.headers.get("content-security-policy")}; frame-src 'self'`);
+  return res;
 }
 
 /** A plain message page that AdVault may frame (the embed flow's errors). */
@@ -887,7 +894,7 @@ async function moderateReviews(request: Request, env: Env, slug: string): Promis
   return redirectTo(env, `/edit/${encodeURIComponent(slug)}${embed ? "?embed=1" : `?k=${encodeURIComponent(key)}`}`);
 }
 
-async function editPage(request: Request, env: Env, slug: string, key: string, justPaid = false): Promise<Response> {
+async function editPage(request: Request, env: Env, slug: string, key: string, justPaid = false, saved = false): Promise<Response> {
   const site = await authorize(env, slug, key, request);
   if (!site) {
     // No key: send them to sign in, then back here.
@@ -895,7 +902,56 @@ async function editPage(request: Request, env: Env, slug: string, key: string, j
     return html(messagePage("Edit link not valid", "Check you copied the whole link, or sign in to the account that owns this website. Lost it? Email 3pandas@3pandalabs.com.", "Can't open"), 403);
   }
   const signedIn = Boolean(await currentAccount(env.SITES, request));
-  return builder(env, { ...(await editMode(env, site, key, justPaid)), signedIn });
+  return builder(env, { ...(await editMode(env, site, key, justPaid)), signedIn, saved });
+}
+
+/**
+ * GET /edit/<slug>/view  The edit page's right-side view ("View your
+ * website"): the SAVED site rendered for its owner (edit key or session),
+ * published or not, inside the edit page's iframe. Same origin as the editor,
+ * so photos come from this origin's /p/ (the customer host's CSP and
+ * frame-ancestors stay untouched: customer sites are never framed). Never
+ * counts a visit, never pings, noindex, no-store; framable by our own pages
+ * only (frame-ancestors 'self').
+ */
+async function ownerView(request: Request, env: Env, slug: string, key: string): Promise<Response> {
+  const site = await authorize(env, slug, key, request);
+  if (!site) return allowSelfFraming(html(messagePage("Sign in to see this", "Open your website from My website to see it here.", "Can't open"), 403));
+  const state = siteState(site, billingConfig(env), new Date());
+  const n = nonce();
+  const ctx = { ...renderCtx(env, site.slug), assetOrigin: env.PUBLIC_ORIGIN, ping: false, nonce: n };
+  const live = state === "live" || state === "grace";
+  const note = live
+    ? `Your website as saved. It is live at ${ctx.siteUrl.replace(/\/$/, "")}.`
+    : state === "paused"
+      ? "Your website is paused: visitors see a short notice until you renew. This is how it looks."
+      : "Not published yet: this is how your website will look.";
+  const res = html(ownerFrame(renderSite(site, ctx), note, ctx.siteUrl), 200, n);
+  res.headers.set("x-robots-tag", "noindex");
+  res.headers.set("cache-control", "no-store");
+  res.headers.set("referrer-policy", "no-referrer");
+  return allowSelfFraming(res);
+}
+
+/**
+ * A rendered site shown inside the editor (owner view and preview): a status
+ * bar, noindex, and links that leave the frame (new tab), with root-relative
+ * links (policy pages) pointed at the customer site, not SiteVault.
+ */
+function ownerFrame(page: string, notes: string | string[], siteUrl: string): string {
+  const origin = new URL(siteUrl).origin;
+  const bar = `<div role="status" style="position:sticky;top:0;z-index:9999;background:#111827;color:#fff;font:600 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:10px 16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.25)">${(Array.isArray(notes) ? notes : [notes]).map((t, i) => (i === 0 ? `<span>${esc(t)}</span>` : `<span style="display:block;font-weight:400;opacity:.85">${esc(t)}</span>`)).join("")}</div>`;
+  let out = page.includes('<meta name="robots"') ? page : page.replace("<head>", '<head><meta name="robots" content="noindex">');
+  out = out.replace(/(<a\b[^>]*?\bhref=")\/(?!\/)/g, `$1${origin}/`);
+  out = out.replace(/<a\b(?=[^>]*\bhref="https?:)(?![^>]*\btarget=)/g, '<a target="_blank" rel="noopener"');
+  return out.replace(/<body([^>]*)>/, (m) => `${m}${bar}`);
+}
+
+/** frame-ancestors 'self': only SiteVault's own pages may frame this (owner view, preview). */
+function allowSelfFraming(res: Response): Response {
+  const csp = res.headers.get("content-security-policy");
+  if (csp) res.headers.set("content-security-policy", csp.replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+  return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -2273,7 +2329,8 @@ async function previewSite(request: Request, env: Env, url: URL): Promise<Respon
   const editSlug = url.searchParams.get("site");
   if (editSlug && /^[a-z0-9-]+$/.test(editSlug)) {
     base = await authorize(env, editSlug, form.fields.key ?? "", request);
-    if (base) for (const k of form.keep) if (base.photos.includes(k)) shown.push(photoUrl(renderCtx(env, base.slug), k));
+    // From this origin's /p/: the preview is served here under img-src 'self', so the customer host's URL would be blocked.
+    if (base) for (const k of form.keep) if (base.photos.includes(k)) shown.push(photoUrl({ ...renderCtx(env, base.slug), assetOrigin: env.PUBLIC_ORIGIN }, k));
   } else if (form.fields.draft) {
     const own = await sessionDraft(request, env, form.fields.draft);
     if (own) {
@@ -2316,11 +2373,8 @@ async function previewSite(request: Request, env: Env, url: URL): Promise<Respon
     skipped ? `${skipped} photo${skipped === 1 ? "" : "s"} can't be shown here and will appear after you save.` : "",
     "Video, before & after photos, menus and listings show after you save.",
   ].filter(Boolean);
-  const bar = `<div role="status" style="position:sticky;top:0;z-index:9999;background:#111827;color:#fff;font:600 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:10px 16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.25)">${notes.map((t, i) => (i === 0 ? `<span>${esc(t)}</span>` : `<span style="display:block;font-weight:400;opacity:.85">${esc(t)}</span>`)).join("")}</div>`;
-  let page = renderSite(site, ctx);
-  page = page.includes('<meta name="robots"') ? page : page.replace("<head>", '<head><meta name="robots" content="noindex">');
-  page = page.replace(/<body([^>]*)>/, (m) => `${m}${bar}`);
-  const res = html(page, 200, n);
+  // Same bar, noindex and frame-safe links as the owner view (it may open in the edit page's right side).
+  const res = html(ownerFrame(renderSite(site, ctx), notes, ctx.siteUrl), 200, n);
   res.headers.set("x-robots-tag", "noindex");
   res.headers.set("cache-control", "no-store");
   res.headers.set("referrer-policy", "no-referrer");
@@ -2574,7 +2628,12 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   // Embedded in AdVault: back to the embed editor (it says "Saved"), never
   // off to the public site inside AdVault's frame.
   const target = embed ? `${env.PUBLIC_ORIGIN}/edit/${encodeURIComponent(next.slug)}?embed=1&saved=1` : siteUrl(env, next.slug);
-  return wantsJson(request) ? json({ ok: true, next: target }) : Response.redirect(target, 303);
+  // The tabbed edit page (pages.ts OWNER_TABS_SCRIPT) reloads itself after a
+  // save so the right-side view shows the saved site; `edit` is where (a
+  // rename moves it). The no-JS post still goes to the public site.
+  return wantsJson(request)
+    ? json({ ok: true, next: target, ...(embed ? {} : { edit: `${env.PUBLIC_ORIGIN}/edit/${encodeURIComponent(next.slug)}` }) })
+    : Response.redirect(target, 303);
 }
 
 // No self-service delete (2026-11-15, owner's decision): owners email
