@@ -47,7 +47,7 @@
 import { renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
 import { PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
-import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode } from "./pages.js";
+import { accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
 import {
   accountByAdvaultId,
   accountByEmail,
@@ -1310,14 +1310,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false, emb
       justPaid,
     };
   }
-  let stats = null;
-  if (env.STATS) {
-    try {
-      stats = await readStats(env.STATS, [site.slug, ...(site.aliases ?? [])], now);
-    } catch (err) {
-      console.warn("stats read failed", String(err));
-    }
-  }
+  const visitors = await visitorsFor(env, site, cfg, now);
   const owner = site.ownerId ? await loadAccount(env.SITES, site.ownerId) : null;
   return {
     kind: "edit",
@@ -1325,7 +1318,7 @@ async function editMode(env: Env, site: Site, key: string, justPaid = false, emb
     key,
     photoUrl: (k) => `${env.PUBLIC_ORIGIN}/p/${k}`,
     billing,
-    visitors: stats ? { stats, full: statsVisible(site, cfg, now) } : undefined,
+    visitors,
     pendingReviews: await listPendingReviews(env, site.slug),
     siteUrl: siteUrl(env, site.slug),
     admin: isAdminEmail(env, owner?.email),
@@ -1629,7 +1622,8 @@ async function ownedSite(env: Env, account: Account, slug: string): Promise<Site
   return site && site.status === "live" && site.ownerId === account.id ? site : null;
 }
 
-async function accountSites(env: Env, account: Account): Promise<AccountSite[]> {
+/** `withStats`: also each site's visitor stats (the owner's My website page). */
+async function accountSites(env: Env, account: Account, withStats = false): Promise<AccountSite[]> {
   const cfg = billingConfig(env);
   const now = new Date();
   const out: AccountSite[] = [];
@@ -1644,6 +1638,7 @@ async function accountSites(env: Env, account: Account): Promise<AccountSite[]> 
       siteUrl: siteUrl(env, site.slug),
       state: siteState(site, cfg, now),
       pendingReviews: (await listPendingReviews(env, site.slug)).length,
+      ...(withStats ? { visitors: await visitorsFor(env, site, cfg, now) } : {}),
     });
   }
   return out;
@@ -1688,6 +1683,22 @@ async function adminDashboard(request: Request, env: Env): Promise<Response> {
   return html(adminPage(sites, n), 200, n);
 }
 
+/**
+ * The owner's visitor stats for a site (edit page and My website): the full
+ * breakdown on Pro (or billing off), the 30-day count on Basic. undefined
+ * without the D1 binding or on a read error. Never shown on the customer site.
+ */
+async function visitorsFor(env: Env, site: Site, cfg: ReturnType<typeof billingConfig>, now: Date): Promise<VisitorsView | undefined> {
+  if (!env.STATS) return undefined;
+  try {
+    const stats = await readStats(env.STATS, [site.slug, ...(site.aliases ?? [])], now);
+    return stats ? { stats, full: statsVisible(site, cfg, now) } : undefined;
+  } catch (err) {
+    console.warn("stats read failed", String(err));
+    return undefined;
+  }
+}
+
 async function accountHome(request: Request, env: Env, url: URL, claimError?: string): Promise<Response> {
   const account = await currentAccount(env.SITES, request);
   if (!account) return Response.redirect(`${env.PUBLIC_ORIGIN}/login`, 302);
@@ -1701,7 +1712,8 @@ async function accountHome(request: Request, env: Env, url: URL, claimError?: st
           ? "Couldn't update your password right now. Please try again."
           : undefined;
   return html(
-    accountPage(isIdOnlyAccount(account) ? "an AdVault test customer" : account.email, await accountSites(env, account), {
+    // Admins (many sites) see the list as before; an owner sees their site's visitors.
+    accountPage(isIdOnlyAccount(account) ? "an AdVault test customer" : account.email, await accountSites(env, account, !isAdminEmail(env, account.email)), {
       claimError,
       claimed: url.searchParams.get("claimed") === "1",
       admin: isAdminEmail(env, account.email),

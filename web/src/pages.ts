@@ -579,13 +579,21 @@ ${approved.length ? `<h3 style="margin:24px 0 8px">Published (${approved.length}
 </section>`;
 }
 
-export function visitorsSection(v: VisitorsView, embed = false): string {
+/**
+ * The visitor stats. Edit page: a collapsed section. `open` (the owner's My
+ * website page, 2026-11-20): the same content, shown open under a heading.
+ */
+export function visitorsSection(v: VisitorsView, embed = false, open = false): string {
   const s = v.stats;
   if (!s) return "";
+  const wrap = (summary: string, body: string) =>
+    open
+      ? `<section class="visitors" aria-labelledby="visitors-h" style="padding:8px 0 4px"><h3 id="visitors-h" style="margin:0 0 6px;font-size:1rem">Visitors (last 30 days)</h3>${body}</section>`
+      : `<details class="section"><summary>Visitors <span class="sum">— ${summary}</span></summary><div class="section-body">${body}</div></details>`;
   const total = `<p><strong>${s.total}</strong> visit${s.total === 1 ? "" : "s"} in the last 30 days.</p>`;
   const vt = `${s.total} visit${s.total === 1 ? "" : "s"} in the last 30 days`;
   if (!v.full) {
-    return `<details class="section"><summary>Visitors <span class="sum">— ${vt}</span></summary><div class="section-body">${total}${embed ? "" : `<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p>`}</div></details>`;
+    return wrap(vt, `${total}${embed ? "" : `<p>Upgrade to Pro to see where visitors come from, which days are busiest, and how many tap to call.</p>`}`);
   }
   const place = (p: { city: string; country: string }) => [p.city, p.country].filter(Boolean).join(", ") || "Unknown";
   const tables = [
@@ -594,10 +602,10 @@ export function visitorsSection(v: VisitorsView, embed = false): string {
     barTable("Devices", "Device", s.devices.map((r) => ({ label: r.device.charAt(0).toUpperCase() + r.device.slice(1), n: Number(r.views) }))),
     barTable("Visits by day", "Day", s.days.map((r) => ({ label: fmtDate(new Date(`${r.day}T00:00:00Z`)), n: Number(r.views) }))),
   ].filter(Boolean);
-  return `<details class="section"><summary>Visitors <span class="sum">— ${vt}</span></summary><div class="section-body">${total}
+  return wrap(vt, `${total}
   <dl class="facts"><dt>Taps to call</dt><dd>${s.taps.calls}</dd><dt>Taps for directions</dt><dd>${s.taps.directions}</dd></dl>
   ${tables.length ? `<div class="stats">${tables.join("")}</div>` : ""}
-  <p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p></div></details>`;
+  <p class="hint">Counted without cookies and without storing anyone's IP address. Taps are counted by browsers that support it, so the real number can be higher.</p>`);
 }
 
 const FIELD_ORDER = [
@@ -1355,7 +1363,7 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
   return layout({ title: "Choose a new password | SiteVault", noindex: true, body });
 }
 
-export type AccountSite = { slug: string; name: string; siteUrl: string; state: string; pendingReviews?: number };
+export type AccountSite = { slug: string; name: string; siteUrl: string; state: string; pendingReviews?: number; visitors?: VisitorsView };
 
 /** "My websites": every site on the account, and a way to add one made before accounts. */
 export function accountPage(
@@ -1393,6 +1401,7 @@ export function accountPage(
             : "";
           return `<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><h3 style="margin:0">${esc(s.name)}</h3>${bell}</div>
   <p class="hint" style="margin:6px 0 10px"><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">${esc(s.siteUrl)}</a> · ${esc(STATE[s.state] ?? s.state)}</p>
+  ${s.visitors ? visitorsSection(s.visitors, false, true) : ""}
   <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}">Edit, billing and visitors</a><a class="btn ghost" href="${esc(s.siteUrl)}" target="_blank" rel="noopener">View</a></div></div>`;
         })
         .join("")
