@@ -47,6 +47,7 @@
 
 import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
 import { ASSET_LINKS, PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
+import { OG_PNG } from "./og-image.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
 import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
 import {
@@ -312,6 +313,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     }
     if (path === "/sw.js") {
       return new Response(SERVICE_WORKER, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache", "service-worker-allowed": "/" } });
+    }
+    // Share image for SiteVault's own pages (og:image). Main site only; customer sites have their own host and never reach here.
+    if (path === "/og.png") {
+      return new Response(pngBytes(OG_PNG), { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
     }
     if (path in PWA_ICONS) {
       return new Response(pngBytes(PWA_ICONS[path]!), { headers: { "content-type": "image/png", "cache-control": "public, max-age=604800, immutable" } });
