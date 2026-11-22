@@ -59,13 +59,38 @@ import type { SiteStats } from "./stats.js";
 
 const CONTACT = "3pandas@3pandalabs.com";
 
+/** The main site's origin, for share tags (og:url / og:image need absolute URLs). */
+const SITE_ORIGIN = "https://sitevault.3pandalabs.com";
+const DESCRIPTION = "A simple website for your local business in about five minutes. Built from your own details and photos.";
+
+/**
+ * Open Graph + Twitter share tags (brand consistency rules, 2026-11-22) for
+ * SiteVault's OWN public pages. Customer sites never use this layout.
+ * `/og.png` is the brand 1200x630 card, served same-origin by index.ts.
+ */
+function shareTags(title: string, path: string): string {
+  return `<meta property="og:type" content="website">
+<meta property="og:site_name" content="SiteVault by 3PandaLabs">
+<meta property="og:url" content="${esc(SITE_ORIGIN + path)}">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(DESCRIPTION)}">
+<meta property="og:image" content="${SITE_ORIGIN}/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SiteVault: a website for your business in 5 minutes. By 3PandaLabs.">
+<meta name="twitter:card" content="summary_large_image">`;
+}
+
 /** `owner`: a signed-in owner who already has their website (one per account): no "Build" button. */
 /**
  * `embed`: the page sits in AdVault's "Your website" iframe. No SiteVault
  * header, nav, sign-in or footer (AdVault has its own), and the body takes its
  * content's height so the iframe can fit it.
+ *
+ * `path`: set on public pages only; adds the share tags (og:url is the main
+ * site origin + this path).
  */
-export function layout(opts: { title: string; body: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean; email?: string | null }): string {
+export function layout(opts: { title: string; body: string; path?: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean; email?: string | null }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -73,11 +98,12 @@ export function layout(opts: { title: string; body: string; nonce?: string; scri
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 ${opts.embed ? "" : `<link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="SiteVault">`}
 <title>${esc(opts.title)}</title>
-<meta name="description" content="A simple website for your local business in about five minutes. Built from your own details and photos.">
+<meta name="description" content="${DESCRIPTION}">
+${opts.path !== undefined && !opts.embed ? shareTags(opts.title, opts.path) : ""}
 ${opts.noindex ? '<meta name="robots" content="noindex">' : ""}
 <meta name="theme-color" content="#09090b">
 <meta name="color-scheme" content="dark">
@@ -108,7 +134,11 @@ header.top .wrap{display:flex;justify-content:space-between;align-items:center;p
 .logo span{color:var(--accent)}
 .tag{display:inline-block;margin-left:8px;padding-left:8px;border-left:1px solid rgba(244,244,245,.2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.1em;color:var(--dim);text-decoration:none;vertical-align:middle}
 .tag:hover{color:var(--fg2);text-decoration:underline}
-@media (max-width:640px){.tag{display:none}}
+/* Header "by 3PandaLabs": shown UPPERCASE (source text stays "by 3PandaLabs")
+   and never hidden at any width: on a phone it shrinks, and wraps below the
+   wordmark as one unit if there's no room. */
+.brand .tag{text-transform:uppercase;white-space:nowrap}
+@media (max-width:640px){.brand{white-space:normal;min-width:0}.brand .tag{margin-left:6px;padding-left:6px;font-size:9px;letter-spacing:.06em}}
 nav.links{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;font-size:.875rem}
 nav.links form{margin:0}
 nav.links button.plain{background:none;border:0;font:inherit;color:var(--fg2);padding:8px 12px;border-radius:8px;cursor:pointer;min-height:44px}
@@ -195,6 +225,7 @@ footer{border-top:1px solid var(--line);margin-top:48px;padding:32px 0;font-size
 footer .links{display:flex;flex-wrap:wrap;gap:8px 20px;padding-bottom:16px}
 footer .links a{color:var(--muted);text-decoration:none}footer .links a:hover{color:var(--fg2)}
 footer .legal{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--dim)}
+footer .tagline{margin:8px 0 0;color:var(--dim);font-size:.8rem}
 .prose{max-width:46rem}.prose h2{margin-top:28px;font-size:1.25rem}.prose li,.prose p{color:var(--fg2)}
 .panel{border:1px solid var(--line);border-radius:16px;padding:18px;margin:0 0 20px;background:var(--panel)}
 .panel h2{margin:0 0 10px;font-size:1.25rem}
@@ -322,6 +353,7 @@ ${opts.body}
 ${opts.embed ? "" : `<footer><div class="wrap">
   <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></div>
   <div class="legal"><span>&copy; 3PandaLabs LLC, USA.</span><span>All rights reserved.</span></div>
+  <p class="tagline">Built by pandas. Loved by people.</p>
 </div></footer>`}
 ${opts.nonce ? `<script nonce="${opts.nonce}">${opts.script ?? ""}${opts.embed ? "" : SW_REGISTER}</script>` : ""}
 </body>
@@ -393,7 +425,8 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
     admin,
     nonce,
     email,
-    title: "SiteVault: a website for your business in 5 minutes",
+    title: "SiteVault — A website for your business in 5 minutes | by 3PandaLabs",
+    path: "/",
     body: `<section class="hero">
   <span class="pill">Websites for local businesses</span>
   <h1>Your business online in five minutes.</h1>
@@ -1183,7 +1216,8 @@ ${tabbed && mode.kind === "edit" ? ownerTabsTail(mode) : ""}
 </section>`;
 
   return layout({
-    title: mode.kind === "edit" ? "Edit your website | SiteVault" : "Build your website | SiteVault",
+    title: mode.kind === "edit" ? "Edit your website — SiteVault" : "Build your website — SiteVault",
+    path: mode.kind === "new" ? "/new" : undefined,
     body,
     nonce,
     owner: mode.kind === "edit",
@@ -1503,7 +1537,7 @@ export function embedCreatedPage(opts: { slug: string; siteUrl: string; pending:
   <p style="margin-bottom:0">${opts.pending ? "It goes live as soon as you've paid in AdVault." : "It's live. You can change anything on it at any time."}</p>
 </div>
 </section>`;
-  return layout({ title: "Website created | SiteVault", body, nonce: opts.nonce, noindex: true, embed: true, script: EMBED_SCRIPT });
+  return layout({ title: "Website created — SiteVault", body, nonce: opts.nonce, noindex: true, embed: true, script: EMBED_SCRIPT });
 }
 
 export function donePage(opts: {
@@ -1523,7 +1557,7 @@ export function donePage(opts: {
 </div>`
     : "";
   return layout({
-    title: pub ? "Your website is ready | SiteVault" : "Your website is live | SiteVault",
+    title: pub ? "Your website is ready — SiteVault" : "Your website is live — SiteVault",
     noindex: true,
     signedIn: opts.signedIn,
     admin: opts.admin,
@@ -1573,7 +1607,7 @@ export function authPage(kind: "login" | "signup", opts: { error?: string; email
   const login = kind === "login";
   const next = opts.next && /^\/[a-z0-9/_?=&-]*$/i.test(opts.next) ? opts.next : "/account";
   return layout({
-    title: `${login ? "Sign in" : "Create your account"} | SiteVault`,
+    title: `${login ? "Sign in" : "Create your account"} — SiteVault`,
     noindex: true,
     body: `<section class="narrow" style="max-width:440px">
 <h1>${login ? "Sign in" : "Create your account"}</h1>
@@ -1614,7 +1648,7 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
 </form>
 <p class="hint" style="margin-top:20px"><a href="/login">Back to sign in</a></p>
 </section>`;
-  return layout({ title: "Reset your password | SiteVault", noindex: true, body });
+  return layout({ title: "Reset your password — SiteVault", noindex: true, body });
 }
 
 /** "Choose a new password": the reset form, keyed by the token from the email link. */
@@ -1633,7 +1667,7 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
   <button class="btn" type="submit">Save new password</button>
 </form>
 </section>`;
-  return layout({ title: "Choose a new password | SiteVault", noindex: true, body });
+  return layout({ title: "Choose a new password — SiteVault", noindex: true, body });
 }
 
 export type AccountSite = { slug: string; name: string; siteUrl: string; state: string; pendingReviews?: number; visitors?: VisitorsView };
@@ -1680,7 +1714,7 @@ export function accountPage(
         .join("")
     : `<p>No website on this account yet. <a href="/new">Build it</a>, or add one you already made below.</p>`;
   return layout({
-    title: "My website | SiteVault",
+    title: "My website — SiteVault",
     noindex: true,
     owner: sites.length > 0,
     signedIn: true,
@@ -1744,7 +1778,7 @@ export function adminPage(sites: AdminSite[], nonce: string): string {
       .join("") || `<tr><td colspan="5">No websites yet.</td></tr>`;
 
   return layout({
-    title: "Admin | SiteVault",
+    title: "Admin — SiteVault",
     noindex: true,
     signedIn: true,
     admin: true,
@@ -1778,7 +1812,7 @@ export function previewErrorsPage(errors: Record<string, string>): string {
     .map((e) => `<li>${esc(e)}</li>`)
     .join("");
   return layout({
-    title: "Can't preview yet | SiteVault",
+    title: "Can't preview yet — SiteVault",
     noindex: true,
     body: `<section><h1>Fix these to see your preview</h1><ul>${items}</ul><p>Go back to the other tab, change them, then press <strong>Preview my website</strong> again. Nothing was saved.</p></section>`,
   });
@@ -1786,7 +1820,7 @@ export function previewErrorsPage(errors: Record<string, string>): string {
 
 export function messagePage(title: string, message: string, status = "Not found"): string {
   return layout({
-    title: `${title} | SiteVault`,
+    title: `${title} — SiteVault`,
     noindex: true,
     body: `<section class="hero"><span class="pill">${esc(status)}</span><h1>${esc(title)}</h1><p class="lead">${esc(message)}</p><a class="btn" href="/">Go to SiteVault</a></section>`,
   });
@@ -1794,7 +1828,8 @@ export function messagePage(title: string, message: string, status = "Not found"
 
 export function privacyPage(): string {
   return layout({
-    title: "Privacy | SiteVault",
+    title: "Privacy — SiteVault",
+    path: "/privacy",
     body: `<section class="prose">
 <h1>Privacy</h1>
 <p>Last updated 16 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
@@ -1829,7 +1864,8 @@ export function privacyPage(): string {
 
 export function termsPage(): string {
   return layout({
-    title: "Terms | SiteVault",
+    title: "Terms — SiteVault",
+    path: "/terms",
     body: `<section class="prose">
 <h1>Terms</h1>
 <p>Last updated 16 November 2026. These terms are between you and 3PandaLabs LLC (New Jersey), which runs SiteVault.</p>
@@ -1865,7 +1901,8 @@ export function termsPage(): string {
  */
 export function contactPage(): string {
   return layout({
-    title: "Contact | SiteVault",
+    title: "Contact — SiteVault",
+    path: "/contact",
     body: `<section class="prose">
 <h1>Contact us</h1>
 <p>SiteVault is made by 3PandaLabs LLC, USA. The best way to reach us is by email:</p>

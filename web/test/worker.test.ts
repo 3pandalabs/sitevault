@@ -1271,6 +1271,64 @@ describe("installable PWA", () => {
   });
 });
 
+// Brand consistency rules (3pandalabs/brand brand.md, DECIDED 2026-11-22).
+describe("brand consistency", () => {
+  it("titles the home page '<App> — <line> | by 3PandaLabs' and other pages '<Page> — SiteVault'", async () => {
+    const home = await (await call(`${ORIGIN}/`)).text();
+    expect(home).toContain("<title>SiteVault — A website for your business in 5 minutes | by 3PandaLabs</title>");
+    for (const [p, t] of [["/privacy", "Privacy"], ["/terms", "Terms"], ["/contact", "Contact"], ["/new", "Build your website"], ["/login", "Sign in"]]) {
+      const html = await (await call(`${ORIGIN}${p}`)).text();
+      expect(html, p).toContain(`<title>${t} — SiteVault</title>`);
+    }
+  });
+
+  it("puts share tags with an absolute same-origin og:image on the public pages", async () => {
+    for (const p of ["/", "/privacy", "/terms", "/contact", "/new"]) {
+      const html = await (await call(`${ORIGIN}${p}`)).text();
+      expect(html, p).toContain('<meta property="og:site_name" content="SiteVault by 3PandaLabs">');
+      expect(html, p).toContain('<meta property="og:type" content="website">');
+      expect(html, p).toContain(`<meta property="og:url" content="https://sitevault.3pandalabs.com${p}">`);
+      expect(html, p).toContain('<meta property="og:image" content="https://sitevault.3pandalabs.com/og.png">');
+      expect(html, p).toContain('<meta name="twitter:card" content="summary_large_image">');
+      expect(html, p).toMatch(/<meta property="og:title" content="[^"]+">/);
+      expect(html, p).toMatch(/<meta property="og:description" content="[^"]+">/);
+    }
+  });
+
+  it("never puts SiteVault's share tags or footer tagline on a customer site", async () => {
+    const { slug } = await makeSite({ slug: "brand-check" });
+    const page = await (await call(`https://${slug}.3pandasite.test/`)).text();
+    expect(page).not.toContain("SiteVault by 3PandaLabs");
+    expect(page).not.toContain("sitevault.3pandalabs.com/og.png");
+  });
+
+  it("serves the 1200x630 share image and the 180x180 apple-touch-icon as PNGs", async () => {
+    for (const [p, w, h] of [["/og.png", 1200, 630], ["/apple-touch-icon.png", 180, 180]] as const) {
+      const res = await call(`${ORIGIN}${p}`);
+      expect(res.status, p).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      const b = new Uint8Array(await res.arrayBuffer());
+      expect([b[0], b[1], b[2], b[3]]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+      const dv = new DataView(b.buffer);
+      expect([dv.getUint32(16), dv.getUint32(20)], p).toEqual([w, h]);
+    }
+    const home = await (await call(`${ORIGIN}/`)).text();
+    expect(home).toContain('<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">');
+  });
+
+  it("footer: copyright and rights as two lines, then the tagline", async () => {
+    const html = await (await call(`${ORIGIN}/privacy`)).text();
+    expect(html).toContain('<span>&copy; 3PandaLabs LLC, USA.</span><span>All rights reserved.</span></div>\n  <p class="tagline">Built by pandas. Loved by people.</p>');
+  });
+
+  it("header 'by 3PandaLabs' links to the org site, is shown uppercase and is never hidden", async () => {
+    const html = await (await call(`${ORIGIN}/`)).text();
+    expect(html).toContain('<a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a>');
+    expect(html).toContain(".brand .tag{text-transform:uppercase;");
+    expect(html).not.toMatch(/\.tag\{display:none\}/);
+  });
+});
+
 describe("motion & offer banner", () => {
   it("services slide from the left, about from the right, and the offer banner flashes", async () => {
     const { slug } = await makeSite({ slug: "motion-co", services: "Lawn mowing - $35\nCleanup", about: "We are a family business.", offer: "20% off this week!", hours: "Mon-Fri 9am-5pm" });

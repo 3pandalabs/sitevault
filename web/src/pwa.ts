@@ -4,7 +4,7 @@
 // shows a tiny offline page when a navigation fails with no network. Customer
 // sites (the businesses' own) are not PWAs; this is the SiteVault app itself.
 
-import { ICON_192_PNG, ICON_512_PNG, ICON_MASKABLE_PNG } from "./pwa-icons.js";
+import { ICON_180_PNG, ICON_192_PNG, ICON_512_PNG, ICON_MASKABLE_PNG } from "./pwa-icons.js";
 
 export const PWA_MANIFEST = {
   name: "SiteVault",
@@ -30,6 +30,8 @@ export const PWA_ICONS: Record<string, string> = {
   "/icon-192.png": ICON_192_PNG,
   "/icon-512.png": ICON_512_PNG,
   "/icon-maskable.png": ICON_MASKABLE_PNG,
+  // iOS home-screen icon (<link rel="apple-touch-icon">), 180x180.
+  "/apple-touch-icon.png": ICON_180_PNG,
 };
 
 export function pngBytes(base64: string): ArrayBuffer {

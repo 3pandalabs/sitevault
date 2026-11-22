@@ -30,6 +30,18 @@ tag, rounded-xl buttons, the canonical footer ("© 3PandaLabs LLC, USA." /
 Customer sites are deliberately different: light, the business's own,
 coloured per category.
 
+**Brand consistency (2026-11-22, brand repo brand.md "Consistency rules"):**
+own pages only, never customer sites. Footer adds the `Built by pandas. Loved
+by people.` tagline line under the copyright row. The header "by 3PandaLabs"
+tag is shown uppercase (`.brand .tag`, CSS only) and never hidden: on phones
+it shrinks/wraps. Titles: home `SiteVault — A website for your business in 5
+minutes | by 3PandaLabs`, others `<Page> — SiteVault`. Public pages (pass
+`path` to `layout`: /, /new, /privacy, /terms, /contact) get og:* +
+`twitter:card=summary_large_image`; `og:image` is `/og.png`, the brand
+1200x630 card base64'd in `src/og-image.ts` (from brand `og/out/sitevault.png`).
+`/apple-touch-icon.png` (180x180, `ICON_180_PNG` from `scripts/gen-icons.mjs`).
+Tests: `test/worker.test.ts` "brand consistency".
+
 **Customer-site templates (`src/templates.ts`, 2026-11-16):** the owner picks
 one of 3 static layouts at build time (`site.template`, default `spotlight`):
 `spotlight` (full-bleed photo hero), `split` (text panel + image), `editorial`
