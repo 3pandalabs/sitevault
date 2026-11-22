@@ -191,6 +191,11 @@ describe("renderSite", () => {
     homeUrl: "https://sitevault.3pandalabs.com",
   });
 
+  it("clips horizontal overflow on html and body (phones must not zoom out)", () => {
+    // Off-screen slide-in reveals once widened the mobile layout viewport.
+    expect(html).toMatch(/html\{[^}]*overflow-x:clip/);
+    expect(html).toMatch(/body\{[^}]*overflow-x:clip/);
+  });
   it("escapes user text", () => {
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");

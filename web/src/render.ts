@@ -181,8 +181,12 @@ const baseCss = (t: Theme) => `:root{--primary:${t.primary};--accent:${t.accent}
 /* Self-hosted brush-script wordmark (Kaushan Script, OFL). font-display:swap
    so the header name shows immediately in the fallback, then upgrades. */
 @font-face{font-family:"SV Wordmark";src:url("/_f/wordmark.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;font-family:var(--body-font,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif);color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px;overflow-x:hidden}
+/* overflow-x:clip on BOTH html and body: hidden on body alone still let mobile
+   Chrome widen the layout viewport to the off-screen .reveal.from-right start
+   position (translateX(46px)), so phones zoomed out and the fixed callbar spilled
+   past the edge. clip never creates a scroll container (sticky header keeps working). */
+html{-webkit-text-size-adjust:100%;overflow-x:clip}
+body{margin:0;font-family:var(--body-font,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif);color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px;overflow-x:hidden;overflow-x:clip}
 .wrap{max-width:960px;margin:0 auto;padding:0 16px}
 a{color:var(--primary)}
 a:focus-visible,.btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
