@@ -1112,7 +1112,7 @@ ${draft ? `<input type="hidden" name="draft" value="${esc(draft.id)}">` : ""}
     <div class="field"><label for="serviceArea">Areas you serve <span class="hint">Optional</span></label><input type="text" id="serviceArea" name="serviceArea" maxlength="160" value="${v("serviceArea", site?.serviceArea ?? "")}" placeholder="Secaucus, Hoboken, Jersey City">${sg("serviceArea")}${e("serviceArea")}</div>
     <div class="field"><details${values.locations || site?.locations?.length ? " open" : ""}><summary style="cursor:pointer;font-weight:600">Add more locations <span class="hint">Optional — if your business has multiple branches</span></summary>
       <p class="hint" style="margin:10px 0 6px">One per line, as <strong>Name | Address | Phone</strong> (up to ${MAX_LOCATIONS}). Each gets its own Call and Directions in a "Locations" popup on your site.</p>
-      <textarea id="locations" name="locations" placeholder="Downtown | 123 Main St, Springfield | (555) 111-2222&#10;Westside | 456 Oak Ave, Springfield | (555) 333-4444">${v("locations", site ? locationsToText(site.locations ?? []) : "")}</textarea>${e("locations")}
+      <textarea id="locations" name="locations" aria-label="More locations, one per line: Name | Address | Phone" placeholder="Downtown | 123 Main St, Springfield | (555) 111-2222&#10;Westside | 456 Oak Ave, Springfield | (555) 333-4444">${v("locations", site ? locationsToText(site.locations ?? []) : "")}</textarea>${e("locations")}
     </details></div>
   </div>
 </fieldset>
