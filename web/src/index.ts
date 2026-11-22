@@ -46,7 +46,7 @@
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
 import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
-import { PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
+import { ASSET_LINKS, PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
 import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
 import {
@@ -304,6 +304,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     // PWA: the installable web manifest, the service worker, and the app icons.
     if (path === "/manifest.webmanifest") {
       return new Response(JSON.stringify(PWA_MANIFEST), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" } });
+    }
+    // Android app (Trusted Web Activity, android/): proves the app owns this site so it opens full-screen with no URL bar.
+    // Upload-key SHA-256; add the Play App Signing SHA-256 here once the app exists in Play Console.
+    if (path === "/.well-known/assetlinks.json") {
+      return new Response(JSON.stringify(ASSET_LINKS), { headers: { "content-type": "application/json", "cache-control": "public, max-age=3600" } });
     }
     if (path === "/sw.js") {
       return new Response(SERVICE_WORKER, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache", "service-worker-allowed": "/" } });
