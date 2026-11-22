@@ -55,3 +55,18 @@ self.addEventListener('fetch',function(e){
 
 /** The inline snippet (nonce'd) that registers the service worker. */
 export const SW_REGISTER = `if('serviceWorker' in navigator){addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})});}`;
+
+/** Digital Asset Links for the Android TWA (package com.threepanda.sitevault). */
+export const ASSET_LINKS = [
+  {
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: {
+      namespace: "android_app",
+      package_name: "com.threepanda.sitevault",
+      sha256_cert_fingerprints: [
+        // upload key (keys/sitevault-upload.jks, 2026-11-22)
+        "FF:63:A0:89:BD:68:BE:24:CD:75:17:C0:84:7A:5C:28:2B:26:31:19:B3:D0:CF:3E:D9:72:F0:26:C4:AC:03:3F",
+      ],
+    },
+  },
+];
