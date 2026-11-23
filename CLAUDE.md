@@ -188,6 +188,15 @@ No accounts, so the business PHONE is the identity: one live site per phone (`ph
   a Worker (no process; `Date.now()` at module scope is 0 in Workers, which once reported ~56 years). The admin page shows null as "—".
 - **HEAD = GET without a body** on every route (the `fetch` wrapper routes it as GET with `head` set: no visit counted, a `/done` handoff not used up). Other methods on a customer site get 405 (`allow: GET, HEAD`), never a redirect: a 302 to `/` keeps the method and looped. Worker-level tests: `test/worker.test.ts` (in-memory KV/R2/D1).
 
+## Android app (Google Play)
+
+Trusted Web Activity in `android/` (Bubblewrap), package
+**`com.threepandalabs.sitevault`** (renamed from `com.threepanda.sitevault`
+before the first Play upload, 2026-11-22). `/.well-known/assetlinks.json` is
+`ASSET_LINKS` in `src/pwa.ts`: the upload key now; add EVERY Play App Signing
+fingerprint once the Play app exists. Build, signing, listing copy and policy
+answers: `infra/play-store/README.md` and `listing.md`.
+
 ## Git
 
 Branch, PR, merge; never `git add -A`. Commit identity per the org
