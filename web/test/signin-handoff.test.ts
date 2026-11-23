@@ -186,6 +186,18 @@ describe("GET /go/advault (SiteVault -> AdVault)", () => {
     call(`${ORIGIN}/go/advault${to === undefined ? "" : `?to=${encodeURIComponent(to)}`}`, cookie ? { headers: { cookie } } : {});
   const signedIn = async (a: Account) => `sv_session=${await startSession(KVNS(), a.id)}`;
 
+  it("keeps the #delete-account section for My website's Delete my account", async () => {
+    const a = await accountForAdvault(KVNS(), { advaultUserId: ADV_ID, email: EMAIL });
+    const res = await go(await signedIn(a), "/dashboard/settings#delete-account");
+    const loc = new URL(res.headers.get("location")!);
+    expect(`${loc.origin}${loc.pathname}`).toBe("https://advault.3pandalabs.com/auth/handoff");
+    expect(loc.searchParams.get("to")).toBe("/dashboard/settings#delete-account");
+    // Not signed in: AdVault's own page (it asks them to sign in).
+    expect((await go(undefined, "/dashboard/settings#delete-account")).headers.get("location")).toBe(
+      "https://advault.3pandalabs.com/dashboard/settings#delete-account",
+    );
+  });
+
   it("mints a 60 s signin-advault token for a linked owner -> AdVault /auth/handoff", async () => {
     const a = await accountForAdvault(KVNS(), { advaultUserId: ADV_ID, email: EMAIL });
     const res = await go(await signedIn(a), "/dashboard/campaigns/new");
