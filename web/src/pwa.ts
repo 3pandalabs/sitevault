@@ -58,15 +58,28 @@ self.addEventListener('fetch',function(e){
 /** The inline snippet (nonce'd) that registers the service worker. */
 export const SW_REGISTER = `if('serviceWorker' in navigator){addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})});}`;
 
-/** Digital Asset Links for the Android TWA (package com.threepanda.sitevault). */
+/**
+ * Digital Asset Links for the Android TWA (android/, package
+ * com.threepandalabs.sitevault), served at /.well-known/assetlinks.json.
+ * Chrome checks it before opening the site full screen; without a matching
+ * fingerprint the app shows a URL bar and Play rejects it as a webview wrapper.
+ *
+ * Once the app exists in Play Console, add EVERY fingerprint Play lists under
+ * Test and release -> Setup -> App signing ("Copy all certificate
+ * fingerprints"): the classical App Signing key, the "Quantum-ready (beta)"
+ * key and any further signing certificate. AdVault showed an address bar on a
+ * newer phone until all of them were listed (2026-11-22). Deploy the Worker
+ * before promoting a release. See infra/play-store/README.md.
+ */
 export const ASSET_LINKS = [
   {
     relation: ["delegate_permission/common.handle_all_urls"],
     target: {
       namespace: "android_app",
-      package_name: "com.threepanda.sitevault",
+      package_name: "com.threepandalabs.sitevault",
       sha256_cert_fingerprints: [
-        // upload key (keys/sitevault-upload.jks, 2026-11-22)
+        // upload key (C:\Users\Anil\Documents\keys\sitevault-upload.jks, alias "upload", 2026-11-22):
+        // signs the uploaded AAB and any locally built APK.
         "FF:63:A0:89:BD:68:BE:24:CD:75:17:C0:84:7A:5C:28:2B:26:31:19:B3:D0:CF:3E:D9:72:F0:26:C4:AC:03:3F",
       ],
     },

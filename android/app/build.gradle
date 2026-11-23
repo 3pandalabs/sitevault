@@ -21,7 +21,7 @@ plugins {
 }
 
 def twaManifest = [
-    applicationId: 'com.threepanda.sitevault',
+    applicationId: 'com.threepandalabs.sitevault',
     hostName: 'sitevault.3pandalabs.com', // The domain being opened in the TWA.
     launchUrl: '/?source=twa', // The start path for the TWA. Must be relative to the domain.
     name: 'SiteVault', // The application name.
@@ -52,9 +52,9 @@ def twaManifest = [
 
 android {
     compileSdkVersion 36
-    namespace "com.threepanda.sitevault"
+    namespace "com.threepandalabs.sitevault"
     defaultConfig {
-        applicationId "com.threepanda.sitevault"
+        applicationId "com.threepandalabs.sitevault"
         minSdkVersion 24
         targetSdkVersion 36
         versionCode 1
