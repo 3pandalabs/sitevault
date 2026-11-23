@@ -49,7 +49,7 @@ Made by 3PandaLabs.
 - Website: https://sitevault.3pandalabs.com
 - Privacy policy: https://sitevault.3pandalabs.com/privacy
 - Terms: https://sitevault.3pandalabs.com/terms
-- Account deletion URL: https://sitevault.3pandalabs.com/privacy ("Your choices": delete the shared 3PandaLabs account in AdVault Settings or by email; email to have a website removed). **Gap, see below.**
+- Account deletion URL: https://sitevault.3pandalabs.com/privacy#delete-account ("Deleting your account": in the app, My website (/account) -> Delete my account signs in to AdVault at Settings -> Delete account; or AdVault Settings -> Delete account; or email. The website is removed separately, by email.)
 
 ## Graphics (infra/play-store/)
 - `graphics/play-icon-512.png`: Play store icon, "SiteVault by 3PandaLabs" wordmark (brand/meta-kit/sitevault-profile.png).
@@ -78,9 +78,6 @@ Made by 3PandaLabs.
     - Card details are entered on Stripe's page and never reach SiteVault.
   - Shared with third parties: none. Publishing on the user's own website is a user-initiated action (not "sharing"). Stripe (payments) and Cloudflare (hosting) are service providers. The sign-in is stored by AdVault, which is the same developer (3PandaLabs LLC).
   - Not collected: device location, contacts, audio, device or advertising IDs, app activity, crash logs. No analytics or crash SDK. Visit counts on customer websites are aggregate totals about website visitors, not about app users.
-  - Encrypted in transit: Yes. Users can request deletion: Yes (by email today; see the gap below).
+  - Encrypted in transit: Yes. Users can request deletion: Yes (in the app via My website -> Delete my account, or by email; https://sitevault.3pandalabs.com/privacy#delete-account).
   - Account creation method: email + password (an existing AdVault account also works).
 - **Permissions in the AAB:** none user-facing (verified with `aapt2 dump badging` / `dump permissions` on build 1.0.0 (1): only the library's internal `com.threepandalabs.sitevault.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). Photo uploads use the system file picker through Chrome.
-
-## Gap before submitting: account deletion
-Play requires, for apps where users create accounts, both a way to start account deletion **inside the app** and a public web URL for it. SiteVault has neither as a self-service flow: `/account` has no delete button, the 3PandaLabs account can only be deleted in AdVault (Settings → Delete account) or by email, and website removal is email-only by design (`removeSite` in `web/src/index.ts`). The privacy page explains this but has no deletion anchor. Needs a decision: e.g. a "Delete my account" link on `/account` (or a hand-off to AdVault's delete) plus a public `/privacy#delete-account` section.

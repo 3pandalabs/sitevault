@@ -1686,6 +1686,16 @@ export function accountPage(
     <button class="btn ghost" type="submit">Update password</button>
   </form>
 </details>`;
+  // Play requires an in-app way to delete the account. The login is the one
+  // 3PandaLabs account stored by AdVault, so this signs the owner in to
+  // AdVault (one-tap /go/advault) at its Settings -> Delete account section.
+  // The website itself is removed by email (removeSite, no self-service).
+  const deleteAccount = `<div class="notice" id="delete-account" style="margin-top:28px">
+  <p><strong>Delete my account</strong></p>
+  <p class="hint">You have one sign-in for SiteVault and AdVault (both by 3PandaLabs). Deleting it deletes your sign-in for both apps. It's done in AdVault: this button signs you in there and opens Settings, Delete account.</p>
+  <p class="hint">Your website is not removed by this. To have it taken offline and its photos deleted, email <a href="mailto:${CONTACT}">${CONTACT}</a> with your web address. <a href="/privacy#delete-account">What is deleted and what is kept</a>.</p>
+  <div class="buttons"><a class="btn ghost" href="/go/advault?to=${encodeURIComponent("/dashboard/settings#delete-account")}">Delete my account</a></div>
+</div>`;
   const STATE: Record<string, string> = { live: "Live", unpublished: "Not published yet", grace: "Payment overdue", paused: "Paused" };
   const claimForm = `<form method="post" action="/account/claim" class="notice" style="margin-top:28px">
   <p><strong>Made a website before accounts existed?</strong> Paste its private edit link to add it here.</p>
@@ -1728,6 +1738,7 @@ ${opts.pwChanged ? `<p class="notice ok" role="status">Your password has been ch
 ${rows}
 ${footer}
 ${changePw}
+${deleteAccount}
 </section>`,
   });
 }
@@ -1832,7 +1843,7 @@ export function privacyPage(): string {
     path: "/privacy",
     body: `<section class="prose">
 <h1>Privacy</h1>
-<p>Last updated 16 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
+<p>Last updated 22 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
 <h2>What we store</h2>
 <ul>
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
@@ -1856,6 +1867,16 @@ export function privacyPage(): string {
 <p>Sites, photos and visit counts are stored and served by Cloudflare, our hosting provider, in its global network. Visitors' browsers connect to Cloudflare to load your site, as with any website. Payment records are kept by Stripe.</p>
 <h2>Your choices</h2>
 <p>Change anything at any time with your edit link. Your 3PandaLabs account can be deleted in AdVault (Settings, Delete account) or by emailing us; that ends your sign-in on both apps but doesn't remove your website. To have your website removed, email 3pandas@3pandalabs.com with your web address: we confirm with you at the phone number on the site, then take it offline and delete its photos. If you've lost your edit link, email us too and we'll help.</p>
+<h2 id="delete-account">Deleting your account</h2>
+<p>SiteVault and AdVault share one 3PandaLabs account, stored by AdVault, so the account is deleted in AdVault and deleting it deletes it for both apps.</p>
+<ol>
+  <li><strong>In the SiteVault app or website:</strong> sign in, open <a href="/account">My website</a> and tap <strong>Delete my account</strong>. It signs you in to AdVault and opens Settings, Delete account; confirm with your password.</li>
+  <li><strong>Or in AdVault:</strong> sign in at <a href="https://advault.3pandalabs.com">advault.3pandalabs.com</a> or in the AdVault app and go to Settings, Delete account.</li>
+  <li><strong>Can't sign in?</strong> Email <a href="mailto:${CONTACT}">${CONTACT}</a> from your account's email address and we'll delete it for you, within thirty days.</li>
+</ol>
+<p><strong>What is deleted:</strong> your sign-in (email and hashed password), your name, business details and phone number held by AdVault, and AdVault's connected Google accounts and uploaded photos, at once. Any running AdVault ads stop and any AdVault plan ends. You can no longer sign in to SiteVault or AdVault; a SiteVault session you are already signed in with expires within 30 days, or when you sign out.</p>
+<p><strong>What is kept:</strong> AdVault keeps payment and invoice records and the ads they paid for for up to eight years, because tax law requires it, no longer linked to your email (see <a href="https://advault.3pandalabs.com/privacy#delete-account">AdVault's privacy policy</a>). Stripe keeps its own payment records for any SiteVault plan.</p>
+<p><strong>Your website is removed separately.</strong> Deleting the account doesn't take your website offline. Email <a href="mailto:${CONTACT}">${CONTACT}</a> with your web address: we confirm with you at the phone number on the site, cancel any yearly renewal, then take it offline and delete its photos, video and before &amp; after photos. We keep a short record of the removed site (its address and text, without photos) so the address is never given to someone else. If you also want SiteVault's own copy of your email and account ID deleted, say so in the same email.</p>
 <h2>Children</h2>
 <p>SiteVault is for businesses and is not directed at children under 13.</p>
 </section>`,

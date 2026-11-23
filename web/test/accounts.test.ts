@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emailProblem, hashPassword, normaliseEmail, passwordProblem, sameOrigin, sessionCookie, sessionToken, verifyPassword } from "../src/accounts.js";
-import { accountPage, authPage } from "../src/pages.js";
+import { accountPage, authPage, privacyPage } from "../src/pages.js";
 
 describe("accounts", () => {
   it("validates email and password", () => {
@@ -80,5 +80,22 @@ describe("sign out in the header", () => {
   it("shows only when signed in", () => {
     expect(homePage(true, null, true, true)).toContain('action="/logout"');
     expect(homePage(true, null, false, false)).not.toContain('action="/logout"');
+  });
+});
+
+describe("account deletion (Play: in-app + public URL)", () => {
+  it("My website links to AdVault's Delete account through the one-tap sign-in", () => {
+    const page = accountPage("o@x.test", [{ slug: "b", name: "B", siteUrl: "https://b.3pandasite.com/", state: "live" }]);
+    expect(page).toContain("Delete my account");
+    expect(page).toContain('href="/go/advault?to=%2Fdashboard%2Fsettings%23delete-account"');
+    expect(page).toContain("/privacy#delete-account");
+    expect(page).toContain("3pandas@3pandalabs.com");
+    expect(accountPage("o@x.test", [])).toContain("Delete my account");
+  });
+  it("the privacy page has a public #delete-account section", () => {
+    const page = privacyPage();
+    expect(page).toContain('id="delete-account"');
+    expect(page).toContain("Settings, Delete account");
+    expect(page).toContain("Your website is removed separately");
   });
 });
