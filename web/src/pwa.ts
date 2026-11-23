@@ -81,6 +81,10 @@ export const ASSET_LINKS = [
         // upload key (C:\Users\Anil\Documents\keys\sitevault-upload.jks, alias "upload", 2026-11-22):
         // signs the uploaded AAB and any locally built APK.
         "FF:63:A0:89:BD:68:BE:24:CD:75:17:C0:84:7A:5C:28:2B:26:31:19:B3:D0:CF:3E:D9:72:F0:26:C4:AC:03:3F",
+        // Play App Signing (app 4975632034778278927), every SHA-256 Play lists: classical, quantum-ready, extra cert.
+        "42:46:0B:C9:07:56:10:C1:E4:82:33:EC:84:70:A0:4E:AC:72:F6:51:23:44:0B:4A:8B:3C:17:28:FE:57:DC:F9",
+        "B6:F7:A3:82:AD:5B:2E:A3:51:F2:BF:15:BF:72:75:F0:0C:51:AC:7D:8C:68:95:1D:D8:BE:6A:89:89:1B:ED:3A",
+        "61:20:31:D0:CC:40:16:4C:7D:78:76:4C:72:F7:3B:58:CB:83:40:F5:30:69:E7:30:BD:82:3B:59:57:87:8F:94",
       ],
     },
   },
