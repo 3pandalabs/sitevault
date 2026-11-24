@@ -180,7 +180,8 @@ describe("tabs", () => {
     const html = await (await call(`${ORIGIN}/account`, { headers: { cookie } })).text();
     expect(html).toContain('href="/edit/green-lawns#edit">Edit your website</a>');
     expect(html).toContain('href="/edit/green-lawns#view">View your website</a>');
-    expect(html).toContain('href="/edit/green-lawns#stats">Stats</a>');
+    // Visitors stats opens an inline collapsible (owner has stats); the button anchors to it.
+    expect(html).toContain('href="#vstats-green-lawns">Visitors stats</a>');
   });
 });
 

@@ -104,26 +104,29 @@ async function ownerWithSite(plan: "pro" | "basic" = "pro", email = EMAIL, advId
 }
 
 describe("/account visitor stats", () => {
-  it("Pro: the full stats, open under the site link", async () => {
+  it("Pro: the full stats in a collapsible opened by the Visitors stats button", async () => {
     const { cookie } = await ownerWithSite("pro");
     const html = await (await call(`${ORIGIN}/account`, { headers: { cookie } })).text();
-    expect(html).toContain("Visitors (last 30 days)");
+    expect(html).toContain("Visitors stats (last 30 days)");
     expect(html).toContain("<strong>42</strong> visits in the last 30 days");
     expect(html).toMatch(/Taps to call<\/dt><dd>7<\/dd>/);
     expect(html).toContain("Where visitors came from");
     expect(html).toContain("Edison, US");
     expect(html).toContain("Visits by day");
     expect(html).not.toContain("Upgrade to Pro to see");
-    // Open, not a collapsed <details>, and under the site link.
-    const at = html.indexOf("Visitors (last 30 days)");
-    expect(html.lastIndexOf("<details", at)).toBeLessThan(html.lastIndexOf("green-lawns.3pandasite.test", at));
-    expect(html.indexOf("green-lawns.3pandasite.test")).toBeLessThan(at);
+    // The button anchors to the CSS :target collapsible, which sits under the site link.
+    expect(html).toContain('href="#vstats-green-lawns">Visitors stats</a>');
+    expect(html).toContain('<div class="vstats" id="vstats-green-lawns">');
+    const btn = html.indexOf('href="#vstats-green-lawns"');
+    const panel = html.indexOf('id="vstats-green-lawns"');
+    expect(html.indexOf("green-lawns.3pandasite.test")).toBeLessThan(btn); // under the site link
+    expect(btn).toBeLessThan(panel); // button above the stats it opens
   });
 
   it("Basic: the 30-day count and the upgrade note, no breakdown", async () => {
     const { cookie } = await ownerWithSite("basic");
     const html = await (await call(`${ORIGIN}/account`, { headers: { cookie } })).text();
-    expect(html).toContain("Visitors (last 30 days)");
+    expect(html).toContain("Visitors stats (last 30 days)");
     expect(html).toContain("<strong>42</strong> visits in the last 30 days");
     expect(html).toContain("Upgrade to Pro to see where visitors come from");
     expect(html).not.toContain("Taps to call");

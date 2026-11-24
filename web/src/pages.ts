@@ -239,6 +239,13 @@ details.section[open]>summary::before{transform:rotate(90deg)}
 details.section>summary .sum{color:var(--fg2);font-weight:400;font-size:.95rem}
 details.section[open]>summary{border-bottom:1px solid var(--line)}
 details.section .section-body{padding:14px 18px 4px}
+/* Visitors-stats collapsible on /account: pure CSS, opened by its button (#id) */
+.vstats{display:none;border:1px solid var(--line);border-radius:16px;background:var(--panel);margin:12px 0 2px;scroll-margin-top:16px}
+.vstats:target{display:block}
+.vstats-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px 0}
+.vstats-close{font-size:.9rem;text-decoration:none;color:var(--fg2);white-space:nowrap}
+.vstats-close:hover{text-decoration:underline}
+.vstats-body{padding:6px 18px 10px}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0}
 .tab{background:var(--panel);border:1px solid var(--line);color:var(--fg2);border-radius:999px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer}
 .tab.active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
@@ -661,13 +668,17 @@ ${approved.length ? `<h3 style="margin:24px 0 8px">Published (${approved.length}
  * The visitor stats. Edit page: a collapsed section. `open` (the owner's My
  * website page, 2026-11-20): the same content, shown open under a heading.
  */
-export function visitorsSection(v: VisitorsView, embed = false, open = false): string {
+export function visitorsSection(v: VisitorsView, embed = false, open = false, collapse?: { id: string; closeHref: string }): string {
   const s = v.stats;
   if (!s) return "";
   const wrap = (summary: string, body: string) =>
-    open
-      ? `<section class="visitors" aria-labelledby="visitors-h" style="padding:8px 0 4px"><h3 id="visitors-h" style="margin:0 0 6px;font-size:1rem">Visitors (last 30 days)</h3>${body}</section>`
-      : `<details class="section"><summary>Visitors <span class="sum">— ${summary}</span></summary><div class="section-body">${body}</div></details>`;
+    collapse
+      ? // CSS `:target` collapsible: hidden until its "Visitors stats" button (href="#id")
+        // reveals it; the Hide link points back at the card, clearing :target. No JS needed.
+        `<div class="vstats" id="${collapse.id}"><div class="vstats-head"><h3 style="margin:0;font-size:1rem">Visitors stats (last 30 days)</h3><a class="vstats-close" href="${collapse.closeHref}" aria-label="Hide visitors stats">Hide ✕</a></div><div class="vstats-body">${body}</div></div>`
+      : open
+        ? `<section class="visitors" aria-labelledby="visitors-h" style="padding:8px 0 4px"><h3 id="visitors-h" style="margin:0 0 6px;font-size:1rem">Visitors stats (last 30 days)</h3>${body}</section>`
+        : `<details class="section"><summary>Visitors <span class="sum">— ${summary}</span></summary><div class="section-body">${body}</div></details>`;
   const total = `<p><strong>${s.total}</strong> visit${s.total === 1 ? "" : "s"} in the last 30 days.</p>`;
   const vt = `${s.total} visit${s.total === 1 ? "" : "s"} in the last 30 days`;
   if (!v.full) {
@@ -1717,10 +1728,12 @@ export function accountPage(
           const bell = n
             ? `<a href="/edit/${esc(s.slug)}#reviews" title="${label}" aria-label="${label}" style="position:relative;flex-shrink:0;text-decoration:none;font-size:1.35rem;line-height:1">🔔<span style="position:absolute;top:-6px;right:-9px;background:#ef4444;color:#fff;font-size:.66rem;font-weight:700;min-width:16px;height:16px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 3px">${n}</span></a>`
             : "";
-          return `<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><h3 style="margin:0">${esc(s.name)}</h3>${bell}</div>
+          const cardId = `site-${esc(s.slug)}`;
+          const statsId = `vstats-${esc(s.slug)}`;
+          return `<div class="card" id="${cardId}" style="margin-bottom:12px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><h3 style="margin:0">${esc(s.name)}</h3>${bell}</div>
   <p class="hint" style="margin:6px 0 10px"><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">${esc(s.siteUrl)}</a> · ${esc(STATE[s.state] ?? s.state)}</p>
-  ${s.visitors ? visitorsSection(s.visitors, false, true) : ""}
-  <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}#edit">Edit your website</a><a class="btn ghost" href="/edit/${esc(s.slug)}#view">View your website</a><a class="btn ghost" href="/edit/${esc(s.slug)}#stats">Stats</a></div></div>`;
+  <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}#edit">Edit your website</a><a class="btn ghost" href="/edit/${esc(s.slug)}#view">View your website</a>${s.visitors ? `<a class="btn ghost" href="#${statsId}">Visitors stats</a>` : `<a class="btn ghost" href="/edit/${esc(s.slug)}#stats">Visitors stats</a>`}</div>
+  ${s.visitors ? visitorsSection(s.visitors, false, false, { id: statsId, closeHref: `#${cardId}` }) : ""}</div>`;
         })
         .join("")
     : `<p>No website on this account yet. <a href="/new">Build it</a>, or add one you already made below.</p>`;
