@@ -76,7 +76,7 @@ ${d.name} operates this website at ${d.url}. This Privacy Policy explains what i
 
 ## Information we collect
 - **Information you share with us.** This website has no contact or booking forms. You reach us directly by phone${d.email ? ", by email," : ""} or in person, and anything you choose to tell us that way is used only to respond to you.
-- **Anonymous visit counts.** We keep simple, aggregate counts of page views and taps on the Call and Directions buttons, so we can see how many people the site reaches. These counts do not identify you: we do not store your name, your IP address, or your browsing history, and we do not use cookies or trackers to collect them.
+- **Anonymous visit counts.** We keep simple, aggregate counts of page views and taps on the Call and Directions buttons, so we can see how many people the site reaches. When you arrive from another website, we also record the name of that website (its domain, such as a search engine or social network) — never the full web address you came from. These counts do not identify you: we do not store your name, your IP address, or your browsing history, and we do not use cookies or trackers to collect them.
 
 ## Cookies and tracking
 This website does not use cookies, advertising pixels, or third-party trackers. See our Cookies Policy for more.
