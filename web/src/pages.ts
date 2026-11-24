@@ -121,7 +121,11 @@ ${opts.noindex ? '<meta name="robots" content="noindex">' : ""}
    like this: they are the business's own, light and coloured per category. */
 :root{--bg:#09090b;--fg:#f4f4f5;--fg2:#d4d4d8;--muted:#a1a1aa;--dim:#71717a;--line:rgba(255,255,255,.10);--line2:rgba(255,255,255,.15);--panel:rgba(255,255,255,.03);--accent:#38bdf8;--accent-hi:#7dd3fc;--on-accent:#09090b;--err:#fca5a5;--ok-bg:rgba(52,211,153,.08);--ok-line:rgba(52,211,153,.3)}
 *{box-sizing:border-box}
-html,body{max-width:100vw;overflow-x:hidden}
+/* overflow-x:clip (not hidden) stops horizontal scroll WITHOUT making the body a
+   scroll container — hidden broke position:sticky (the live-preview panel never
+   floated). clip is the same fix the customer-site renderer uses; hidden stays
+   as a fallback for old browsers. */
+html,body{max-width:100vw;overflow-x:hidden;overflow-x:clip}
 body{margin:0;font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;color:var(--fg);background:var(--bg);line-height:1.6;font-size:16px;min-height:100vh;display:flex;flex-direction:column}
 .backdrop{pointer-events:none;position:fixed;inset:0;z-index:-1;overflow:hidden;background:var(--bg)}
 .backdrop i{position:absolute;border-radius:9999px;filter:blur(64px)}
