@@ -184,39 +184,90 @@ export interface Env {
   STRIPE_PRICE_CREDITS?: string;
 }
 
+/** SiteVault's own public pages (the ones with a `path` in pages.ts). Never owner pages or customer sites. */
+const SITEMAP_PATHS = ["/", "/new", "/privacy", "/terms", "/contact"];
+
 /** Tab icon: an "S" in SiteVault sky on the dark rounded square AdVault's "A" uses. */
 const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#09090b"/><path d="M21.5 10.5C20 8.6 17.9 8 16 8c-3 0-5.5 1.7-5.5 4.2 0 5.6 11 3.3 11 9 0 2.4-2.4 4.3-5.6 4.3-2.3 0-4.4-.8-5.9-2.6" stroke="#38bdf8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    try {
-      // HEAD = GET without a body (monitors, link checkers and ad crawlers send
-      // it). Routed as a GET with `head` set, so nothing is counted or used
-      // up, then the body is dropped; status and headers are the GET's.
-      if (request.method === "HEAD") {
-        const res = await route(new Request(request, { method: "GET" }), env, ctx, true);
-        return new Response(null, { status: res.status, statusText: res.statusText, headers: res.headers });
-      }
-      return await route(request, env, ctx);
-    } catch (err) {
-      console.error("unhandled", err instanceof Error ? err.stack : err);
-      const res = html(messagePage("Something went wrong", "Please try again in a minute.", "Error"), 500);
-      // Inside AdVault's frame, show the error instead of the browser's
-      // "refused to connect" (only the embed editor and its handoff).
-      const u = new URL(request.url);
-      const embedded =
-        u.pathname.startsWith("/embed/") ||
-        u.pathname === "/api/embed/sites" ||
-        (u.pathname.startsWith("/edit/") && u.searchParams.get("embed") === "1");
-      return embedded ? allowEmbedFraming(res) : res;
-    }
+    return httpsRedirect(request, env) ?? withHsts(request, env, await handle(request, env, ctx));
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * The MAIN host only, and only when PUBLIC_ORIGIN is https (so a local run
+ * with an http origin is untouched). Customer sites keep their behaviour.
+ */
+function isMainHost(url: URL, env: Env): boolean {
+  const main = new URL(env.PUBLIC_ORIGIN);
+  return main.protocol === "https:" && url.hostname === main.hostname;
+}
+
+/**
+ * http -> https on the main host. No loop: the scheme is the visitor's own
+ * (the Worker is the origin, nothing sits behind it) and the target is https.
+ * GET/HEAD 301; other methods 308, which keeps method and body. Webhooks are
+ * left alone: a sender may not follow redirects.
+ */
+function httpsRedirect(request: Request, env: Env): Response | null {
+  const url = new URL(request.url);
+  if (url.protocol !== "http:" || !isMainHost(url, env) || url.pathname.startsWith("/webhooks/")) return null;
+  url.protocol = "https:";
+  return Response.redirect(url.toString(), request.method === "GET" || request.method === "HEAD" ? 301 : 308);
+}
+
+/** One day, this host only: no includeSubDomains (other apps' hosts), no preload. */
+function withHsts(request: Request, env: Env, res: Response): Response {
+  const url = new URL(request.url);
+  if (url.protocol !== "https:" || !isMainHost(url, env)) return res;
+  // Response.redirect() headers are immutable, so copy.
+  const out = new Response(res.body, res);
+  out.headers.set("strict-transport-security", "max-age=86400");
+  return out;
+}
+
+async function handle(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  try {
+    // HEAD = GET without a body (monitors, link checkers and ad crawlers send
+    // it). Routed as a GET with `head` set, so nothing is counted or used
+    // up, then the body is dropped; status and headers are the GET's.
+    if (request.method === "HEAD") {
+      const res = await route(new Request(request, { method: "GET" }), env, ctx, true);
+      return new Response(null, { status: res.status, statusText: res.statusText, headers: res.headers });
+    }
+    return await route(request, env, ctx);
+  } catch (err) {
+    console.error("unhandled", err instanceof Error ? err.stack : err);
+    const res = html(messagePage("Something went wrong", "Please try again in a minute.", "Error"), 500);
+    // Inside AdVault's frame, show the error instead of the browser's
+    // "refused to connect" (only the embed editor and its handoff).
+    const u = new URL(request.url);
+    const embedded =
+      u.pathname.startsWith("/embed/") ||
+      u.pathname === "/api/embed/sites" ||
+      (u.pathname.startsWith("/edit/") && u.searchParams.get("embed") === "1");
+    return embedded ? allowEmbedFraming(res) : res;
+  }
+}
 
 async function route(request: Request, env: Env, ctx: ExecutionContext, head = false): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
+
+  // The wordmark font, self-hosted (same for every site, cached forever). On
+  // EVERY host: the main host renders sites too (owner view, preview, /s/).
+  if (method === "GET" && path === "/_f/wordmark.woff2") {
+    return new Response(wordmarkFontBytes(), {
+      headers: {
+        "content-type": "font/woff2",
+        "cache-control": "public, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
 
   // Customer-site domain (3pandasite.com since 2026-11-15). Each business has
   // its own subdomain, which Google Ads' destination rules want (shared
@@ -230,16 +281,6 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (!/^[a-z0-9-]+$/.test(slug)) return new Response("Not found", { status: 404 });
     if (method === "GET" && path === "/robots.txt") {
       return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain" } });
-    }
-    // The wordmark font, self-hosted (same for every site, cached forever).
-    if (method === "GET" && path === "/_f/wordmark.woff2") {
-      return new Response(wordmarkFontBytes(), {
-        headers: {
-          "content-type": "font/woff2",
-          "cache-control": "public, max-age=31536000, immutable",
-          "x-content-type-options": "nosniff",
-        },
-      });
     }
     const tap = path.match(/^\/t\/([a-z]+)$/);
     if (method === "POST" && tap) return countTap(request, env, ctx, slug, tap[1]!);
@@ -297,7 +338,13 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
     if (path === "/contact") return html(contactPage());
-    if (path === "/robots.txt") return new Response("User-agent: *\nDisallow: /edit/\nDisallow: /api/\nDisallow: /admin\nDisallow: /account\n", { headers: { "content-type": "text/plain" } });
+    if (path === "/robots.txt") return new Response(`User-agent: *\nDisallow: /edit/\nDisallow: /api/\nDisallow: /admin\nDisallow: /account\n\nSitemap: ${env.PUBLIC_ORIGIN}/sitemap.xml\n`, { headers: { "content-type": "text/plain" } });
+    if (path === "/sitemap.xml") {
+      const urls = SITEMAP_PATHS.map((p) => `<url><loc>${esc(env.PUBLIC_ORIGIN + p)}</loc></url>`).join("");
+      return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>\n`, {
+        headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" },
+      });
+    }
     // The tab icon: an "S", matching AdVault's "A" (main site only; customer sites are the business's own).
     if (path === "/favicon.svg" || path === "/favicon.ico") {
       return new Response(FAVICON_SVG, { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" } });
@@ -475,26 +522,70 @@ async function aliasTarget(env: Env, slug: string): Promise<string | null> {
   return env.SITES.get(aliasKey(slug));
 }
 
-/** Taken by a site, or held by a renamed site as its old address. */
+/** Taken by a site, held by a renamed site as its old address, or just reserved. */
 async function addressTaken(env: Env, slug: string): Promise<boolean> {
-  return Boolean((await env.SITES.get(siteKey(slug))) || (await env.SITES.get(aliasKey(slug))));
+  if ((await env.SITES.get(siteKey(slug))) || (await env.SITES.get(aliasKey(slug)))) return true;
+  const held = await env.PHOTOS.head(addrKey(slug));
+  return held !== null && freshHold(held);
 }
 
-/** The first free default (name, name-type, name-town), else name-2, name-3… */
+// Address reservations: R2 `addr/<slug>`. KV can't decide who gets an address:
+// it has no create-if-absent, and a "not found" read is cached for up to 60 s
+// per location, so two owners could both see an address free and the second
+// save would replace the first one's website. R2 is strongly consistent and a
+// conditional put is atomic, so exactly one request wins. Every NEW address
+// (create, default, rename) is reserved before anything is stored.
+// KV stays the long-term record: after ADDRESS_HOLD_MS (far longer than KV
+// takes to settle) a reservation with no site or alias behind it is a leftover
+// of a failed request and may be taken over. So sites made before this need no
+// reservation, and no backfill.
+const addrKey = (slug: string) => `addr/${slug}`;
+const ADDRESS_HOLD_MS = 10 * 60 * 1000;
+const freshHold = (o: R2Object) => Date.now() - o.uploaded.getTime() < ADDRESS_HOLD_MS;
+
+/** Reserve an address, atomically. False = taken, or someone else just got it. */
+async function reserveAddress(env: Env, slug: string): Promise<boolean> {
+  if (await addressTaken(env, slug)) return false;
+  // Random body: every reservation has its own etag.
+  const put = (onlyIf: R2Conditional | Headers) => env.PHOTOS.put(addrKey(slug), randomKey(16), { onlyIf });
+  if ((await put(new Headers({ "if-none-match": "*" }))) !== null) return true;
+  const held = await env.PHOTOS.head(addrKey(slug));
+  if (!held || freshHold(held)) return false;
+  return (await put({ etagMatches: held.etag })) !== null;
+}
+
+/** Give a reservation back (nothing was made under it, or its site is gone). */
+async function releaseAddress(env: Env, ...slugs: string[]): Promise<void> {
+  try {
+    await env.PHOTOS.delete(slugs.map(addrKey));
+  } catch (err) {
+    console.warn("address release failed", String(err));
+  }
+}
+
+const ADDRESS_TAKEN = "That address is taken. Try another.";
+
+/** The address for a new site, reserved: the requested one (null if taken), else the first free default. */
+async function reserveNewAddress(env: Env, content: SiteContent, requested: string | null): Promise<string | null> {
+  if (requested) return (await reserveAddress(env, requested)) ? requested : null;
+  return uniqueSlug(env, content.businessName, content.category, content.city);
+}
+
+/** Reserves the first free default (name, name-type, name-town), else name-2, name-3… */
 async function uniqueSlug(env: Env, businessName: string, category: string, city: string): Promise<string> {
   const suggestions = suggestAddresses(businessName, category, city);
-  for (const s of suggestions) if (!(await addressTaken(env, s))) return s;
+  for (const s of suggestions) if (await reserveAddress(env, s)) return s;
   const base = suggestions[0] ?? "my-business";
   for (let i = 2; i < 30; i += 1) {
     const candidate = `${base}-${i}`.slice(0, MAX_LEN);
-    if (addressProblem(candidate) === null && !(await addressTaken(env, candidate))) return candidate;
+    if (addressProblem(candidate) === null && (await reserveAddress(env, candidate))) return candidate;
   }
   return `${base.slice(0, 30)}-${randomKey(6).toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 }
 
 /** Checks a requested address; null when it can be used. */
 async function requestedAddressProblem(env: Env, slug: string): Promise<string | null> {
-  return addressProblem(slug) ?? ((await addressTaken(env, slug)) ? "That address is taken. Try another." : null);
+  return addressProblem(slug) ?? ((await addressTaken(env, slug)) ? ADDRESS_TAKEN : null);
 }
 
 // GET /api/address?slug=&name=&category=&city=  (public, read-only; CORS open
@@ -708,6 +799,7 @@ async function deleteInternal(request: Request, env: Env, url: URL, slug: string
   const old = site.aliases ?? [];
   for (const a of old) if ((await env.SITES.get(aliasKey(a))) === site.slug) await env.SITES.delete(aliasKey(a));
   await env.SITES.delete(siteKey(site.slug));
+  await releaseAddress(env, site.slug, ...old);
   const owner = site.ownerId ? await loadAccount(env.SITES, site.ownerId) : null;
   if (owner) {
     const gone = new Set([site.slug, slug, ...old]);
@@ -2012,8 +2104,9 @@ async function insertSite(
   content: SiteContent,
   files: File[],
   source: Site["source"],
-  videoFile: File | null = null,
-  requested: string | null = null,
+  videoFile: File | null,
+  /** Already reserved by the caller (reserveNewAddress). */
+  slug: string,
   awaitingPayment = false,
   ownerId: string | null = null,
   comp = false,
@@ -2023,7 +2116,6 @@ async function insertSite(
   scheduleFile: File | null = null,
   listingItems: { photo: File; price: string; details: string; status: Listing["status"] }[] = [],
 ) {
-  const slug = requested ?? (await uniqueSlug(env, content.businessName, content.category, content.city));
   const key = randomKey();
   const nowDate = new Date();
   const now = nowDate.toISOString();
@@ -2031,18 +2123,26 @@ async function insertSite(
   // BILLING off: no billing record, so the site counts as early access later.
   // Admin-owned sites are comped: published free (only meaningful while BILLING is on).
   const billing = comp && cfg.on ? compBilling() : initialBilling(source, cfg, nowDate, awaitingPayment);
-  const site: Site = {
-    ...(billing ? { billing } : {}),
-    ...(ownerId ? { ownerId } : {}),
-    ...(adminTest ? { adminTest: true } : {}),
-    ...content,
-    slug,
+  const storeMedia = async () => ({
     photos: await storePhotos(env, slug, files),
     video: await storeVideo(env, slug, videoFile),
     ...(pairFiles.length ? { beforeAfter: await storePairs(env, slug, pairFiles) } : {}),
     ...(menuFiles.length ? { menu: await storeMenu(env, slug, menuFiles) } : {}),
     ...(scheduleFile ? { schedule: (await storeMenu(env, slug, [scheduleFile]))[0] } : {}),
     ...(listingItems.length ? { listings: await storeListings(env, slug, listingItems) } : {}),
+  });
+  // Nothing made yet: an upload that fails frees the address for the retry.
+  const media = await storeMedia().catch(async (err: unknown) => {
+    await releaseAddress(env, slug);
+    throw err;
+  });
+  const site: Site = {
+    ...(billing ? { billing } : {}),
+    ...(ownerId ? { ownerId } : {}),
+    ...(adminTest ? { adminTest: true } : {}),
+    ...content,
+    slug,
+    ...media,
     status: "live",
     source,
     editKeyHash: await sha256Hex(key),
@@ -2103,16 +2203,25 @@ async function createForAdvault(
   }
   if (!adminTest && content && (await phoneOwner(env, content.phone))) errors.phone = PHONE_TAKEN;
   if (!content || Object.keys(errors).length > 0) return { ok: false, errors };
+  // Before the account is touched, so losing the address changes nothing.
+  const slug = await reserveNewAddress(env, content, requested);
+  if (!slug) return { ok: false, errors: { slug: ADDRESS_TAKEN } };
   // Same login: the site goes to the AdVault user's SiteVault account (a test
   // customer with no real email: its id-only account, never an email match).
-  const owner = /^[A-Za-z0-9-]{8,64}$/.test(advId) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
+  let owner: Account | null;
+  try {
+    owner = /^[A-Za-z0-9-]{8,64}$/.test(advId) ? await accountForAdvault(env.SITES, { advaultUserId: advId, email: advEmail }) : null;
+  } catch (err) {
+    await releaseAddress(env, slug);
+    throw err;
+  }
   const made = await insertSite(
     env,
     content,
     input.files,
     "advault",
     input.video,
-    requested,
+    slug,
     input.awaiting,
     owner?.id ?? null,
     false,
@@ -2435,14 +2544,23 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     return rejected(request, env, mode, { form: "Too many websites created from this connection today. Try again tomorrow." }, fields, 429);
   }
 
+  // Reserved before the sign-up, so losing the address doesn't leave an account
+  // behind that then blocks the retry ("this email already has an account").
+  const address = await reserveNewAddress(env, parsed.value, requested);
+  if (!address) return rejected(request, env, mode, { slug: ADDRESS_TAKEN }, safeFields);
+
   let owner: Account | null = signedIn;
   if (!owner) {
-    const made = await signUpShared(env.SITES, advaultApi(env), acctEmail, acctPassword);
+    const made = await signUpShared(env.SITES, advaultApi(env), acctEmail, acctPassword).catch(async (err: unknown) => {
+      await releaseAddress(env, address);
+      throw err;
+    });
+    if (made === "exists") await releaseAddress(env, address);
     if (made === "exists") return rejected(request, env, mode, { acct_email: "This email already has a 3PandaLabs account (SiteVault or AdVault). Sign in first, then build your website." }, safeFields, 409);
     owner = made;
     console.log("account_created", { id: made.id });
   }
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, requested, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), [], form.menu, form.schedule, listingPick.ok ? listingPick.items : []);
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, address, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), [], form.menu, form.schedule, listingPick.ok ? listingPick.items : []);
   await addSiteToAccount(env.SITES, owner, slug);
   reportSitevaultUse(env, ctx, owner);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
@@ -2563,6 +2681,10 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   }
   if (Object.keys(errors).length > 0 || !parsed.ok) return rejected(request, env, mode, errors, form.fields);
 
+  // Reserved before anything is stored. Its own old address is already its own.
+  const reserve = renaming && !(site.aliases ?? []).includes(wanted);
+  if (reserve && !(await reserveAddress(env, wanted))) return rejected(request, env, mode, { slug: ADDRESS_TAKEN }, form.fields);
+
   const removed = site.photos.filter((k) => !kept.includes(k));
   for (const p of pairsNow) if (!keptPairs.includes(p)) removed.push(p.before, p.after);
   for (const k of menuNow) if (!keptMenu.includes(k)) removed.push(k);
@@ -2598,6 +2720,7 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
   let billing = fresh;
   if (spend.ok && spend.spend === 1) {
     const b = billingOf({ billing: fresh });
+    if (b.credits < 1 && reserve) await releaseAddress(env, wanted);
     if (b.credits < 1) return rejected(request, env, mode, { offer: embed ? "You have no offer credits left." : "You have no offer credits left. Buy more in Plan & billing above." }, form.fields, 402);
     billing = { ...b, credits: b.credits - 1 };
   }
@@ -2623,6 +2746,9 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     next.aliases = aliases;
     next.renames = (site.renames ?? 0) + 1;
     await saveSite(env, next);
+    // Hold the old address while KV settles: for a minute another location may
+    // see neither the deleted site nor the new alias.
+    await env.PHOTOS.put(addrKey(site.slug), randomKey(16));
     // Every old address points at the new one (no redirect chains).
     await env.SITES.delete(aliasKey(wanted));
     for (const a of aliases) await env.SITES.put(aliasKey(a), wanted);

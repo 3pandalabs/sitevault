@@ -32,6 +32,9 @@ function memoryR2() {
     async put(key: string, value: ArrayBuffer) {
       data.set(key, value);
     },
+    async head() {
+      return null; // reservations: test/address-race.test.ts
+    },
     async get(key: string) {
       const v = data.get(key);
       return v ? { body: new Uint8Array(v), size: v.byteLength, httpMetadata: {} } : null;

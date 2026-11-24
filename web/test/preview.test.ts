@@ -39,6 +39,9 @@ function recordingR2() {
       r2.writes += 1;
       data.set(key, value);
     },
+    async head() {
+      return null; // reservations: test/address-race.test.ts
+    },
     async get(key: string) {
       r2.reads.push(key);
       const v = data.get(key);
