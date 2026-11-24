@@ -224,6 +224,7 @@ legend{font-weight:600;padding:0 6px}
 footer{border-top:1px solid var(--line);margin-top:48px;padding:32px 0;font-size:.875rem}
 footer .links{display:flex;flex-wrap:wrap;gap:8px 20px;padding-bottom:16px}
 footer .links a{color:var(--muted);text-decoration:none}footer .links a:hover{color:var(--fg2)}
+footer .follow{display:flex;align-items:center;gap:10px;color:var(--muted);margin-left:auto}footer .follow svg{display:block}@media (max-width:640px){footer .follow{margin-left:0;flex-basis:100%}}
 footer .legal{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:var(--dim)}
 footer .tagline{margin:8px 0 0;color:var(--dim);font-size:.8rem}
 .prose{max-width:46rem}.prose h2{margin-top:28px;font-size:1.25rem}.prose li,.prose p{color:var(--fg2)}
@@ -351,7 +352,7 @@ ${opts.embed ? "" : `<div class="backdrop" aria-hidden="true"><i class="b1"></i>
 ${opts.body}
 </main>
 ${opts.embed ? "" : `<footer><div class="wrap">
-  <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></div>
+  <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact us</a><a href="tel:+13323168453">+1 (332) 316-8453</a><span class="follow">Follow us <a href="https://www.facebook.com/3pandalabs" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg></a></span></div>
   <div class="legal"><span>&copy; 3PandaLabs LLC, USA.</span><span>All rights reserved.</span></div>
   <p class="tagline">Built by pandas. Loved by people.</p>
 </div></footer>`}
@@ -1929,6 +1930,7 @@ export function contactPage(): string {
 <p>SiteVault is made by 3PandaLabs LLC, USA. The best way to reach us is by email:</p>
 <p><a class="btn" href="mailto:${CONTACT}">Email ${esc(CONTACT)}</a></p>
 <p>If your email app doesn't open, copy this address: <strong>${esc(CONTACT)}</strong></p>
+<p>Prefer to call? <a href="tel:+13323168453">+1 (332) 316-8453</a></p>
 <h2>Website owners</h2>
 <p>Editing your website? Use the edit link from when you built it, or sign in and open <a href="/account">My website</a>. Want your website taken down? Email us from the address above with your web address, and we'll confirm with you at the phone number on your site before removing it.</p>
 </section>`,

@@ -252,7 +252,7 @@ describe("stats views", () => {
 
   it("Basic: the 30-day count and the upgrade note, no charts", async () => {
     const { html } = await editPage({ basic: true });
-    const stats = html.slice(html.indexOf('id="stats" aria-labelledby'));
+    const stats = html.slice(html.indexOf('id="stats" aria-labelledby'), html.indexOf("<footer>")); // the footer has social icons
     expect(stats).toContain("<strong>100</strong> visits in the last 30 days");
     expect(stats).toContain("Upgrade to Pro to see where visitors come from");
     expect(stats).not.toContain("<svg");
