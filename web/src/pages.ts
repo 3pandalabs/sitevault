@@ -333,13 +333,17 @@ table.bars td.n{text-align:right;white-space:nowrap;width:1%}
 .opanels[data-tab=edit]>#edit,.opanels[data-tab=view]>#view,.opanels[data-tab=stats]>#stats{display:block}
 .viewbar{display:grid;gap:8px;margin:0 0 12px}.viewbar .buttons{margin:0}
 .sv-frame{display:block;width:100%;height:75vh;min-height:480px;border:1px solid var(--line2);border-radius:14px;background:#fff}
-@media (min-width:1024px){
-  section.owner{width:min(calc(100vw - 48px),92rem);margin-left:calc((100% - min(calc(100vw - 48px),92rem))/2)}
+/* From 720px the Edit tab pins the live preview beside the form (sticky), so it
+   floats alongside the fields as you scroll — not just on wide desktops. */
+@media (min-width:720px){
   .opanels:not([data-tab]),.opanels[data-tab=edit]{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .opanels:not([data-tab])>#stats{grid-column:1/-1}
   .opanels[data-tab=edit]>#view{display:block}
   .opanels:not([data-tab])>#view,.opanels[data-tab=edit]>#view{position:sticky;top:12px;align-self:start}
   .opanels:not([data-tab])>#view .sv-frame,.opanels[data-tab=edit]>#view .sv-frame{height:calc(100vh - 190px)}
+}
+@media (min-width:1024px){
+  section.owner{width:min(calc(100vw - 48px),92rem);margin-left:calc((100% - min(calc(100vw - 48px),92rem))/2)}
 }
 .statgrid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));margin:0 0 12px}
 .statcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
