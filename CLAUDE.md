@@ -197,7 +197,7 @@ No accounts, so the business PHONE is the identity: one live site per phone (`ph
   customer sites; the ONLY cookie is the sign-in cookie on the main site, set only when someone signs in (our own aggregate visit counts are described on the privacy page). Maps are a link, never an embed. Change the privacy page in the
   same PR as any change to what is stored.
 - Edit access is a **secret edit key** (only its SHA-256 is stored), shown
-  once on the done page. **No self-service delete** (2026-11-15): owners email 3pandas@3pandalabs.com; ops confirms by calling the site phone, cancels any Stripe subscription, checks no AdVault campaign links to it, then `POST /api/admin/sites/<slug>/remove` (ADMIN_TOKEN). Removal deletes photos and keeps a `removed` record
+  once on the done page. **No self-service delete** (2026-11-15): owners email sitevault@3pandalabs.com; ops confirms by calling the site phone, cancels any Stripe subscription, checks no AdVault campaign links to it, then `POST /api/admin/sites/<slug>/remove` (ADMIN_TOKEN). Removal deletes photos and keeps a `removed` record
   so the slug isn't reused.
 - **Account deletion (Play, 2026-11-22):** `/account` has a "Delete my account" box linking `/go/advault?to=/dashboard/settings#delete-account` (one-tap sign-in to AdVault's Settings -> Delete account; the account is the shared one stored by AdVault). Public URL for Play: `/privacy#delete-account` (steps, what is deleted vs kept). The website is still removed by email only (above). Tests: `test/accounts.test.ts`, `test/signin-handoff.test.ts`.
 - `/metrics` uses the shared org envelope (`app/collectedAt/uptimeSeconds/

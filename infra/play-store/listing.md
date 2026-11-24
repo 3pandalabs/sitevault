@@ -45,7 +45,7 @@ Made for plumbers, salons, restaurants, cleaners, dentists, mechanics and every 
 Made by 3PandaLabs.
 
 ## Contact
-- Email: 3pandas@3pandalabs.com (the address the app and its policy pages show; a `sitevault@` alias is not set up in code)
+- Email: sitevault@3pandalabs.com (the address the app and its policy pages show)
 - Website: https://sitevault.3pandalabs.com
 - Privacy policy: https://sitevault.3pandalabs.com/privacy
 - Terms: https://sitevault.3pandalabs.com/terms
