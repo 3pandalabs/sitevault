@@ -56,6 +56,18 @@ describe("parseContent", () => {
     expect(parseContent({ ...base, phone: "call me maybe" }).ok).toBe(false);
   });
 
+  it("reads a brand colour only when the owner opts in, and validates the hex", () => {
+    const on = parseContent({ ...base, customColor: "1", brandColor: "#C2410C" });
+    if (on.ok) expect(on.value.brandColor).toBe("#c2410c");
+    // Colour present but not opted in -> ignored (category default).
+    const off = parseContent({ ...base, brandColor: "#C2410C" });
+    if (off.ok) expect(off.value.brandColor).toBeNull();
+    // Opted in but malformed -> null, not an error.
+    const bad = parseContent({ ...base, customColor: "1", brandColor: "red" });
+    expect(bad.ok).toBe(true);
+    if (bad.ok) expect(bad.value.brandColor).toBeNull();
+  });
+
   it("rejects a malformed email", () => {
     expect(parseContent({ ...base, email: "not-an-email" }).ok).toBe(false);
   });
@@ -189,6 +201,20 @@ describe("renderSite", () => {
     siteUrl: "https://sitevault.3pandalabs.com/s/ekmoliya-landscaping-secaucus",
     assetOrigin: "https://sitevault.3pandalabs.com",
     homeUrl: "https://sitevault.3pandalabs.com",
+  });
+
+  it("recolours the theme from an owner brand colour, deepening light picks for contrast", () => {
+    // A dark pick is used verbatim for --primary.
+    const dark = renderSite({ ...site, brandColor: "#6d28d9" }, { siteUrl: "https://a.x/", assetOrigin: "https://a.x", homeUrl: "https://x" });
+    expect(dark).toMatch(/--primary:#6d28d9/);
+    expect(dark).toMatch(/--accent:#6d28d9/);
+    // A very light pick is deepened (white button text must clear 4.5:1), so --primary is NOT the raw colour,
+    // while --accent keeps the chosen hue for decorative use.
+    const light = renderSite({ ...site, brandColor: "#fde047" }, { siteUrl: "https://a.x/", assetOrigin: "https://a.x", homeUrl: "https://x" });
+    expect(light).not.toMatch(/--primary:#fde047/);
+    expect(light).toMatch(/--accent:#fde047/);
+    // No brand colour -> the category palette is untouched.
+    expect(html).toMatch(/--primary:#143626/);
   });
 
   it("clips horizontal overflow on html and body (phones must not zoom out)", () => {

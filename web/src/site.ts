@@ -7,7 +7,7 @@
 // builder becomes a phishing host).
 
 import type { Billing } from "./billing.js";
-import { asTemplate, type TemplateKey } from "./templates.js";
+import { asBrandColor, asTemplate, type TemplateKey } from "./templates.js";
 
 export const CATEGORIES = {
   landscaping: { label: "Landscaping & lawn care", brand: "#166534" },
@@ -122,6 +122,8 @@ export type SiteContent = {
   offer: string | null;
   /** Which customer-site template (layout/style) to render. */
   template: TemplateKey;
+  /** Owner-chosen brand colour (#rrggbb), overriding the category palette. null = category default. */
+  brandColor: string | null;
   /** Show the first photo as the big hero banner (else a coloured banner). Default true. */
   heroPhoto: boolean;
   /** Dentist/clinic: insurance plans accepted, one per line. Empty = not shown. */
@@ -716,6 +718,7 @@ export function parseContent(
       locations,
       offer: offer || null,
       template: asTemplate(get("template")),
+      brandColor: get("customColor") === "1" ? asBrandColor(get("brandColor")) : null,
       heroPhoto: get("heroPhoto") !== "no",
       insurance: insurance || null,
       team,

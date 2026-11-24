@@ -14,7 +14,7 @@
 
 import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, listingsAllowed, menuAllowed, reviewStats, scheduleAllowed, teamAllowed, type PolicyKind, type Site } from "./site.js";
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
-import { asTemplate, isTemplate, TEMPLATE_FAMILY, themeFor, type TemplateKey, type Theme } from "./templates.js";
+import { asTemplate, isTemplate, TEMPLATE_FAMILY, themeFor, withBrandColor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
 
 export type RenderContext = {
@@ -489,7 +489,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
       ? `.name{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-weight:600;letter-spacing:-.01em;font-size:1.25rem}
 .hero.spotlight h1,.hero.split h1,.hero.editorial h1{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-weight:600;letter-spacing:-.01em}`
       : "";
-  const theme = themeFor(site.category, brand);
+  const theme = withBrandColor(themeFor(site.category, brand), site.brandColor);
   const title = `${site.businessName} | ${cat.label}${site.city ? ` in ${site.city}` : ""}`;
   const description = (site.about || headline(site)).slice(0, 160);
   const photos = site.photos.map((k) => photoUrl(ctx, k));

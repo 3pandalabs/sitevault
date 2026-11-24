@@ -126,3 +126,56 @@ const THEMES: Partial<Record<CategoryKey, Theme>> = {
 export function themeFor(category: CategoryKey, brand: string): Theme {
   return THEMES[category] ?? { bg: "#F8FAF9", band: "#F1F5F4", card: "#FFFFFF", ink: "#111827", muted: "#4B5563", line: "#E5E7EB", primary: brand, accent: brand, ...BASE };
 }
+
+// --- Owner-chosen brand colour ---------------------------------------------
+// The builder lets an owner override the category palette with one brand
+// colour. `primary` doubles as link text and button fill (white text), so the
+// chosen colour is deepened as needed to keep 4.5:1 against white (the ADA rule
+// every CATEGORIES[*].brand already follows); `band`/`line` become light tints
+// so the whole site recolours cohesively.
+
+const HEX6 = /^#([0-9a-fA-F]{6})$/;
+
+/** Validate an owner-supplied brand colour; returns a normalised #rrggbb or null. */
+export function asBrandColor(x: string | null | undefined): string | null {
+  if (!x) return null;
+  const m = HEX6.exec(x.trim());
+  return m ? `#${m[1]!.toLowerCase()}` : null;
+}
+
+type RGB = { r: number; g: number; b: number };
+const toRgb = (hex: string): RGB => {
+  const n = parseInt(hex.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+};
+const toHex = ({ r, g, b }: RGB): string => {
+  const h = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+};
+const luminance = ({ r, g, b }: RGB): number => {
+  const f = (v: number) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+};
+const contrastWithWhite = (c: RGB): number => 1.05 / (luminance(c) + 0.05);
+// Darken toward black until white text clears 4.5:1 on the colour.
+const deepenForWhiteText = (hex: string): string => {
+  let c = toRgb(hex);
+  for (let i = 0; i < 40 && contrastWithWhite(c) < 4.5; i++) c = { r: c.r * 0.92, g: c.g * 0.92, b: c.b * 0.92 };
+  return toHex(c);
+};
+// Mix a colour with white; `keep` is the fraction of the colour (0..1).
+const mixWithWhite = (hex: string, keep: number): string => {
+  const c = toRgb(hex);
+  const m = (v: number) => v * keep + 255 * (1 - keep);
+  return toHex({ r: m(c.r), g: m(c.g), b: m(c.b) });
+};
+
+/** Recolour a theme around an owner-chosen brand colour (null = category default). */
+export function withBrandColor(theme: Theme, brandColor: string | null | undefined): Theme {
+  const c = asBrandColor(brandColor);
+  if (!c) return theme;
+  return { ...theme, primary: deepenForWhiteText(c), accent: c, band: mixWithWhite(c, 0.12), line: mixWithWhite(c, 0.22) };
+}
