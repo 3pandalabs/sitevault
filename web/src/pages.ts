@@ -49,6 +49,12 @@ const CAT_THUMB_COLORS: Record<string, { p: string; b: string }> = Object.fromEn
     return [k, { p: t.primary, b: t.band }];
   }),
 );
+
+/** Quick-pick brand colours for the builder — all clear 4.5:1 white-text contrast. */
+const BRAND_PRESETS = [
+  "#1e3a8a", "#0f766e", "#15803d", "#b45309", "#b91c1c",
+  "#be185d", "#6d28d9", "#0c4a6e", "#9a3412", "#334155",
+];
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
@@ -297,6 +303,15 @@ details.section .section-body{padding:14px 18px 4px}
 .tpl-classic::after{content:"";position:absolute;left:8px;right:8px;top:8px;height:12px;background:var(--tp);border-radius:5px 5px 0 0}
 .tpl-name{display:block;font-weight:700}
 .tpl-blurb{display:block;color:var(--fg2);font-size:.85rem;margin-top:2px;line-height:1.35}
+.brandcolor{margin-top:16px;padding-top:14px;border-top:1px solid var(--line2)}
+.bc-body{margin-top:12px}
+.bc-body[hidden]{display:none}
+.bc-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.bc-row input[type=color]{width:54px;height:40px;padding:2px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);cursor:pointer}
+.bc-swatches{display:flex;gap:8px;flex-wrap:wrap}
+.bc-sw{width:30px;height:30px;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line2);cursor:pointer;padding:0}
+.bc-sw:hover{transform:scale(1.08)}
+.bc-sw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .buttons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}
 .buttons form{margin:0}
 dl.facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0 0 8px}
@@ -1201,6 +1216,20 @@ ${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:
       ).join("");
     })()}
   </div>
+  ${(() => {
+    const colorOn = values.customColor !== undefined ? values.customColor === "1" : Boolean(site?.brandColor);
+    const colorVal = values.brandColor || site?.brandColor || CAT_THUMB_COLORS[selectedCat]?.p || "#1e3a8a";
+    return `<div class="brandcolor">
+    <label class="check"><input type="checkbox" name="customColor" value="1"${colorOn ? " checked" : ""}> <span>Use my own brand colour</span></label>
+    <div class="bc-body"${colorOn ? "" : " hidden"}>
+      <div class="bc-row">
+        <input type="color" id="brandColor" name="brandColor" value="${esc(colorVal)}" aria-label="Brand colour">
+        <div class="bc-swatches" role="group" aria-label="Suggested brand colours">${BRAND_PRESETS.map((h) => `<button type="button" class="bc-sw" data-c="${h}" style="background:${h}" aria-label="Use ${h}"></button>`).join("")}</div>
+      </div>
+      <p class="hint">Pick a colour or type your own. We deepen very light colours automatically so your text stays easy to read.</p>
+    </div>
+  </div>`;
+  })()}
 </fieldset>
 <div class="field"><label class="check"><input type="checkbox" name="attest" value="yes" required${mode.kind === "edit" ? " checked" : ""}> <span>${
   draft
@@ -1432,6 +1461,10 @@ const BUILDER_SCRIPT = `
     catSel.addEventListener('change',fillServices);
     if(svc.value.trim()==='') fillServices();
   }
+  // Brand colour: reveal the picker when ticked; swatches set the colour and tick it.
+  var bcChk=document.querySelector('input[name=customColor]'), bcBody=document.querySelector('.bc-body'), bcInput=document.getElementById('brandColor');
+  if(bcChk&&bcBody){ var bcSync=function(){ bcBody.hidden=!bcChk.checked; }; bcChk.addEventListener('change',bcSync); bcSync(); }
+  [].slice.call(document.querySelectorAll('.bc-sw')).forEach(function(s){ s.addEventListener('click',function(){ var c=s.getAttribute('data-c'); if(bcInput) bcInput.value=c; if(bcChk&&!bcChk.checked){ bcChk.checked=true; if(bcBody) bcBody.hidden=false; } }); });
   // Opening hours: offer a weekly template to edit; it stays once touched, and
   // an existing site's hours are never overwritten.
   var HOURS_TEMPLATE=${JSON.stringify(HOURS_TEMPLATE)};
