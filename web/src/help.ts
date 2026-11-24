@@ -1,4 +1,4 @@
-// The panda helper's and /faq's answers, and the plain word matching that picks
+// The panda helper's answers (the billing ones are on /faq too), and the plain word matching that picks
 // one (ported from AdVault web/src/lib/help/match.ts; keep them alike). No AI:
 // it can only show text written here. Prices come from billing.ts, so they
 // change with it; keep the rest true when a screen or rule changes.
@@ -13,7 +13,7 @@ export type HelpTopic = {
   /** Words that point at this topic. A "two words" entry needs both and counts double. */
   keys: string[];
   links?: { label: string; href: string }[];
-  /** Also listed on /faq. */
+  /** Also listed on /faq under Plans and billing. */
   faq?: boolean;
 };
 
@@ -50,7 +50,6 @@ export function helpTopics(cfg: BillingConfig, now: Date): HelpTopic[] {
     },
     {
       id: "start",
-      faq: true,
       q: "How do I make my website?",
       a: "Press Build my website and fill in your business name, phone, what you offer, where you work and your hours, then add photos. You see a preview before anything goes live.",
       keys: ["start", "begin", "make website", "build", "build website", "create website", "new website", "how work", "get started", "sign up", "signup", "register", "create account", "preview"],
@@ -58,7 +57,6 @@ export function helpTopics(cfg: BillingConfig, now: Date): HelpTopic[] {
     },
     {
       id: "edit",
-      faq: true,
       q: "Can I change my website later?",
       a: "Yes, anytime and from your phone. Sign in, open My website and press Edit your website. You can change the text, photos, hours and style. Editing is included; only a new current special uses an offer credit.",
       keys: ["edit", "change website", "edit website", "update", "update website", "change text", "change hours", "change photo", "change style", "design", "template", "colour", "color", "change phone", "later"],
@@ -66,7 +64,6 @@ export function helpTopics(cfg: BillingConfig, now: Date): HelpTopic[] {
     },
     {
       id: "address",
-      faq: true,
       q: "What web address do I get?",
       a: `You pick yourname.3pandasite.com, included with your plan. You can change it up to ${MAX_RENAMES} times, and the old address keeps sending visitors to the new one. Using a domain you own isn't available yet.`,
       keys: ["address", "web address", "domain", "own domain", "url", "link", "rename", "change address", "custom domain", "3pandasite", "dot com"],
@@ -148,7 +145,6 @@ export function helpTopics(cfg: BillingConfig, now: Date): HelpTopic[] {
     },
     {
       id: "remove",
-      faq: true,
       q: "How do I take my website down?",
       a: "Send us a message with your web address. We confirm with you at the phone number on the website, cancel its renewal, take it offline and delete its photos.",
       keys: ["take down", "remove website", "delete website", "unpublish", "shut down", "close website"],
