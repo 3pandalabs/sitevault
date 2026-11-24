@@ -107,6 +107,16 @@ INTERNAL_TOKEN, both follow renames (`alias:` keys) like resolve:
 - **Right-side view = `GET /edit/<slug>/view`** (`ownerView`, index.ts): the SAVED site via `renderSite` on the MAIN origin (owner: edit key or session; published, unpublished or paused all render, with a status bar), photos from this origin's `/p/`, never counted, no pings, noindex, no-store, `frame-ancestors 'self'`. Links get `target=_blank` and root-relative links point at the customer host (`ownerFrame`). Customer sites keep `frame-ancestors 'none'` (we never frame `*.3pandasite.com`). The edit page adds `frame-src 'self'` and keeps `frame-ancestors 'none'`. **"Refresh preview"** = a `form="builder"` submit to `POST /preview?site=` with `formtarget="sv-view"` (works without JS); `/preview` responses are `frame-ancestors 'self'`. After a JS save the page reloads itself (`res.edit` in the save JSON, non-embed only) with `?saved=1` so the frame shows the saved site; the no-JS save still 303s to the public site.
 - **Stats tab** (`statsPanel`, `src/charts.ts`): cards for sources, places, devices, taps (Bars | Pie | Table) and visits by day (Line | Bars | Table). Inline SVG built on the server, every view in the HTML (first shown, others `hidden`), the toggle only flips `hidden`/`aria-pressed`. Pie: top 6 + "Other" (grey), role=img + aria-label summary, legend with %. Palette: dataviz dark slots. Basic: count + upgrade note, no charts. Embed mode keeps the old single column and collapsed Visitors section. Tests: `test/owner-tabs.test.ts`.
 
+## FAQ and panda helper (2026-11-24, `src/help.ts`)
+
+Looks like an AI chat, isn't one: word matching over text we wrote (ported from
+AdVault `web/src/lib/help/match.ts`). `/faq` and `POST /api/help` share
+`helpTopics(billingConfig, now)`, so prices follow billing.ts. `layout` puts
+`HELPER_MARK` on every own page except embed, admin and message pages; `html()`
+swaps it for a nonce'd `/helper.js` (`helper-client.ts`). Never on customer
+sites. Nothing typed is stored; an unanswered question goes to /contact through
+sessionStorage. Change an answer with the rule it describes. Tests: `test/help.test.ts`.
+
 ## Addresses (`src/address.ts`)
 
 The business picks `<slug>.3pandasite.com`; the default is the shortest free one of name, name-type, name-town. Rules: 3-40 chars, a-z0-9 and single hyphens, RESERVED service words, and big-brand names refused (substring for long brands, whole word for short or ambiguous ones like "irs", "chase", "apple", so "first" and "pineapple" still pass). `GET /api/address` checks availability (public, CORS *). Renames: up to `MAX_RENAMES` (3) from the edit page; every old address is an `alias:<old>` KV key pointing at the current slug (no chains), served as a 301, and is never handed to anyone else. Photos keep their original R2 keys; the subdomain serves a file only if it is in that site's `photos`/`video`/`beforeAfter`. `GET /api/internal/resolve?slug=` (INTERNAL_TOKEN) lets AdVault follow a rename.

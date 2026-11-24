@@ -57,6 +57,7 @@ const BRAND_PRESETS = [
 ];
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
+import type { HelpTopic } from "./help.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
 import { EMBED_SCRIPT } from "./embed.js";
 import { chartCard, type Row } from "./charts.js";
@@ -96,7 +97,10 @@ function shareTags(title: string, path: string): string {
  * `path`: set on public pages only; adds the share tags (og:url is the main
  * site origin + this path).
  */
-export function layout(opts: { title: string; body: string; path?: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean; email?: string | null }): string {
+/** Where html() (index.ts) puts the panda helper's nonce'd script. Never on embedded, admin or message pages. */
+export const HELPER_MARK = "<!--helper-->";
+
+export function layout(opts: { helper?: boolean; title: string; body: string; path?: string; nonce?: string; script?: string; noindex?: boolean; owner?: boolean; signedIn?: boolean; admin?: boolean; embed?: boolean; email?: string | null }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -387,6 +391,7 @@ ${opts.embed ? "" : `<footer><div class="wrap">
   <p class="tagline">Built by pandas. Loved by people.</p>
 </div></footer>`}
 ${opts.nonce ? `<script nonce="${opts.nonce}">${opts.script ?? ""}${opts.embed ? "" : SW_REGISTER}</script>` : ""}
+${opts.embed || opts.helper === false ? "" : HELPER_MARK}
 </body>
 </html>`;
 }
@@ -437,7 +442,7 @@ function plansBlock(billingOn: boolean, festive: boolean): string {
 function priceLine(billingOn: boolean, festiveUntil: Date | null): string {
   if (!billingOn) return "<b>Free</b> during early access.";
   if (festiveUntil) {
-    return `<b>Festive season price: $${DOLLARS.festive}/year and Pro: $${DOLLARS.festivePro}/year</b> (price locked for life). Join before ${esc(fmtDate(festiveUntil))}.<br>After that, $${DOLLARS.basic}/year (Pro $${DOLLARS.pro}).<br>Build it free. Pay only when you publish.`;
+    return `<b>Festive season price: $${DOLLARS.festive}/year and Pro: $${DOLLARS.festivePro}/year</b> (price locked for life). Join by ${esc(fmtDate(festiveUntil))}.<br>After that, $${DOLLARS.basic}/year (Pro $${DOLLARS.pro}).<br>Build it free. Pay only when you publish.`;
   }
   return `<b>$${DOLLARS.basic} a year.</b> Build it free. Pay only when you publish.`;
 }
@@ -1867,6 +1872,7 @@ export function adminPage(sites: AdminSite[], nonce: string): string {
 
   return layout({
     title: "Admin — SiteVault",
+    helper: false,
     noindex: true,
     signedIn: true,
     admin: true,
@@ -1909,6 +1915,7 @@ export function previewErrorsPage(errors: Record<string, string>): string {
 export function messagePage(title: string, message: string, status = "Not found"): string {
   return layout({
     title: `${title} — SiteVault`,
+    helper: false, // also shown on customer hosts
     noindex: true,
     body: `<section class="hero"><span class="pill">${esc(status)}</span><h1>${esc(title)}</h1><p class="lead">${esc(message)}</p><a class="btn" href="/">Go to SiteVault</a></section>`,
   });
@@ -1926,7 +1933,7 @@ export function privacyPage(): string {
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
   <li><strong>Before &amp; after photos</strong>, if the business provides them (on its edit page, or from AdVault): pairs of photos of the business's own work, shown in a "Before &amp; after" section on its website and stored and resized like its other photos. The owner can remove them at any time on the edit page, which deletes them.</li>
   <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos, any before &amp; after photos you added there and <strong>your video ad</strong>, which AdVault sends us when you launch the ad and choose to show it on your website (or when the website is made, if the ad is your own uploaded video).</li>
-  <li><strong>Messages from our contact form</strong> (your name, email, subject and message, and your account ID if you're signed in): emailed to us, through AdVault and our email provider Resend, so we can reply. SiteVault keeps no copy, only a counter for your network address, for up to two hours, to stop abuse.</li>
+  <li><strong>Messages from our contact form</strong> (your name, email, subject and message, and your account ID if you're signed in): emailed to us, through AdVault and our email provider Resend, so we can reply. SiteVault keeps no copy, only a counter for your network address, for up to two hours, to stop abuse. Questions typed into the panda helper are matched to our written answers and not stored.</li>
   <li>If you build your website inside AdVault (the full builder shown on AdVault's "Make me a website"), AdVault first sends us those same details and photos as a <strong>draft</strong> so the builder opens filled in. The draft is kept only to build your website: its photos are deleted once the website is made, and an unused draft expires after an hour and is deleted within a day. Building there signs you in to SiteVault with the same sign-in cookie as above, inside AdVault's page.</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
   <li><strong>Your account is one 3PandaLabs account, shared with <a href="https://advault.3pandalabs.com">AdVault</a></strong> (our video-ad app, also by 3PandaLabs): the same email and password sign you in to both, whichever you signed up on. Your sign-in (email and a scrambled, hashed copy of your password, which can't be turned back into the password) is stored by AdVault for both apps; when you sign in here we send AdVault the email and password you typed to check them. SiteVault stores your email, your 3PandaLabs account ID and which websites are yours. Accounts made on SiteVault before 16 November 2026 kept their hashed password here; it moves to the shared account the next time you sign in. While you're signed in we keep a session record that expires after 30 days or when you sign out. When you follow a link between SiteVault and AdVault while signed in, we pass a one-time sign-in code (it works once, for 60 seconds, and contains your account ID and email, never your password) so you arrive signed in to the same account.</li>
@@ -1984,7 +1991,7 @@ export function termsPage(): string {
   <li><strong>Websites made from AdVault</strong>: $10 one-time, paid in AdVault, which includes the first year of Pro. Pro also stays included while the website owner's AdVault monthly plan runs. Otherwise it continues after the first year as Pro at $49 a year.</li>
   <li><strong>Offer credits</strong>: every site starts with 2. Changing your current special uses 1 credit; clearing it is free. Extra credits are $10 for 5.</li>
 </ul>
-<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until January 31, 2027. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Sites are billed separately from any AdVault plan. You can have your site removed at any time by emailing 3pandas@3pandalabs.com; we cancel its renewal at the same time.</p>
+<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until January 31, 2027. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Websites made on SiteVault are billed separately from any AdVault plan. You can have your site removed at any time by emailing 3pandas@3pandalabs.com; we cancel its renewal at the same time.</p>
 <h2>No guarantee</h2>
 <p>SiteVault is provided as is. We work to keep sites online but don't guarantee uninterrupted service. To the extent the law allows, our liability is limited to the amount you've paid us in the last 12 months.</p>
 <h2>Law</h2>
@@ -2007,7 +2014,7 @@ export function contactPage(
     path: "/contact",
     body: `<section class="prose">
 <h1>Contact us</h1>
-<p>SiteVault is made by 3PandaLabs LLC, USA. Send us a question or feedback:</p>
+<p>SiteVault is made by 3PandaLabs LLC, USA. Quick answers are in the <a href="/faq">FAQ</a>, or send us a question or feedback:</p>
 ${
   opts.sentTo !== undefined
     ? `<p class="notice" role="status">Thanks, your message was sent. We'll reply to ${esc(opts.sentTo)}.</p>`
@@ -2029,16 +2036,17 @@ ${
   });
 }
 
-export function faqPage(): string {
+/** `topics`: the panda helper's (help.ts); its billing answers are listed here too, so prices follow billing.ts. */
+export function faqPage(topics: HelpTopic[] = [], signedIn = false): string {
   // [question, answer-html] — answers are first-party copy, so they may contain
   // markup (links/strong) and are not escaped.
   const faqs: [string, string][] = [
     ["What is SiteVault?", "SiteVault builds a clean, professional one-page website for your local business in about five minutes. You add your details — name, services, hours, photos — pick a style, and it goes live. No code, no designer, no monthly hassle. It's made by 3PandaLabs."],
     ["How long does it take, and do I need any tech skills?", "About five minutes, and no skills at all. You fill in a simple form — only your business name, phone and town are required — and everything else just makes your site better. Pick a style and you're live."],
-    ["What will my website address be?", "Your site gets its own free address at <strong>yourbusiness.3pandasite.com</strong>. You choose the first part when you build it, and you can change it later from the edit page."],
+    ["What will my website address be?", "Your site gets its own address at <strong>yourbusiness.3pandasite.com</strong>, included with your plan. You choose the first part when you build it, and you can change it a few times later from the edit page."],
     ["Can I edit my website after it's live?", "Yes, anytime. Use the private edit link you got when you built it, or sign in and open <a href=\"/account\">My website</a>. Your changes go live when you press Save."],
-    ["How much does it cost?", "It's free to build and preview. Publishing uses a low yearly plan — you'll see the current price while you build your site. There are no setup fees and no commission."],
-    ["Will my website show up on Google?", "Yes. Every site is search-engine friendly and comes with a sitemap, so Google can find and list it. It won't appear instantly — search engines take a little while to crawl a new site."],
+    ["How much does it cost?", "It's free to build and preview. Publishing uses a yearly plan, with no setup fee and no commission. <a href=\"/#plans\">Compare plans and prices</a>."],
+    ["Will my website show up on Google?", "It can. Your website is set up so search engines can read and list it, but Google decides what it shows and when, so we can't promise a place or a date. Linking to it from your Google Business Profile and social pages helps Google find it."],
     ["Is my website mobile-friendly?", "Yes. Every SiteVault site automatically looks good and loads fast on phones, tablets and computers."],
     ["How do customers contact me through the site?", "Your site shows your real phone and address with one-tap <strong>Call</strong> and <strong>Directions</strong> buttons. It's a business card, not a form — people reach you directly."],
     ["Do you track my visitors or use cookies?", "No trackers and no third-party cookies on your website. We keep simple, anonymous visit counts so you can see how many people the site reaches — no names, no IP addresses. See our <a href=\"/privacy\">Privacy Policy</a>."],
@@ -2046,14 +2054,18 @@ export function faqPage(): string {
     ["Can I install it like an app?", "Yes — SiteVault installs as an app on your phone or computer from <a href=\"/\">sitevault.3pandalabs.com</a>, and an Android version is on the way."],
     ["How do I get help, or take my site down?", "Email us anytime — see <a href=\"/contact\">Contact us</a>. To take a site offline, email from your business address with your web address and we'll confirm by phone first."],
   ];
+  const billing = topics.filter((t) => t.faq);
   const items = faqs.map(([q, a]) => `<details class="section"><summary>${q}</summary><div class="section-body"><p>${a}</p></div></details>`).join("");
   return layout({
     title: "FAQ — SiteVault",
     path: "/faq",
+    signedIn,
     body: `<section class="prose">
 <h1>Frequently asked questions</h1>
 <p>Quick answers about building and running your SiteVault website. Still stuck? <a href="/contact">Contact us</a>.</p>
 ${items}
+${billing.length ? `<h2>Plans and billing</h2>
+${billing.map((t) => `<details class="section"><summary>${esc(t.q)}</summary><div class="section-body"><p>${esc(t.a)}</p></div></details>`).join("")}` : ""}
 </section>`,
   });
 }
