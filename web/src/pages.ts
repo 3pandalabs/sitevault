@@ -1453,18 +1453,37 @@ const BUILDER_SCRIPT = `
       // when the type has no template (e.g. "Other local business").
       if(svc.value.trim()==='' || svc.value===lastFill){ svc.value=t; lastFill=t; }
     };
-    // Recolour the style thumbnails to the chosen business type's palette.
+    // Recolour the style thumbnails to the chosen business type's palette — or,
+    // when the owner picks a brand colour, to that colour (mirrors render.ts
+    // withBrandColor: deepened primary + a light band tint).
     var CAT_THUMB=${JSON.stringify(CAT_THUMB_COLORS)};
     var tplBox=document.querySelector('.templates');
-    var paintThumbs=function(){ var c=CAT_THUMB[catSel.value]; if(tplBox&&c){ tplBox.style.setProperty('--tp',c.p); tplBox.style.setProperty('--tb',c.b); } };
+    var _crgb=function(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];};
+    var _chex=function(a){var p=function(v){v=Math.max(0,Math.min(255,Math.round(v)));return ('0'+v.toString(16)).slice(-2);};return '#'+p(a[0])+p(a[1])+p(a[2]);};
+    var _clum=function(c){var f=function(v){v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};return 0.2126*f(c[0])+0.7152*f(c[1])+0.0722*f(c[2]);};
+    var _cdeepen=function(h){var c=_crgb(h);for(var i=0;i<40&&1.05/(_clum(c)+0.05)<4.5;i++){c=[c[0]*0.92,c[1]*0.92,c[2]*0.92];}return _chex(c);};
+    var _cmix=function(h,k){var c=_crgb(h);return _chex([c[0]*k+255*(1-k),c[1]*k+255*(1-k),c[2]*k+255*(1-k)]);};
+    var paintThumbs=function(){
+      if(!tplBox) return;
+      var chk=document.querySelector('input[name=customColor]'), inp=document.getElementById('brandColor');
+      if(chk&&chk.checked&&inp&&/^#[0-9a-fA-F]{6}$/.test(inp.value)){
+        tplBox.style.setProperty('--tp',_cdeepen(inp.value));
+        tplBox.style.setProperty('--tb',_cmix(inp.value,0.12));
+        return;
+      }
+      var c=CAT_THUMB[catSel.value]; if(c){ tplBox.style.setProperty('--tp',c.p); tplBox.style.setProperty('--tb',c.b); }
+    };
     catSel.addEventListener('change',paintThumbs); paintThumbs();
     catSel.addEventListener('change',fillServices);
     if(svc.value.trim()==='') fillServices();
   }
-  // Brand colour: reveal the picker when ticked; swatches set the colour and tick it.
+  // Brand colour: reveal the picker when ticked; swatches set the colour and tick
+  // it; any change repaints the style thumbnails to the chosen colour.
   var bcChk=document.querySelector('input[name=customColor]'), bcBody=document.querySelector('.bc-body'), bcInput=document.getElementById('brandColor');
-  if(bcChk&&bcBody){ var bcSync=function(){ bcBody.hidden=!bcChk.checked; }; bcChk.addEventListener('change',bcSync); bcSync(); }
-  [].slice.call(document.querySelectorAll('.bc-sw')).forEach(function(s){ s.addEventListener('click',function(){ var c=s.getAttribute('data-c'); if(bcInput) bcInput.value=c; if(bcChk&&!bcChk.checked){ bcChk.checked=true; if(bcBody) bcBody.hidden=false; } }); });
+  var repaint=function(){ if(typeof paintThumbs==='function') paintThumbs(); };
+  if(bcChk&&bcBody){ var bcSync=function(){ bcBody.hidden=!bcChk.checked; repaint(); }; bcChk.addEventListener('change',bcSync); bcSync(); }
+  if(bcInput){ bcInput.addEventListener('input',repaint); }
+  [].slice.call(document.querySelectorAll('.bc-sw')).forEach(function(s){ s.addEventListener('click',function(){ var c=s.getAttribute('data-c'); if(bcInput) bcInput.value=c; if(bcChk&&!bcChk.checked){ bcChk.checked=true; if(bcBody) bcBody.hidden=false; } repaint(); }); });
   // Opening hours: offer a weekly template to edit; it stays once touched, and
   // an existing site's hours are never overwritten.
   var HOURS_TEMPLATE=${JSON.stringify(HOURS_TEMPLATE)};
