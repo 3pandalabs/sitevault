@@ -11,7 +11,9 @@ export const TAP_KINDS: TapKind[] = ["call", "directions", "offer"];
 export type Device = "mobile" | "tablet" | "desktop";
 
 const SOURCES = ["youtube", "google", "facebook", "instagram", "whatsapp", "advault"] as const;
-export type StatSource = (typeof SOURCES)[number] | "direct" | "other";
+// Known platforms, plus "direct"/"other", plus an actual referring domain (a
+// bare host like "bing.com" — never a path or query) for sites we don't tag.
+export type StatSource = (typeof SOURCES)[number] | "direct" | "other" | (string & {});
 
 /** Crawlers, link-preview fetchers (WhatsApp, Facebook, Slack...) and scripts are not visits. */
 const BOT_UA =
@@ -56,6 +58,10 @@ export function hostSource(host: string): StatSource {
   if (/(^|\.)instagram\.com$/.test(h)) return "instagram";
   if (h === "wa.me" || /(^|\.)whatsapp\.(com|net)$/.test(h)) return "whatsapp";
   if (h === "advault.3pandalabs.com") return "advault";
+  // An untagged referrer: keep the actual domain (host only, never the path) so
+  // the owner sees which site linked to them. Fall back to "other" if it isn't a
+  // plausible hostname.
+  if (h.includes(".") && !h.includes("..") && !h.startsWith(".") && !h.endsWith(".") && /^[a-z0-9.-]{1,80}$/.test(h)) return h;
   return "other";
 }
 

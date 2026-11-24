@@ -83,12 +83,16 @@ describe("source", () => {
     expect(classifySource(page(), "https://l.instagram.com/", own)).toBe("instagram");
     expect(classifySource(page(), "https://wa.me/", own)).toBe("whatsapp");
     expect(classifySource(page(), "https://web.whatsapp.com/", own)).toBe("whatsapp");
-    expect(classifySource(page(), "https://example.org/a", own)).toBe("other");
+    // An untagged referrer keeps its real domain (host only), not a generic bucket.
+    expect(classifySource(page(), "https://example.org/a", own)).toBe("example.org");
+    expect(classifySource(page(), "https://www.bing.com/search?q=x", own)).toBe("bing.com");
   });
 
-  it("does not mistake look-alike hosts", () => {
-    expect(hostSource("notgoogle.com")).toBe("other");
-    expect(hostSource("youtube.com.evil.net")).toBe("other");
+  it("does not mistake look-alike hosts (keeps the real domain, never the platform)", () => {
+    expect(hostSource("notgoogle.com")).toBe("notgoogle.com");
+    expect(hostSource("youtube.com.evil.net")).toBe("youtube.com.evil.net");
+    // A host with no dot or odd characters falls back to "other".
+    expect(hostSource("localhost")).toBe("other");
   });
 
   it("treats no referrer, its own host, or junk as direct", () => {
