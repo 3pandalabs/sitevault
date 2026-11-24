@@ -64,7 +64,7 @@ import { chartCard, type Row } from "./charts.js";
 import { DOLLARS, PACK_CREDITS, planCovers, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
 import type { SiteStats } from "./stats.js";
 
-const CONTACT = "3pandas@3pandalabs.com";
+const CONTACT = "sitevault@3pandalabs.com";
 
 /** The main site's origin, for share tags (og:url / og:image need absolute URLs). */
 const SITE_ORIGIN = "https://sitevault.3pandalabs.com";
@@ -1265,7 +1265,7 @@ ${mode.kind === "edit" ? reviewsModerationSection(mode.site.slug, mode.key, mode
 ${
   mode.kind === "edit"
     ? `<div style="margin-top:28px" class="notice">
-  <p><strong>Want your website taken down?</strong> Email <a href="mailto:3pandas@3pandalabs.com?subject=${encodeURIComponent(`Remove my website: ${mode.site.slug}`)}">3pandas@3pandalabs.com</a> with your web address. We'll confirm with you at the phone number on your site, cancel any renewal, and remove it.</p>
+  <p><strong>Want your website taken down?</strong> Email <a href="mailto:sitevault@3pandalabs.com?subject=${encodeURIComponent(`Remove my website: ${mode.site.slug}`)}">sitevault@3pandalabs.com</a> with your web address. We'll confirm with you at the phone number on your site, cancel any renewal, and remove it.</p>
 </div>`
     : ""
 }
@@ -1718,7 +1718,7 @@ export function forgotPasswordPage(opts: { error?: string; email?: string; sent?
     ? `<section class="narrow" style="max-width:440px">
 <h1>Check your email</h1>
 <p class="notice ok" role="status">We've sent a link to choose a new password. It works once and expires in 30 minutes.</p>
-<p class="hint" style="margin-top:20px">Didn't get it? Check your spam folder, or <a href="/forgot-password">try again</a>. Still stuck? Email <a href="mailto:3pandas@3pandalabs.com">3pandas@3pandalabs.com</a>.</p>
+<p class="hint" style="margin-top:20px">Didn't get it? Check your spam folder, or <a href="/forgot-password">try again</a>. Still stuck? Email <a href="mailto:sitevault@3pandalabs.com">sitevault@3pandalabs.com</a>.</p>
 <p class="hint"><a href="/login">Back to sign in</a></p>
 </section>`
     : `<section class="narrow" style="max-width:440px">
@@ -1954,7 +1954,7 @@ export function privacyPage(): string {
 <h2>Where it's kept</h2>
 <p>Sites, photos and visit counts are stored and served by Cloudflare, our hosting provider, in its global network. Visitors' browsers connect to Cloudflare to load your site, as with any website. Payment records are kept by Stripe.</p>
 <h2>Your choices</h2>
-<p>Change anything at any time with your edit link. Your 3PandaLabs account can be deleted in AdVault (Settings, Delete account) or by emailing us; that ends your sign-in on both apps but doesn't remove your website. To have your website removed, email 3pandas@3pandalabs.com with your web address: we confirm with you at the phone number on the site, then take it offline and delete its photos. If you've lost your edit link, email us too and we'll help.</p>
+<p>Change anything at any time with your edit link. Your 3PandaLabs account can be deleted in AdVault (Settings, Delete account) or by emailing us; that ends your sign-in on both apps but doesn't remove your website. To have your website removed, email sitevault@3pandalabs.com with your web address: we confirm with you at the phone number on the site, then take it offline and delete its photos. If you've lost your edit link, email us too and we'll help.</p>
 <h2 id="delete-account">Deleting your account</h2>
 <p>SiteVault and AdVault share one 3PandaLabs account, stored by AdVault, so the account is deleted in AdVault and deleting it deletes it for both apps.</p>
 <ol>
@@ -1994,7 +1994,7 @@ export function termsPage(): string {
   <li><strong>Websites made from AdVault</strong>: $10 one-time, paid in AdVault, which includes the first year of Pro. Pro also stays included while the website owner's AdVault monthly plan runs. Otherwise it continues after the first year as Pro at $49 a year.</li>
   <li><strong>Offer credits</strong>: every site starts with 2. Changing your current special uses 1 credit; clearing it is free. Extra credits are $10 for 5.</li>
 </ul>
-<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until January 31, 2027. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Websites made on SiteVault are billed separately from any AdVault plan. You can have your site removed at any time by emailing 3pandas@3pandalabs.com; we cancel its renewal at the same time.</p>
+<p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until January 31, 2027. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Websites made on SiteVault are billed separately from any AdVault plan. You can have your site removed at any time by emailing sitevault@3pandalabs.com; we cancel its renewal at the same time.</p>
 <h2>No guarantee</h2>
 <p>SiteVault is provided as is. We work to keep sites online but don't guarantee uninterrupted service. To the extent the law allows, our liability is limited to the amount you've paid us in the last 12 months.</p>
 <h2>Law</h2>

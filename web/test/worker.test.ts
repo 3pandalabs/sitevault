@@ -705,12 +705,12 @@ describe("contact page", () => {
     const res = await call(`${ORIGIN}/contact`);
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("3pandas@3pandalabs.com");
+    expect(body).toContain("sitevault@3pandalabs.com");
     expect(body).toContain("Contact us");
     // Footer link points at the page now.
     const home = await (await call(`${ORIGIN}/`)).text();
     expect(home).toContain('href="/contact"');
-    expect(home).not.toContain('href="mailto:3pandas@3pandalabs.com">Contact');
+    expect(home).not.toContain('href="mailto:sitevault@3pandalabs.com">Contact');
   });
 });
 

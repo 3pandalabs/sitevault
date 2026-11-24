@@ -118,7 +118,7 @@ problem hits every customer (and every AdVault ad pointing at them).
       (`acct:<id>`, PBKDF2 hash) need their own reset. Likely an emailed,
       single-use, time-limited reset token via the `mailer` Worker (so it
       depends on the owner-email item above). Until built, keep the
-      "email 3pandas@3pandalabs.com" fallback on `/login`.
+      "email sitevault@3pandalabs.com" fallback on `/login`.
       Since 2026-11-16 (one 3PandaLabs account) new and moved accounts keep
       their password in AdVault only, so a reset belongs in AdVault's API
       and serves both apps; only unmoved or email-linked accounts still have

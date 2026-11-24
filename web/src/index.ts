@@ -1065,7 +1065,7 @@ async function editPage(request: Request, env: Env, slug: string, key: string, j
   if (!site) {
     // No key: send them to sign in, then back here.
     if (!key && !(await currentAccount(env.SITES, request))) return Response.redirect(`${env.PUBLIC_ORIGIN}/login?next=/edit/${slug}`, 302);
-    return html(messagePage("Edit link not valid", "Check you copied the whole link, or sign in to the account that owns this website. Lost it? Email 3pandas@3pandalabs.com.", "Can't open"), 403);
+    return html(messagePage("Edit link not valid", "Check you copied the whole link, or sign in to the account that owns this website. Lost it? Email sitevault@3pandalabs.com.", "Can't open"), 403);
   }
   const signedIn = Boolean(await currentAccount(env.SITES, request));
   return builder(env, { ...(await editMode(env, site, key, justPaid)), signedIn, saved });
@@ -2028,7 +2028,7 @@ async function claimSite(request: Request, env: Env, ctx: ExecutionContext): Pro
   const current = slug ? ((await env.SITES.get(siteKey(slug))) ? slug : await aliasTarget(env, slug)) : null;
   const site = current && key ? await authorize(env, current, key) : null;
   if (!site) return fail("That edit link didn't work. Check you copied all of it.");
-  if (site.ownerId && site.ownerId !== account.id) return fail("This website already belongs to another account. Email 3pandas@3pandalabs.com if that's wrong.");
+  if (site.ownerId && site.ownerId !== account.id) return fail("This website already belongs to another account. Email sitevault@3pandalabs.com if that's wrong.");
   if (!isAdminEmail(env, account.email) && (await accountSites(env, account)).some((x) => x.slug !== site.slug))
     return fail("Your account already has a website (one per account). Sign out and create a new account for this one.");
   await saveSite(env, { ...site, ownerId: account.id, updatedAt: new Date().toISOString() });
@@ -2185,7 +2185,7 @@ async function phoneOwner(env: Env, phone: string, self?: string): Promise<strin
 const PENDING_PHONE_HOLD_MS = 2 * 24 * 60 * 60 * 1000;
 
 const PHONE_TAKEN =
-  "A website already exists for this phone number. Use its edit link to change it, or email 3pandas@3pandalabs.com if you didn't make it.";
+  "A website already exists for this phone number. Use its edit link to change it, or email sitevault@3pandalabs.com if you didn't make it.";
 
 async function indexSite(env: Env, site: Site): Promise<void> {
   if (!site.adminTest) await env.SITES.put(phoneKey(site.phone), site.slug);
@@ -2891,7 +2891,7 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
 }
 
 // No self-service delete (2026-11-15, owner's decision): owners email
-// 3pandas@3pandalabs.com; ops confirms by phone, cancels any Stripe renewal,
+// sitevault@3pandalabs.com; ops confirms by phone, cancels any Stripe renewal,
 // checks for an AdVault ad linking here, then uses the admin takedown route.
 async function removeSite(env: Env, site: Site): Promise<void> {
   // Keep the record (status removed) so the slug isn't handed to someone else

@@ -89,7 +89,7 @@ describe("account deletion (Play: in-app + public URL)", () => {
     expect(page).toContain("Delete my account");
     expect(page).toContain('href="/go/advault?to=%2Fdashboard%2Fsettings%23delete-account"');
     expect(page).toContain("/privacy#delete-account");
-    expect(page).toContain("3pandas@3pandalabs.com");
+    expect(page).toContain("sitevault@3pandalabs.com");
     expect(accountPage("o@x.test", [])).toContain("Delete my account");
   });
   it("the privacy page has a public #delete-account section", () => {
