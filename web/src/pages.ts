@@ -60,7 +60,7 @@ import { esc } from "./util.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
 import { EMBED_SCRIPT } from "./embed.js";
 import { chartCard, type Row } from "./charts.js";
-import { DOLLARS, PACK_CREDITS, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
+import { DOLLARS, PACK_CREDITS, planCovers, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
 import type { SiteStats } from "./stats.js";
 
 const CONTACT = "3pandas@3pandalabs.com";
@@ -467,7 +467,7 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   ${signedIn ? `<p class="notice" style="margin:0 0 16px">✓ You're signed in${who ? ` as <b>${esc(who)}</b>` : ""}. ${owner ? "Your website is one tap away." : "Pick up where you left off."}</p>` : ""}
   <div style="display:flex;flex-wrap:wrap;gap:12px">${signedIn ? `<a class="btn" href="/account">${owner ? "Go to my website" : "Go to my account"}</a>` : `<a class="btn" href="/login">Sign in to get started</a>`}<a class="btn ghost" href="#features">What you get</a></div>
   <div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
-    <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included.</span></p>
+    <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included, and longer while your AdVault plan runs.</span></p>
     <a class="btn" href="${signedIn ? "/go/advault?to=/dashboard" : "https://advault.3pandalabs.com"}">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
   </div>
 </section>
@@ -569,7 +569,7 @@ export function billingSection(slug: string, key: string, v: BillingView, siteUr
   const rows: string[] = [];
   let status = "";
   if (v.state === "unpublished" && v.source === "advault") {
-    status = `<p>Your website isn't published yet. Finish in AdVault: pay $${DOLLARS.advaultSetup} (the first year of Pro included) on your campaign's website card, and it goes live at once.</p>`;
+    status = `<p>Your website isn't published yet. Finish in AdVault: pay $${DOLLARS.advaultSetup} (the first year of Pro included, and longer while your AdVault plan runs) on your campaign's website card, and it goes live at once.</p>`;
   } else if (v.state === "unpublished") {
     status = `<p>Your website isn't published yet. Visitors see "This site isn't published yet" until you pay.</p>`;
   } else {
@@ -592,6 +592,7 @@ export function billingSection(slug: string, key: string, v: BillingView, siteUr
     // Paying again only makes sense near the end of the paid time (or after it):
     // a site paid until next year must not be asked to pay now.
     const now = v.now ?? new Date();
+    const covered = planCovers(b, now);
     const renewOpen =
       v.state === "grace" || v.state === "paused" || !v.paidUntil || v.paidUntil.getTime() - now.getTime() <= RENEW_WINDOW_DAYS * 86_400_000;
     const plans: string[] = [];
@@ -604,8 +605,10 @@ export function billingSection(slug: string, key: string, v: BillingView, siteUr
     } else if (b.plan === "pro" && !b.renewing && renewOpen) {
       plans.push(payButton(slug, key, "renew_pro", `Pro: Pay $${v.prices.pro}/year`));
     }
+    if (covered) plans.length = 0;
     if (plans.length) buttons.push(`<div class="buttons">${plans.join("")}</div>`);
-    if (!b.renewing && !renewOpen && v.paidUntil) {
+    if (covered) buttons.push(`<p class="hint">Pro is included while your AdVault plan runs. Nothing to pay now.</p>`);
+    if (!covered && !b.renewing && !renewOpen && v.paidUntil) {
       const price = b.plan === "pro" ? v.prices.pro : (v.prices.basic ?? v.prices.pro);
       buttons.push(
         `<p class="hint">${v.source === "advault" && b.plan === "pro" ? "Your first year of Pro is included with your AdVault website" : "Your plan is paid"} until ${esc(fmtDate(v.paidUntil))}. Nothing to pay now. Renewal ($${price} a year) opens ${RENEW_WINDOW_DAYS} days before then.</p>`,
@@ -1917,12 +1920,13 @@ export function privacyPage(): string {
     path: "/privacy",
     body: `<section class="prose">
 <h1>Privacy</h1>
-<p>Last updated 22 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
+<p>Last updated 24 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
 <h2>What we store</h2>
 <ul>
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
   <li><strong>Before &amp; after photos</strong>, if the business provides them (on its edit page, or from AdVault): pairs of photos of the business's own work, shown in a "Before &amp; after" section on its website and stored and resized like its other photos. The owner can remove them at any time on the edit page, which deletes them.</li>
-  <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos, any before &amp; after photos you added there and <strong>your video ad</strong>, which AdVault sends us when you press "Make me a website".</li>
+  <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos, any before &amp; after photos you added there and <strong>your video ad</strong>, which AdVault sends us when you launch the ad and choose to show it on your website (or when the website is made, if the ad is your own uploaded video).</li>
+  <li><strong>Messages from our contact form</strong> (your name, email, subject and message, and your account ID if you're signed in): emailed to us, through AdVault and our email provider Resend, so we can reply. SiteVault keeps no copy, only a counter for your network address, for up to two hours, to stop abuse.</li>
   <li>If you build your website inside AdVault (the full builder shown on AdVault's "Make me a website"), AdVault first sends us those same details and photos as a <strong>draft</strong> so the builder opens filled in. The draft is kept only to build your website: its photos are deleted once the website is made, and an unused draft expires after an hour and is deleted within a day. Building there signs you in to SiteVault with the same sign-in cookie as above, inside AdVault's page.</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
   <li><strong>Your account is one 3PandaLabs account, shared with <a href="https://advault.3pandalabs.com">AdVault</a></strong> (our video-ad app, also by 3PandaLabs): the same email and password sign you in to both, whichever you signed up on. Your sign-in (email and a scrambled, hashed copy of your password, which can't be turned back into the password) is stored by AdVault for both apps; when you sign in here we send AdVault the email and password you typed to check them. SiteVault stores your email, your 3PandaLabs account ID and which websites are yours. Accounts made on SiteVault before 16 November 2026 kept their hashed password here; it moves to the shared account the next time you sign in. While you're signed in we keep a session record that expires after 30 days or when you sign out. When you follow a link between SiteVault and AdVault while signed in, we pass a one-time sign-in code (it works once, for 60 seconds, and contains your account ID and email, never your password) so you arrive signed in to the same account.</li>
@@ -1963,7 +1967,7 @@ export function termsPage(): string {
     path: "/terms",
     body: `<section class="prose">
 <h1>Terms</h1>
-<p>Last updated 16 November 2026. These terms are between you and 3PandaLabs LLC (New Jersey), which runs SiteVault.</p>
+<p>Last updated 24 November 2026. These terms are between you and 3PandaLabs LLC (New Jersey), which runs SiteVault.</p>
 <h2>Your account</h2>
 <p>Your SiteVault account is a single 3PandaLabs account shared with AdVault: the same email and password sign you in to both, whichever you created it on, and it is stored by AdVault. Keep your password to yourself; you're responsible for what's done with your account. Deleting the account ends your sign-in on both apps. Each app's own terms apply to what you do in it, and SiteVault plans are billed separately from AdVault.</p>
 <h2>Your content</h2>
@@ -1977,7 +1981,7 @@ export function termsPage(): string {
 <ul>
   <li><strong>Websites made on SiteVault</strong>: free to build; you pay when you publish. Basic is $49 a year to keep the site running; Pro is $89 a year and adds visitor stats.</li>
   <li><strong>Festive season prices</strong>: a plan paid on or before January 31, 2027 is $29 a year for Basic or $59 a year for Pro, and the site keeps these prices for life, including if it switches between Basic and Pro or pays again after a lapse.</li>
-  <li><strong>Websites made from AdVault</strong>: $10 one-time, paid in AdVault, which includes the first year of Pro; then Pro at $49 a year.</li>
+  <li><strong>Websites made from AdVault</strong>: $10 one-time, paid in AdVault, which includes the first year of Pro. Pro also stays included while the website owner's AdVault monthly plan runs. Otherwise it continues after the first year as Pro at $49 a year.</li>
   <li><strong>Offer credits</strong>: every site starts with 2. Changing your current special uses 1 credit; clearing it is free. Extra credits are $10 for 5.</li>
 </ul>
 <p>Plans are billed yearly and renew automatically until you cancel; cancelling stops the next renewal and your site stays up until the end of the paid year. A site made during early access stays free until January 31, 2027. If a payment isn't made, the site stays online for 14 days, then shows a "paused" page with your business name and phone number. We never delete a paused site; paying brings it back. Payments are processed by Stripe. Sites are billed separately from any AdVault plan. You can have your site removed at any time by emailing 3pandas@3pandalabs.com; we cancel its renewal at the same time.</p>
@@ -1990,19 +1994,34 @@ export function termsPage(): string {
 }
 
 /**
- * Contact page. A real page (not just a mailto, which does nothing on a device
- * with no mail app) so the footer "Contact" link always works: it shows the
- * address as selectable text, with a mailto for devices that have a mail app.
+ * Contact page: a plain form (no script) that emails us through AdVault's API
+ * (contactSubmit, index.ts), with the address and phone under it.
  */
-export function contactPage(): string {
+export function contactPage(
+  opts: { signedIn?: boolean; values?: Partial<Record<"name" | "email" | "subject" | "message", string>>; error?: string; sentTo?: string } = {},
+): string {
+  const val = (k: "name" | "email" | "subject" | "message") => esc(opts.values?.[k] ?? "");
   return layout({
+    signedIn: opts.signedIn,
     title: "Contact — SiteVault",
     path: "/contact",
     body: `<section class="prose">
 <h1>Contact us</h1>
-<p>SiteVault is made by 3PandaLabs LLC, USA. The best way to reach us is by email:</p>
-<p><a class="btn" href="mailto:${CONTACT}">Email ${esc(CONTACT)}</a></p>
-<p>If your email app doesn't open, copy this address: <strong>${esc(CONTACT)}</strong></p>
+<p>SiteVault is made by 3PandaLabs LLC, USA. Send us a question or feedback:</p>
+${
+  opts.sentTo !== undefined
+    ? `<p class="notice" role="status">Thanks, your message was sent. We'll reply to ${esc(opts.sentTo)}.</p>`
+    : `${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""}
+<form method="post" action="/contact">
+  <div class="field"><label for="c-name">Name</label><input type="text" id="c-name" name="name" autocomplete="name" required maxlength="120" value="${val("name")}"></div>
+  <div class="field"><label for="c-email">Email</label><input type="email" id="c-email" name="email" autocomplete="email" required maxlength="254" value="${val("email")}"></div>
+  <div class="field"><label for="c-subject">Subject</label><input type="text" id="c-subject" name="subject" required maxlength="150" value="${val("subject")}"></div>
+  <div class="field"><label for="c-message">Question or feedback</label><textarea id="c-message" name="message" rows="6" required maxlength="4000">${val("message")}</textarea></div>
+  <div aria-hidden="true" style="position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden"><label for="c-website">Website</label><input type="text" id="c-website" name="website" tabindex="-1" autocomplete="off"></div>
+  <button class="btn" type="submit">Send</button>
+</form>`
+}
+<p style="margin-top:20px">Or email <a href="mailto:${CONTACT}">${esc(CONTACT)}</a></p>
 <p>Prefer to call? <a href="tel:+13323168453">+1 (332) 316-8453</a></p>
 <h2>Website owners</h2>
 <p>Editing your website? Use the edit link from when you built it, or sign in and open <a href="/account">My website</a>. Want your website taken down? Email us from the address above with your web address, and we'll confirm with you at the phone number on your site before removing it.</p>

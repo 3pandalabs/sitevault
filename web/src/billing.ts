@@ -7,7 +7,8 @@
 //   Basic            $49/year                    not offered
 //   Festive prices   Basic $29/year, Pro $59/year, -
 //                    locked for life, if paid before FESTIVE_UNTIL
-//   Pro (stats)      $89/year                    $49/year from year two
+//   Pro (stats)      $89/year                    Included while the AdVault plan runs
+//                                               (applyPlanCover); else $49/year from year two
 //   Offer change     1 credit                    1 credit
 // Every new site starts with 2 credits; a pack is 5 credits for $10.
 // "Locked for life": the Stripe subscription keeps the $29 price, and
@@ -37,6 +38,8 @@ export type Billing = {
   comp?: boolean;
   /** Paid at a festive price: Basic $29 / Pro $59 a year for life. */
   festive?: boolean;
+  /** AdVault-made: the AdVault plan covers Pro until this ISO time (the plan's paid period). */
+  planCoveredUntil?: string;
   customerId?: string | null;
   subscriptionId?: string | null;
   ownerEmail?: string | null;
@@ -137,6 +140,31 @@ export function applyAdvaultPaid(b: Billing, now: Date): Billing {
     buildPaid: true,
     paidUntil: later(b.paidUntil, new Date(now.getTime() + ADVAULT_INCLUDED_DAYS * DAY_MS).toISOString()),
   };
+}
+
+/** Longest cover one push may grant: a month's plan period plus slack. */
+export const MAX_PLAN_COVER_DAYS = 45;
+
+/** A plan-cover end date AdVault may send: in the future, at most MAX_PLAN_COVER_DAYS away. null = refuse. */
+export function planCoverUntil(value: unknown, now: Date): Date | null {
+  if (typeof value !== "string") return null;
+  const t = Date.parse(value);
+  return Number.isFinite(t) && t > now.getTime() && t <= now.getTime() + MAX_PLAN_COVER_DAYS * DAY_MS ? new Date(t) : null;
+}
+
+/**
+ * The AdVault plan is running: Pro is paid to the end of its period. Only ever
+ * moves forward, so repeats and late pushes are harmless.
+ */
+export function applyPlanCover(b: Billing, until: Date): Billing {
+  const iso = until.toISOString();
+  return { ...b, plan: "pro", paidUntil: later(b.paidUntil, iso), planCoveredUntil: later(b.planCoveredUntil ?? null, iso) };
+}
+
+/** The AdVault plan is what keeps this site paid right now, so there is nothing to renew. */
+export function planCovers(b: Billing, now: Date): boolean {
+  const until = b.planCoveredUntil ? Date.parse(b.planCoveredUntil) : 0;
+  return until > now.getTime() && (!b.paidUntil || Date.parse(b.paidUntil) <= until);
 }
 
 /** A site's billing record, defaulting sites made before billing started to early access. */

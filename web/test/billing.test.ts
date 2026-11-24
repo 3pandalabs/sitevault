@@ -505,3 +505,31 @@ describe("AdVault-paid websites", () => {
     expect(h).not.toContain("publish_pro");
   });
 });
+
+import { applyPlanCover, planCoverUntil, planCovers } from "../src/billing.js";
+
+describe("AdVault plan cover", () => {
+  const base = { ...initialBilling("advault", ON, NOW)!, paidUntil: day(-3).toISOString() };
+  it("brings a lapsed site back on Pro to the plan's period end, and only moves forward", () => {
+    expect(siteState({ billing: base }, ON, NOW)).toBe("grace");
+    const c = applyPlanCover(base, day(30));
+    expect(siteState({ billing: c }, ON, NOW)).toBe("live");
+    expect(c).toMatchObject({ plan: "pro", paidUntil: day(30).toISOString() });
+    expect(applyPlanCover(c, day(10))).toEqual(c);
+    expect(applyPlanCover({ ...base, paidUntil: day(300).toISOString() }, day(30)).paidUntil).toBe(day(300).toISOString());
+  });
+  it("accepts only near, future dates", () => {
+    expect(planCoverUntil(day(30).toISOString(), NOW)).toEqual(day(30));
+    for (const bad of [day(-1).toISOString(), day(46).toISOString(), "soon", null, 5]) expect(planCoverUntil(bad, NOW)).toBeNull();
+  });
+  it("asks for no payment while covered, and does again once the plan has ended", () => {
+    const covered = applyPlanCover(base, day(20));
+    expect(planCovers(covered, NOW)).toBe(true);
+    const h = billingSection("b", "k", { state: "live", billing: covered, source: "advault", prices: planPrices("advault"), paidUntil: day(20), justPaid: false, now: NOW });
+    expect(h).toContain("included while your AdVault plan runs");
+    expect(h).not.toContain("renew_pro");
+    expect(planCovers(covered, day(21))).toBe(false);
+    const after = billingSection("b", "k", { state: "grace", billing: covered, source: "advault", prices: planPrices("advault"), paidUntil: day(20), justPaid: false, now: day(21) });
+    expect(after).toContain("Pro: Pay $49/year");
+  });
+});
