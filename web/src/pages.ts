@@ -1148,7 +1148,7 @@ export function builderPage(
 ${tabbed ? ownerTabsHead() : ""}
 ${tabbed ? `<h2 class="sr">Edit your website</h2>` : `<h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>`}
 ${tabbed && mode.kind === "edit" && mode.saved ? `<p class="notice ok" role="status" id="owner-saved"><strong>Saved.</strong> Your changes are live.</p>` : ""}
-<p class="lead">${mode.kind === "edit" ? `Changes go live as soon as you save.` : draft ? "We filled in what your ad already knows. Check it, add anything you like, then create your website. You can change all of it later." : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>
+${mode.kind === "edit" ? "" : `<p class="lead">${draft ? "We filled in what your ad already knows. Check it, add anything you like, then create your website. You can change all of it later." : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>`}
 ${
   embed && mode.kind === "edit" && mode.saved
     ? `<div class="notice" id="embed-saved" role="status" data-slug="${esc(mode.site.slug)}" data-site-url="${esc(mode.siteUrl ?? "")}"><p style="margin:0"><strong>Saved.</strong> Your changes are live.${mode.siteUrl ? ` <a href="${esc(mode.siteUrl)}" target="_blank" rel="noopener">Open my website</a>` : ""}</p></div>`
