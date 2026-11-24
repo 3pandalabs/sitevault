@@ -50,7 +50,10 @@ import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, t
 import { ASSET_LINKS, PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { OG_PNG } from "./og-image.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
-import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, shownEmail, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
+import { STARTERS, helpTopics, matchTopics } from "./help.js";
+import { helperScript } from "./helper-client.js";
+import { PANDA_WEBP } from "./panda-image.js";
+import { HELPER_MARK, faqPage, previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, shownEmail, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
 import {
   accountByAdvaultId,
   accountByEmail,
@@ -189,7 +192,7 @@ export interface Env {
 }
 
 /** SiteVault's own public pages (the ones with a `path` in pages.ts). Never owner pages or customer sites. */
-const SITEMAP_PATHS = ["/", "/new", "/privacy", "/terms", "/contact"];
+const SITEMAP_PATHS = ["/", "/new", "/faq", "/privacy", "/terms", "/contact"];
 
 /** Tab icon: an "S" in SiteVault sky on the dark rounded square AdVault's "A" uses. */
 const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#09090b"/><path d="M21.5 10.5C20 8.6 17.9 8 16 8c-3 0-5.5 1.7-5.5 4.2 0 5.6 11 3.3 11 9 0 2.4-2.4 4.3-5.6 4.3-2.3 0-4.4-.8-5.9-2.6" stroke="#38bdf8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -365,6 +368,15 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/.well-known/assetlinks.json") {
       return new Response(JSON.stringify(ASSET_LINKS), { headers: { "content-type": "application/json", "cache-control": "public, max-age=3600" } });
     }
+    if (path === "/faq") return html(faqPage(helpTopics(billingConfig(env), new Date()), (await currentAccount(env.SITES, request)) !== null));
+    if (path === "/helper.js") {
+      const topics = helpTopics(billingConfig(env), new Date());
+      const starters = STARTERS.map((id) => topics.find((t) => t.id === id)!).map(({ id, q }) => ({ id, q }));
+      return new Response(helperScript(starters), { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } });
+    }
+    if (path === "/panda-helper.webp") {
+      return new Response(pngBytes(PANDA_WEBP), { headers: { "content-type": "image/webp", "cache-control": "public, max-age=604800" } });
+    }
     if (path === "/sw.js") {
       return new Response(SERVICE_WORKER, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache", "service-worker-allowed": "/" } });
     }
@@ -421,6 +433,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/logout") return logout(request, env);
     if (path === "/forgot-password") return forgotPasswordSubmit(request, env);
     if (path === "/contact") return contactSubmit(request, env);
+    if (path === "/api/help") return helpAnswer(request, env);
     if (path === "/reset-password") return resetPasswordSubmit(request, env);
     if (path === "/account/change-password") return changePasswordSubmit(request, env);
     if (path === "/account/claim") return claimSite(request, env, ctx);
@@ -465,7 +478,11 @@ function nonce(): string {
   return randomKey(16);
 }
 
-function html(body: string, status = 200, scriptNonce?: string): Response {
+function html(page: string, status = 200, pageNonce?: string): Response {
+  // Pages with the panda helper (pages.ts HELPER_MARK) load its script with a nonce too.
+  const helper = page.includes(HELPER_MARK);
+  const scriptNonce = pageNonce ?? (helper ? nonce() : undefined);
+  const body = helper ? page.replace(HELPER_MARK, `<script nonce="${scriptNonce}" src="/helper.js" defer></script>`) : page;
   const csp = [
     "default-src 'none'",
     "img-src 'self' data: blob:",
@@ -1697,6 +1714,26 @@ async function authRateLimited(request: Request, env: Env): Promise<boolean> {
   if (n >= LOGIN_LIMIT) return true;
   await env.SITES.put(key, String(n + 1), { expirationTtl: 1800 });
   return false;
+}
+
+// POST /api/help { q } or { id }: the panda helper's answer, from help.ts.
+// Public, reads and stores nothing.
+async function helpAnswer(request: Request, env: Env): Promise<Response> {
+  if (Number(request.headers.get("content-length") ?? "0") > 4096) return json({ error: "too_long" }, 413);
+  let body: { q?: unknown; id?: unknown };
+  try {
+    body = ((await request.json()) ?? {}) as typeof body;
+  } catch {
+    return json({ error: "bad_json" }, 400);
+  }
+  const topics = helpTopics(billingConfig(env), new Date());
+  const found =
+    typeof body.id === "string" ? topics.filter((t) => t.id === body.id) : typeof body.q === "string" ? matchTopics(body.q.slice(0, 300), topics) : [];
+  const [t, ...more] = found;
+  return json({
+    topic: t ? { id: t.id, q: t.q, a: t.a, links: t.links ?? [] } : null,
+    more: more.map(({ id, q }) => ({ id, q })),
+  });
 }
 
 const CONTACT_LIMIT = 5;
