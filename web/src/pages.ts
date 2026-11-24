@@ -382,7 +382,7 @@ ${opts.embed ? "" : `<div class="backdrop" aria-hidden="true"><i class="b1"></i>
 ${opts.body}
 </main>
 ${opts.embed ? "" : `<footer><div class="wrap">
-  <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact us</a><span class="follow">Follow us <a href="https://www.facebook.com/sitevaultapp" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg></a></span></div>
+  <div class="links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/faq">FAQ</a><a href="/contact">Contact us</a><span class="follow">Follow us <a href="https://www.facebook.com/sitevaultapp" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg></a></span></div>
   <div class="legal"><span>&copy; 3PandaLabs LLC, USA.</span><span>All rights reserved.</span></div>
   <p class="tagline">Built by pandas. Loved by people.</p>
 </div></footer>`}
@@ -2006,6 +2006,35 @@ export function contactPage(): string {
 <p>Prefer to call? <a href="tel:+13323168453">+1 (332) 316-8453</a></p>
 <h2>Website owners</h2>
 <p>Editing your website? Use the edit link from when you built it, or sign in and open <a href="/account">My website</a>. Want your website taken down? Email us from the address above with your web address, and we'll confirm with you at the phone number on your site before removing it.</p>
+</section>`,
+  });
+}
+
+export function faqPage(): string {
+  // [question, answer-html] — answers are first-party copy, so they may contain
+  // markup (links/strong) and are not escaped.
+  const faqs: [string, string][] = [
+    ["What is SiteVault?", "SiteVault builds a clean, professional one-page website for your local business in about five minutes. You add your details — name, services, hours, photos — pick a style, and it goes live. No code, no designer, no monthly hassle. It's made by 3PandaLabs."],
+    ["How long does it take, and do I need any tech skills?", "About five minutes, and no skills at all. You fill in a simple form — only your business name, phone and town are required — and everything else just makes your site better. Pick a style and you're live."],
+    ["What will my website address be?", "Your site gets its own free address at <strong>yourbusiness.3pandasite.com</strong>. You choose the first part when you build it, and you can change it later from the edit page."],
+    ["Can I edit my website after it's live?", "Yes, anytime. Use the private edit link you got when you built it, or sign in and open <a href=\"/account\">My website</a>. Your changes go live when you press Save."],
+    ["How much does it cost?", "It's free to build and preview. Publishing uses a low yearly plan — you'll see the current price while you build your site. There are no setup fees and no commission."],
+    ["Will my website show up on Google?", "Yes. Every site is search-engine friendly and comes with a sitemap, so Google can find and list it. It won't appear instantly — search engines take a little while to crawl a new site."],
+    ["Is my website mobile-friendly?", "Yes. Every SiteVault site automatically looks good and loads fast on phones, tablets and computers."],
+    ["How do customers contact me through the site?", "Your site shows your real phone and address with one-tap <strong>Call</strong> and <strong>Directions</strong> buttons. It's a business card, not a form — people reach you directly."],
+    ["Do you track my visitors or use cookies?", "No trackers and no third-party cookies on your website. We keep simple, anonymous visit counts so you can see how many people the site reaches — no names, no IP addresses. See our <a href=\"/privacy\">Privacy Policy</a>."],
+    ["Can I add photos or a menu?", "Yes. You can add photos, and restaurants and bakeries can upload a menu. Your style and the sections shown adapt to your type of business."],
+    ["Can I install it like an app?", "Yes — SiteVault installs as an app on your phone or computer from <a href=\"/\">sitevault.3pandalabs.com</a>, and an Android version is on the way."],
+    ["How do I get help, or take my site down?", "Email us anytime — see <a href=\"/contact\">Contact us</a>. To take a site offline, email from your business address with your web address and we'll confirm by phone first."],
+  ];
+  const items = faqs.map(([q, a]) => `<details class="section"><summary>${q}</summary><div class="section-body"><p>${a}</p></div></details>`).join("");
+  return layout({
+    title: "FAQ — SiteVault",
+    path: "/faq",
+    body: `<section class="prose">
+<h1>Frequently asked questions</h1>
+<p>Quick answers about building and running your SiteVault website. Still stuck? <a href="/contact">Contact us</a>.</p>
+${items}
 </section>`,
   });
 }

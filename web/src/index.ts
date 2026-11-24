@@ -49,7 +49,7 @@ import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, t
 import { ASSET_LINKS, PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { OG_PNG } from "./og-image.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
-import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
+import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, faqPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
 import {
   accountByAdvaultId,
   accountByEmail,
@@ -185,7 +185,7 @@ export interface Env {
 }
 
 /** SiteVault's own public pages (the ones with a `path` in pages.ts). Never owner pages or customer sites. */
-const SITEMAP_PATHS = ["/", "/new", "/privacy", "/terms", "/contact"];
+const SITEMAP_PATHS = ["/", "/new", "/privacy", "/terms", "/faq", "/contact"];
 
 /** Tab icon: an "S" in SiteVault sky on the dark rounded square AdVault's "A" uses. */
 const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#09090b"/><path d="M21.5 10.5C20 8.6 17.9 8 16 8c-3 0-5.5 1.7-5.5 4.2 0 5.6 11 3.3 11 9 0 2.4-2.4 4.3-5.6 4.3-2.3 0-4.4-.8-5.9-2.6" stroke="#38bdf8" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -338,6 +338,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
     if (path === "/contact") return html(contactPage());
+    if (path === "/faq") return html(faqPage());
     if (path === "/robots.txt") return new Response(`User-agent: *\nDisallow: /edit/\nDisallow: /api/\nDisallow: /admin\nDisallow: /account\n\nSitemap: ${env.PUBLIC_ORIGIN}/sitemap.xml\n`, { headers: { "content-type": "text/plain" } });
     if (path === "/sitemap.xml") {
       const urls = SITEMAP_PATHS.map((p) => `<url><loc>${esc(env.PUBLIC_ORIGIN + p)}</loc></url>`).join("");

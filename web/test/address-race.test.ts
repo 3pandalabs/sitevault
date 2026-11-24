@@ -232,7 +232,7 @@ describe("assets and sitemap", () => {
     const r = await call(`${ORIGIN}/sitemap.xml`);
     expect(r.headers.get("content-type")).toContain("application/xml");
     const locs = [...(await r.text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!);
-    expect(locs).toEqual(["/", "/new", "/privacy", "/terms", "/contact"].map((p) => ORIGIN + p));
+    expect(locs).toEqual(["/", "/new", "/privacy", "/terms", "/faq", "/contact"].map((p) => ORIGIN + p));
     const robots = await (await call(`${ORIGIN}/robots.txt`)).text();
     expect(robots).toContain(`Sitemap: ${ORIGIN}/sitemap.xml`);
     for (const l of locs) {
