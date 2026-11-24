@@ -217,6 +217,17 @@ describe("renderSite", () => {
     expect(html).toMatch(/--primary:#143626/);
   });
 
+  it("previewBrandColor overrides the saved colour for one view (Preview this style)", () => {
+    const ctx = { siteUrl: "https://a.x/", assetOrigin: "https://a.x", homeUrl: "https://x" };
+    // Site has no saved brand colour; the preview param still recolours --accent.
+    const preview = renderSite(site, { ...ctx, previewBrandColor: "#6d28d9" });
+    expect(preview).toMatch(/--accent:#6d28d9/);
+    // It wins over a saved colour too.
+    const over = renderSite({ ...site, brandColor: "#0f766e" }, { ...ctx, previewBrandColor: "#6d28d9" });
+    expect(over).toMatch(/--accent:#6d28d9/);
+    expect(over).not.toMatch(/--accent:#0f766e/);
+  });
+
   it("clips horizontal overflow on html and body (phones must not zoom out)", () => {
     // Off-screen slide-in reveals once widened the mobile layout viewport.
     expect(html).toMatch(/html\{[^}]*overflow-x:clip/);

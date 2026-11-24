@@ -1494,9 +1494,12 @@ const BUILDER_SCRIPT = `
     if(svc.value.trim()==='') fillServices();
   }
   // Brand colour: reveal the picker when ticked; swatches set the colour and tick
-  // it; any change repaints the style thumbnails to the chosen colour.
+  // it; any change repaints the style thumbnails AND the "Preview this style"
+  // links so the opened preview shows the chosen (unsaved) colour via ?brand=.
   var bcChk=document.querySelector('input[name=customColor]'), bcBody=document.querySelector('.bc-body'), bcInput=document.getElementById('brandColor');
-  var repaint=function(){ if(typeof paintThumbs==='function') paintThumbs(); };
+  var brandNow=function(){ return (bcChk&&bcChk.checked&&bcInput&&/^#[0-9a-fA-F]{6}$/.test(bcInput.value))?bcInput.value:null; };
+  var updatePreviewLinks=function(){ var c=brandNow(); [].slice.call(document.querySelectorAll('a.tpl-preview')).forEach(function(a){ try{ var u=new URL(a.href); if(c) u.searchParams.set('brand',c); else u.searchParams.delete('brand'); a.href=u.toString(); }catch(e){} }); };
+  var repaint=function(){ if(typeof paintThumbs==='function') paintThumbs(); updatePreviewLinks(); };
   if(bcChk&&bcBody){ var bcSync=function(){ bcBody.hidden=!bcChk.checked; repaint(); }; bcChk.addEventListener('change',bcSync); bcSync(); }
   if(bcInput){ bcInput.addEventListener('input',repaint); }
   [].slice.call(document.querySelectorAll('.bc-sw')).forEach(function(s){ s.addEventListener('click',function(){ var c=s.getAttribute('data-c'); if(bcInput) bcInput.value=c; if(bcChk&&!bcChk.checked){ bcChk.checked=true; if(bcBody) bcBody.hidden=false; } repaint(); }); });

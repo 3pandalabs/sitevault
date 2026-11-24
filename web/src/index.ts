@@ -50,6 +50,7 @@ import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, t
 import { ASSET_LINKS, PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { OG_PNG } from "./og-image.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
+import { asBrandColor } from "./templates.js";
 import { STARTERS, helpTopics, matchTopics } from "./help.js";
 import { helperScript } from "./helper-client.js";
 import { PANDA_WEBP } from "./panda-image.js";
@@ -910,12 +911,16 @@ async function serveSite(
     res.headers.set("x-robots-tag", "noindex");
     return res;
   }
-  // Preview a style without saving (owner clicks "Preview" on the edit page).
-  const style = new URL(visit.request.url).searchParams.get("style") ?? undefined;
-  if (visit.count !== false && countsVisits(site, cfg, now) && !style) countView(env, visit.ctx, visit.request, site);
+  // Preview a style and/or brand colour without saving (owner clicks "Preview
+  // this style" on the edit page): `?style=<key>` and/or `?brand=<#rrggbb>`.
+  const previewParams = new URL(visit.request.url).searchParams;
+  const style = previewParams.get("style") ?? undefined;
+  const previewBrand = asBrandColor(previewParams.get("brand"));
+  const isPreview = Boolean(style) || Boolean(previewBrand);
+  if (visit.count !== false && countsVisits(site, cfg, now) && !isPreview) countView(env, visit.ctx, visit.request, site);
   const n = nonce();
-  const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) && !style, previewTemplate: style, nonce: n }), 200, n);
-  if (style) {
+  const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) && !isPreview, previewTemplate: style, previewBrandColor: previewBrand ?? undefined, nonce: n }), 200, n);
+  if (isPreview) {
     res.headers.set("x-robots-tag", "noindex");
     res.headers.set("cache-control", "no-store");
   } else {
