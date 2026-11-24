@@ -36,8 +36,11 @@ function memoryR2() {
   return {
     data,
     async put(key: string, value: ArrayBuffer, opts?: { httpMetadata?: { contentType?: string } }) {
-      data.set(key, value);
+      if (!key.startsWith("addr/")) data.set(key, value);
       if (opts?.httpMetadata?.contentType) types.set(key, opts.httpMetadata.contentType);
+    },
+    async head() {
+      return null; // reservations: test/address-race.test.ts
     },
     async get(key: string) {
       const v = data.get(key);

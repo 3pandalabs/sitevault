@@ -15,6 +15,8 @@
     { "pattern": "*.3pandasite.com/*", "zone_name": "3pandasite.com" },
     { "pattern": "3pandasite.com", "custom_domain": true }
   ],
+  // Local dev only: the Worker sees https, as in production (it redirects http).
+  "dev": { "upstream_protocol": "https" },
   "kv_namespaces": [{ "binding": "SITES", "id": "3b04019ee45b408f9e53edd403d14db7" }],
   "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "sitevault-photos" }],
   // Cloudflare Images: shrinks uploaded photos to web size (free tier covers

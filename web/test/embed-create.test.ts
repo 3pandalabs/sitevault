@@ -35,6 +35,9 @@ function memoryR2() {
     async put(key: string, value: unknown, opts?: { httpMetadata?: { contentType?: string } }) {
       data.set(key, { bytes: await toBytes(value), type: opts?.httpMetadata?.contentType });
     },
+    async head() {
+      return null; // reservations: test/address-race.test.ts
+    },
     async get(key: string) {
       const v = data.get(key);
       if (!v) return null;

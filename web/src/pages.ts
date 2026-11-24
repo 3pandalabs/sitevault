@@ -1571,7 +1571,7 @@ export function donePage(opts: {
   <div class="copybox"><code>${esc(opts.siteUrl)}</code><button class="btn ghost" type="button" data-copy="${esc(opts.siteUrl)}">Copy</button><a class="btn" href="${esc(opts.siteUrl)}" target="_blank">Open</a></div>
 </div>
 <div class="notice" style="margin-top:16px">
-  <p><strong>Your private edit link. Save it now.</strong> It's the only way to change your site. Anyone with it can edit, so don't share it. Bookmark this page or email the link to yourself.</p>
+  <p><strong>Your private edit link. Save it now.</strong> Use it to change your site any time, or sign in and open <a href="/account">My website</a>. Anyone with it can edit, so don't share it. Bookmark this page or email the link to yourself.</p>
   <div class="copybox"><code>${esc(opts.editUrl)}</code><button class="btn ghost" type="button" data-copy="${esc(opts.editUrl)}">Copy</button></div>
 </div>
 ${ready}
