@@ -32,6 +32,7 @@
 //   POST /api/internal/sites       one-click create from AdVault (INTERNAL_TOKEN)
 //   GET  /api/internal/sites/<slug>/offer-status   offer, credits, billing (INTERNAL_TOKEN)
 //   POST /api/internal/sites/<slug>/offer          set the offer from AdVault's combo (INTERNAL_TOKEN)
+//   POST /api/internal/sites/<slug>/plan-cover     AdVault plan running: Pro covered until its period ends (INTERNAL_TOKEN)
 //   POST /api/internal/sites/<slug>/paid           AdVault took the $10: publish with a year of Pro (INTERNAL_TOKEN)
 //   GET  /api/internal/account-site?advaultUserId=&email=   the site that shared account owns (INTERNAL_TOKEN)
 //   DELETE /api/internal/sites/<slug>?advaultUserId=&email=  AdVault admin "delete and make a new one": gone for good, address freed (INTERNAL_TOKEN)
@@ -49,7 +50,7 @@ import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, t
 import { ASSET_LINKS, PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { OG_PNG } from "./og-image.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
-import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, faqPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
+import { previewErrorsPage, accountPage, adminPage, authPage, builderPage, contactPage, donePage, embedCreatedPage, faqPage, forgotPasswordPage, homePage, messagePage, privacyPage, resetPasswordPage, shownEmail, termsPage, type AccountSite, type AdminSite, type BillingView, type FormMode, type VisitorsView } from "./pages.js";
 import {
   accountByAdvaultId,
   accountByEmail,
@@ -74,6 +75,7 @@ import {
   normaliseEmail,
   passwordProblem,
   sameOrigin,
+  sendContact,
   sessionCookie,
   sessionToken,
   startSession,
@@ -82,6 +84,8 @@ import {
 } from "./accounts.js";
 import {
   applyAdvaultPaid,
+  applyPlanCover,
+  planCoverUntil,
   applyEvent,
   billingConfig,
   billingOf,
@@ -337,7 +341,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/admin") return adminDashboard(request, env);
     if (path === "/privacy") return html(privacyPage());
     if (path === "/terms") return html(termsPage());
-    if (path === "/contact") return html(contactPage());
+    if (path === "/contact") {
+      const account = await currentAccount(env.SITES, request);
+      return html(contactPage({ signedIn: account !== null, values: { email: shownEmail(account?.email) ?? "" } }));
+    }
     if (path === "/faq") return html(faqPage());
     if (path === "/robots.txt") return new Response(`User-agent: *\nDisallow: /edit/\nDisallow: /api/\nDisallow: /admin\nDisallow: /account\n\nSitemap: ${env.PUBLIC_ORIGIN}/sitemap.xml\n`, { headers: { "content-type": "text/plain" } });
     if (path === "/sitemap.xml") {
@@ -414,6 +421,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/login" || path === "/signup") return authSubmit(request, env, ctx, path === "/login" ? "login" : "signup");
     if (path === "/logout") return logout(request, env);
     if (path === "/forgot-password") return forgotPasswordSubmit(request, env);
+    if (path === "/contact") return contactSubmit(request, env);
     if (path === "/reset-password") return resetPasswordSubmit(request, env);
     if (path === "/account/change-password") return changePasswordSubmit(request, env);
     if (path === "/account/claim") return claimSite(request, env, ctx);
@@ -433,6 +441,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (m) return setOfferInternal(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/paid$/);
     if (m) return paidInternal(request, env, m[1]!);
+    m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/plan-cover$/);
+    if (m) return planCoverInternal(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/owner$/);
     if (m) return ownerInternal(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/video$/);
@@ -765,6 +775,38 @@ async function paidInternal(request: Request, env: Env, slug: string): Promise<R
   await env.SITES.put(paidRefKey(ref), "1", { expirationTtl: 400 * 24 * 60 * 60 });
   console.log("advault_paid", { slug: site.slug, ref });
   return json(done);
+}
+
+// POST /api/internal/sites/<slug>/plan-cover  { until, ref }
+// The owner's AdVault plan is running: keep this AdVault-made site on Pro to
+// the end of the plan's paid period. Only moves forward (applyPlanCover), so
+// it is idempotent by itself; `ref` is only logged. Never publishes a site
+// whose $10 is unpaid.
+async function planCoverInternal(request: Request, env: Env, slug: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  let body: { until?: unknown; ref?: unknown };
+  try {
+    body = ((await request.json()) ?? {}) as typeof body;
+  } catch {
+    return json({ ok: false, error: "bad_json" }, 400);
+  }
+  const until = planCoverUntil(body.until, new Date());
+  if (!until) return json({ ok: false, error: "invalid", detail: "until" }, 400);
+  const site = await liveSiteFollowingAliases(env, slug);
+  if (!site) return json({ ok: false, error: "not_found" }, 404);
+  if (site.source !== "advault") return json({ ok: false, error: "not_an_advault_site" }, 409);
+  // Re-read right before saving so a payment landing now isn't clobbered.
+  const fresh = (await loadSite(env, site.slug)) ?? site;
+  const b = billingOf(fresh);
+  if (b.status === "pending") return json({ ok: false, error: "not_paid" }, 409);
+  const next = applyPlanCover(b, until);
+  // BILLING off or comped: nothing to pay, so nothing to cover.
+  if (billingConfig(env).on && !b.comp && (next.paidUntil !== b.paidUntil || next.planCoveredUntil !== b.planCoveredUntil || next.plan !== b.plan)) {
+    await saveSite(env, { ...fresh, billing: next, updatedAt: new Date().toISOString() });
+    console.log("plan_cover", { slug: fresh.slug, until: next.paidUntil, ref: typeof body.ref === "string" ? body.ref.slice(0, 120) : null });
+  }
+  return json({ ok: true, slug: fresh.slug, paidUntil: next.paidUntil });
 }
 
 // DELETE /api/internal/sites/<slug>?advaultUserId=&email=  (INTERNAL_TOKEN)
@@ -1656,6 +1698,40 @@ async function authRateLimited(request: Request, env: Env): Promise<boolean> {
   if (n >= LOGIN_LIMIT) return true;
   await env.SITES.put(key, String(n + 1), { expirationTtl: 1800 });
   return false;
+}
+
+const CONTACT_LIMIT = 5;
+
+// POST /contact: the form is emailed to us by AdVault's API (it holds the
+// mailer token) with Reply-To = the sender. Nothing is stored here but a
+// short-lived per-connection counter.
+async function contactSubmit(request: Request, env: Env): Promise<Response> {
+  const account = await currentAccount(env.SITES, request);
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return html(contactPage({ error: "Please use the form on this page." }), 400);
+  }
+  const field = (name: string, max: number) => {
+    const v = form.get(name);
+    return (typeof v === "string" ? v : "").trim().slice(0, max);
+  };
+  const values = { name: field("name", 120), email: field("email", 254), subject: field("subject", 150), message: field("message", 4000) };
+  const again = (error: string, status: number) => html(contactPage({ signedIn: account !== null, values, error }), status);
+  if (!sameOrigin(request, env.PUBLIC_ORIGIN)) return again("Please use the form on this page.", 403);
+  if (field("website", 500)) return html(contactPage({ signedIn: account !== null, sentTo: values.email })); // honeypot
+  if (!values.name || !values.subject || !values.message || emailProblem(normaliseEmail(values.email))) {
+    return again("Please fill in your name, a valid email, a subject and your message.", 400);
+  }
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const key = `rl:contact:${await sha256Hex(`${ip}:${Math.floor(Date.now() / 3_600_000)}`)}`;
+  const n = Number((await env.SITES.get(key)) ?? "0");
+  if (n >= CONTACT_LIMIT) return again("Too many messages right now. Please try again in an hour, or email us.", 429);
+  await env.SITES.put(key, String(n + 1), { expirationTtl: 7200 });
+  const sent = await sendContact(advaultApi(env), { ...values, ...(account?.advaultUserId ? { userId: account.advaultUserId } : {}) });
+  if (!sent) return again("We couldn't send your message. Please email us instead.", 503);
+  return html(contactPage({ signedIn: account !== null, sentTo: values.email }));
 }
 
 function withSession(res: Response, token: string): Response {

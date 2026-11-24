@@ -275,6 +275,12 @@ export async function requestPasswordReset(api: AdvaultApi, email: string, reset
   await advaultPost(api, "/internal/sitevault/password-reset/request", { email, resetUrlBase, productName: "SiteVault", fromName: "SiteVault" });
 }
 
+/** Email us the contact form. true only when AdVault's mailer accepted it. */
+export async function sendContact(api: AdvaultApi, m: { name: string; email: string; subject: string; message: string; userId?: string }): Promise<boolean> {
+  const r = await advaultPost(api, "/internal/sitevault/contact", m);
+  return r?.status === 204 || r?.status === 200;
+}
+
 /** Finish a reset. true only on AdVault's 200; false for a bad/expired token or AdVault being unreachable. */
 export async function confirmPasswordReset(api: AdvaultApi, token: string, password: string): Promise<boolean> {
   const r = await advaultPost(api, "/internal/sitevault/password-reset/confirm", { token, password });
