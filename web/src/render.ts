@@ -32,6 +32,8 @@ export type RenderContext = {
   ping?: boolean;
   /** Preview a style without saving (from `?style=`): overrides site.template for this view only. */
   previewTemplate?: string;
+  /** Preview a brand colour without saving (from `?brand=`): overrides site.brandColor for this view only. */
+  previewBrandColor?: string;
   /** CSP nonce; when set, the motion script is included (customer sites). */
   nonce?: string;
   /**
@@ -489,7 +491,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
       ? `.name{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-weight:600;letter-spacing:-.01em;font-size:1.25rem}
 .hero.spotlight h1,.hero.split h1,.hero.editorial h1{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-weight:600;letter-spacing:-.01em}`
       : "";
-  const theme = withBrandColor(themeFor(site.category, brand), site.brandColor);
+  const theme = withBrandColor(themeFor(site.category, brand), ctx.previewBrandColor ?? site.brandColor);
   const title = `${site.businessName} | ${cat.label}${site.city ? ` in ${site.city}` : ""}`;
   const description = (site.about || headline(site)).slice(0, 160);
   const photos = site.photos.map((k) => photoUrl(ctx, k));
