@@ -39,6 +39,8 @@ for (const [file, path, selector] of SHOTS) {
     await el.evaluate((n) => window.scrollTo(0, n.getBoundingClientRect().top + window.scrollY - 8));
   }
   await page.waitForTimeout(800);
+  // The panda helper button would cover the text underneath.
+  await page.evaluate(() => document.querySelectorAll('.svh-open').forEach((e) => (e.style.visibility = "hidden")));
   await page.screenshot({ path: RAW + file });
   console.log(`captured ${file}`);
 }

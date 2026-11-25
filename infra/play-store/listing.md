@@ -36,6 +36,7 @@ SIMPLE PRICING
 • Free to build. Pay only when you publish.
 • Basic: $49 a year. Pro: $89 a year, with visitor stats (visits, where they came from, and call and directions taps).
 • Festive season price: Basic $29 a year or Pro $59 a year, locked for life, when you join by January 31, 2027.
+• Optional offer credits: 5 for $10.
 • Billed yearly. Cancel any time; your site stays up until the end of the paid year.
 
 Edit your website any time from the app. Your SiteVault sign-in also works in AdVault, our YouTube ads app for local businesses.
@@ -58,7 +59,7 @@ Made by 3PandaLabs.
 
 ## App content answers
 - **Ads:** No.
-- **App access:** The home page and the website builder are open; publishing, editing and stats need an account (email + password; the builder creates it). No reviewer/demo login exists yet. Create one on the live site and paste its email + password into "App access". Publishing a new site charges a real card (BILLING is on), unless the reviewer account is on the `ADMIN_EMAILS` comp list.
+- **App access:** The home page and the website builder are open; publishing, editing and stats need an account (email + password; the builder creates it). A reviewer login exists (since 2026-11-22, the same 3PandaLabs account as AdVault; its password is never kept in this repo). Check its details are in "App access". Publishing a new site charges a real card (BILLING is on), unless the reviewer account is on the `ADMIN_EMAILS` comp list.
 - **Target audience:** 18+ (business owners).
 - **Content rating (IARC):** User-generated content is shared publicly: yes (each business publishes a public website with its own text and photos, and website visitors can leave reviews that the owner approves before they show). No chat or messaging between users. No location sharing (the business types its address; the app never reads device location). Digital purchases: yes (yearly website plans and offer credits, paid by card on the web). AI-generated content: no (the builder's one-tap suggestions are fixed templates; no AI).
 - **News app:** No. **Government app:** No. **Health:** No.
