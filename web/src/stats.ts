@@ -10,7 +10,7 @@ export type TapKind = "call" | "directions" | "offer";
 export const TAP_KINDS: TapKind[] = ["call", "directions", "offer"];
 export type Device = "mobile" | "tablet" | "desktop";
 
-const SOURCES = ["youtube", "google", "facebook", "instagram", "whatsapp", "advault"] as const;
+const SOURCES = ["youtube", "google", "facebook", "instagram", "whatsapp", "linkedin", "advault"] as const;
 // Known platforms, plus "direct"/"other", plus an actual referring domain (a
 // bare host like "bing.com" — never a path or query) for sites we don't tag.
 export type StatSource = (typeof SOURCES)[number] | "direct" | "other" | (string & {});
@@ -20,7 +20,8 @@ const BOT_UA =
   /bot\b|bot\/|crawl|spider|slurp|preview|facebookexternalhit|facebot|whatsapp|telegram|discord|slack|skype|twitter|linkedin|embedly|pinterest|vkshare|quora link|headless|lighthouse|pagespeed|google-inspectiontool|adsbot|mediapartners|feedfetcher|curl|wget|python|go-http|java\/|okhttp|axios|node-fetch|undici|httpclient|monitor|uptime|scan/i;
 
 export function isBot(ua: string | null): boolean {
-  return !ua || BOT_UA.test(ua);
+  // LinkedIn's in-app browser is a person; LinkedInBot is not.
+  return !ua || BOT_UA.test(ua.replace(/\[LinkedInApp\]/g, ""));
 }
 
 /** Browser speculative loads (prefetch/prerender) aren't visits until shown. */
@@ -45,6 +46,7 @@ export function normaliseUtm(raw: string): StatSource {
   if (/^(facebook|fb|meta)$/.test(v) || v.includes("facebook")) return "facebook";
   if (/^(instagram|ig|insta)$/.test(v) || v.includes("instagram")) return "instagram";
   if (/^(whatsapp|wa)$/.test(v) || v.includes("whatsapp")) return "whatsapp";
+  if (v.includes("linkedin")) return "linkedin";
   if (v.includes("advault")) return "advault";
   return "other";
 }
@@ -57,6 +59,7 @@ export function hostSource(host: string): StatSource {
   if (/(^|\.)(facebook\.com|fb\.com|fb\.me)$/.test(h)) return "facebook";
   if (/(^|\.)instagram\.com$/.test(h)) return "instagram";
   if (h === "wa.me" || /(^|\.)whatsapp\.(com|net)$/.test(h)) return "whatsapp";
+  if (h === "lnkd.in" || h === "com.linkedin.android" || /(^|\.)linkedin\.com$/.test(h)) return "linkedin";
   if (h === "advault.3pandalabs.com") return "advault";
   // An untagged referrer: keep the actual domain (host only, never the path) so
   // the owner sees which site linked to them. Fall back to "other" if it isn't a

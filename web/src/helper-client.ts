@@ -4,7 +4,7 @@
 // never the URL. Builds its own elements with textContent, so nothing typed or
 // returned is ever parsed as HTML.
 export function helperScript(starters: { id: string; q: string }[]): string {
-  return `(function(){
+  return COUNT + `(function(){
 var KEY='sv_contact_question',STARTERS=${JSON.stringify(starters).replace(/</g, "\\u003c")};
 function fill(){var t=document.getElementById('c-message'),q=null;if(!t)return false;try{q=sessionStorage.getItem(KEY);if(q)sessionStorage.removeItem(KEY)}catch(e){}
 if(q){t.value=t.value?t.value+'\\n\\n'+q:q;var s=document.getElementById('c-subject');if(s&&!s.value)s.value='Question from the SiteVault helper'}return true}
@@ -35,3 +35,14 @@ box.addEventListener('keydown',function(e){if(e.key==='Escape')close()});
 form.addEventListener('submit',function(e){e.preventDefault();ask(inp.value)});
 })();`;
 }
+
+// Our own visit counter (2026-11-25): one to a daily total in 3pandalabs/admin
+// visits/ (admin.3pandalabs.com > Visitors). No cookie, no visitor id; only the
+// referring host, utm tags and the first path segment leave the page, so an edit
+// key or slug never does. The privacy page describes it: change both together.
+const COUNT = `(function(){try{var l=location;if(l.hostname!=='sitevault.3pandalabs.com')return;var u=new URLSearchParams(l.search),n=u.get('nocount');
+try{if(n==='1')localStorage.setItem('nocount','1');if(n==='0')localStorage.removeItem('nocount');if(localStorage.getItem('nocount')==='1')return}catch(e){}
+var h='';try{h=document.referrer?new URL(document.referrer).hostname:''}catch(e){}
+var t=(performance.getEntriesByType('navigation')[0]||{}).type;
+navigator.sendBeacon('https://counts.3pandalabs.com/c',JSON.stringify({v:t==='reload'||t==='back_forward'?0:1,h:h,s:u.get('utm_source')||'',m:u.get('utm_medium')||'',g:u.has('gclid')||u.has('gbraid')||u.has('wbraid')?1:0,p:'/'+(l.pathname.split('/')[1]||'')}))}catch(e){}})();
+`;

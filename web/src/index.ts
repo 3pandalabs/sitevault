@@ -495,7 +495,8 @@ function html(page: string, status = 200, pageNonce?: string): Response {
     // PWA: allow the installable manifest and the same-origin service worker.
     "manifest-src 'self'",
     "worker-src 'self'",
-    "connect-src 'self'",
+    // counts.* is our own visit counter (helper-client.ts), on pages with the helper only.
+    helper ? "connect-src 'self' https://counts.3pandalabs.com" : "connect-src 'self'",
     // Stripe hosts so a browser follows the checkout/portal form POST's 303 to
     // Stripe — form-action is enforced against the redirect target, not just
     // the POST URL, so 'self' alone silently blocks publishing and billing.
