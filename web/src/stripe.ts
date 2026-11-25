@@ -27,6 +27,19 @@ export async function createCheckoutSession(key: string, params: [string, string
   return s.url;
 }
 
+/** Retrieve a Checkout Session (to verify a payment when the buyer returns). */
+export async function retrieveCheckoutSession(key: string, id: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API}/checkout/sessions/${encodeURIComponent(id)}`, {
+    headers: { authorization: `Bearer ${key}` },
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const err = (data.error ?? {}) as { message?: string; type?: string };
+    throw new Error(`stripe GET /checkout/sessions ${res.status}: ${err.type ?? ""} ${err.message ?? ""}`.trim());
+  }
+  return data;
+}
+
 /** Billing portal for an existing customer; returns its URL. */
 export async function createPortalSession(key: string, customer: string, returnUrl: string): Promise<string> {
   const s = await call(key, "POST", "/billing_portal/sessions", [

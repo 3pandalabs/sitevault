@@ -113,7 +113,7 @@ import {
   type CheckoutKind,
   type PriceIds,
 } from "./billing.js";
-import { cancelSubscription, createCheckoutSession, createPortalSession, verifyStripeSignature } from "./stripe.js";
+import { cancelSubscription, createCheckoutSession, createPortalSession, retrieveCheckoutSession, verifyStripeSignature } from "./stripe.js";
 import { TAP_KINDS, classifySource, hitFor, isBot, isPrefetch, readStats, recordHit, tapSource, type TapKind } from "./stats.js";
 import {
   BEFORE_AFTER_FIELDS,
@@ -1061,13 +1061,47 @@ async function moderateReviews(request: Request, env: Env, slug: string): Promis
   return redirectTo(env, `/edit/${encodeURIComponent(slug)}${embed ? "?embed=1" : `?k=${encodeURIComponent(key)}`}`);
 }
 
+/**
+ * Back from Stripe Checkout (success_url carries session_id): verify the session
+ * and apply the payment right away, so a slightly-delayed webhook can't leave the
+ * owner on an "unpublished / pay to publish" page. Idempotent with the webhook
+ * (applyEvent is; credits are left to the webhook, which dedups them). Best
+ * effort: any Stripe hiccup falls through and the webhook still publishes.
+ */
+async function finalizeCheckoutOnReturn(request: Request, env: Env, site: Site): Promise<Site> {
+  const sessionId = new URL(request.url).searchParams.get("session_id");
+  const cfg = billingConfig(env);
+  if (!sessionId || !env.STRIPE_SECRET_KEY || !cfg.on) return site;
+  // Only pay the Stripe round-trip when publishing would actually change something.
+  if (siteState(site, cfg, new Date()) === "live") return site;
+  try {
+    const session = await retrieveCheckoutSession(env.STRIPE_SECRET_KEY, sessionId);
+    const ev = eventFromStripe({ type: "checkout.session.completed", data: { object: session } });
+    // A paid publish/renew for THIS site only. Credits aren't idempotent across
+    // this path and the webhook and don't publish anything, so leave them to it.
+    if (!ev || ev.type !== "checkout_completed" || ev.kind === "credits") return site;
+    if (ev.slug !== site.slug && (await aliasTarget(env, ev.slug)) !== site.slug) return site;
+    // Re-read the freshest copy so a racing webhook write isn't clobbered.
+    const fresh = (await loadSite(env, site.slug)) ?? site;
+    const { billing, cancel } = applyEvent(billingOf(fresh), ev, new Date());
+    await saveSite(env, { ...fresh, billing });
+    if (cancel) cancelSubscription(env.STRIPE_SECRET_KEY, cancel).catch((e) => console.warn("cancel on return failed", String(e)));
+    console.log("checkout_finalized_on_return", { slug: fresh.slug, plan: billing.plan, paidUntil: billing.paidUntil });
+    return { ...fresh, billing };
+  } catch (err) {
+    console.warn("finalize on return failed", String(err));
+    return site;
+  }
+}
+
 async function editPage(request: Request, env: Env, slug: string, key: string, justPaid = false, saved = false): Promise<Response> {
-  const site = await authorize(env, slug, key, request);
-  if (!site) {
+  const authed = await authorize(env, slug, key, request);
+  if (!authed) {
     // No key: send them to sign in, then back here.
     if (!key && !(await currentAccount(env.SITES, request))) return Response.redirect(`${env.PUBLIC_ORIGIN}/login?next=/edit/${slug}`, 302);
     return html(messagePage("Edit link not valid", "Check you copied the whole link, or sign in to the account that owns this website. Lost it? Email sitevault@3pandalabs.com.", "Can't open"), 403);
   }
+  const site = await finalizeCheckoutOnReturn(request, env, authed);
   const signedIn = Boolean(await currentAccount(env.SITES, request));
   return builder(env, { ...(await editMode(env, site, key, justPaid)), signedIn, saved });
 }

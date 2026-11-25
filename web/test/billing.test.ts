@@ -212,7 +212,7 @@ describe("checkout", () => {
     // Stripe 400s on payment_intent_data in subscription mode.
     expect(r.params.some(([k]) => k.startsWith("payment_intent_data"))).toBe(false);
     expect(p.get("client_reference_id")).toBe("bellas");
-    expect(p.get("success_url")).toBe("https://sv.test/edit/bellas?k=abc&paid=1");
+    expect(p.get("success_url")).toBe("https://sv.test/edit/bellas?k=abc&paid=1&session_id={CHECKOUT_SESSION_ID}");
     expect(p.get("cancel_url")).toBe("https://sv.test/edit/bellas?k=abc");
     expect(p.has("customer")).toBe(false);
   });
