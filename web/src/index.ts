@@ -2637,6 +2637,14 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
     errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
   }
+  // Before & after pairs (builder, only trades where they fit): both photos and
+  // the "our own work" tick. Same rules as the edit page; stored separately.
+  const pairs = pickBeforeAfter(form.ba, { existing: 0, types: PHOTO_TYPES, maxBytes: MAX_PHOTO_BYTES });
+  if (!pairs.ok) errors.beforeAfter = pairs.error;
+  else if (pairs.pairs.length) {
+    if (parsed.ok && !beforeAfterAllowed(parsed.value.category)) errors.beforeAfter = "Before & after photos are not available for this type of business.";
+    else if (fields.baAttest !== "yes") errors.baAttest = "Please confirm these are real photos of your own work.";
+  }
   const listingPick = builderExtrasChecks(form, parsed, errors);
   const requested = fields.slug ? normaliseAddress(fields.slug) : null;
   if (requested) {
@@ -2679,7 +2687,7 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     owner = made;
     console.log("account_created", { id: made.id });
   }
-  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, address, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), [], form.menu, form.schedule, listingPick.ok ? listingPick.items : []);
+  const { slug, editUrl, key, pending } = await insertSite(env, parsed.value, files, "web", form.video, address, false, owner.id, isAdminEmail(env, owner.email), isAdminEmail(env, owner.email), pairs.ok ? pairs.pairs : [], form.menu, form.schedule, listingPick.ok ? listingPick.items : []);
   await addSiteToAccount(env.SITES, owner, slug);
   reportSitevaultUse(env, ctx, owner);
   const sessionCookieFor = signedIn ? null : await startSession(env.SITES, owner.id);
