@@ -133,7 +133,7 @@ export function helpTopics(cfg: BillingConfig, now: Date): HelpTopic[] {
       id: "many",
       faq: true,
       q: "Can I have more than one website?",
-      a: "It's one website per account and per business phone number. For another business, sign out and create a new account for it.",
+      a: "It's one website per account. For another business, sign out and create a new account for it — a phone number can be used on more than one website.",
       keys: ["more than one", "two website", "second website", "another website", "another business", "multiple", "several website"],
     },
     {

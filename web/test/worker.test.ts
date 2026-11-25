@@ -903,6 +903,15 @@ describe("menu in the builder (create flow)", () => {
     expect(res.status).toBe(400);
     expect(((await res.json()) as { errors: Record<string, string> }).errors.baAttest).toBeTruthy();
   });
+
+  it("lets a different account use a phone number another site already uses", async () => {
+    const first = await publicCreate({ phone: "(555) 777-1234", acct_email: "owner-ph1@example.test" });
+    expect(first.status).toBe(200);
+    const second = await publicCreate({ phone: "(555) 777-1234", businessName: "Second Shop", acct_email: "owner-ph2@example.test" });
+    expect(second.status).toBe(200);
+    expect([...kv.data.keys()].filter((k) => k.startsWith("site:")).length).toBe(2);
+    expect([...kv.data.keys()].some((k) => k.startsWith("phone:"))).toBe(false);
+  });
 });
 
 describe("menu upload endpoint (Upload button)", () => {
