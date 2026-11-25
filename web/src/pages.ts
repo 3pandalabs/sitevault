@@ -1514,8 +1514,29 @@ const BUILDER_SCRIPT = `
     input.addEventListener('change',render); render();
   };
   filePreview(document.getElementById('photos'));
-  // Before & after inputs: a "Clear" button once a photo is picked, like the others.
-  ['ba1Before','ba1After','ba2Before','ba2After'].forEach(function(id){ fileClear(document.getElementById(id),'photo'); });
+  // Before & after: each single-image input shows a thumbnail of the pick with
+  // a Remove button, like the photos grid. Progressive: no objectURL = plain input.
+  var fileThumb=function(input){
+    if(!input||!window.URL||!URL.createObjectURL) return;
+    var box=document.createElement('div'); box.className='photos'; box.setAttribute('data-file-thumb','');
+    if(input.parentNode) input.parentNode.appendChild(box);
+    var url=null;
+    var render=function(){
+      if(url){ URL.revokeObjectURL(url); url=null; }
+      while(box.firstChild) box.removeChild(box.firstChild);
+      var f=input.files&&input.files[0];
+      if(!f||f.type.indexOf('image/')!==0) return;
+      url=URL.createObjectURL(f);
+      var card=document.createElement('div'); card.className='photo';
+      var img=document.createElement('img'); img.src=url; img.alt='Selected photo'; card.appendChild(img);
+      var ctl=document.createElement('div'); ctl.className='photo-ctl';
+      var rm=document.createElement('button'); rm.type='button'; rm.className='premove'; rm.setAttribute('aria-label','Remove this photo'); rm.innerHTML='&#10005; Remove';
+      rm.addEventListener('click',function(){ input.value=''; render(); });
+      ctl.appendChild(rm); card.appendChild(ctl); box.appendChild(card);
+    };
+    input.addEventListener('change',render); render();
+  };
+  ['ba1Before','ba1After','ba2Before','ba2After'].forEach(function(id){ fileThumb(document.getElementById(id)); });
   // Prefill "Services and prices" from the chosen business type. Only replaces
   // an empty box or an untouched earlier suggestion, so typed content is kept
   // (including if you just tab past it).
