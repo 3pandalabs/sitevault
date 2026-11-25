@@ -641,7 +641,7 @@ export function billingSection(slug: string, key: string, v: BillingView, siteUr
   return `<details class="section" id="billing"${open}>
   <summary>Plan &amp; billing <span class="sum">— ${esc(teaser)}</span></summary>
   <div class="section-body">
-  ${v.justPaid ? `<p class="notice ok" role="status">Thanks, your payment went through. It can take a minute to show here.</p>` : ""}
+  ${v.justPaid && v.state !== "live" ? `<p class="notice ok" role="status">Thanks, your payment went through. It can take a minute to show here.</p>` : ""}
   ${status}
   <dl class="facts">${rows.join("")}</dl>
   ${buttons.join("")}
@@ -1182,9 +1182,27 @@ export function builderPage(
   // The owner's edit page on SiteVault (not inside AdVault): three tabs, the
   // form beside a live view on wide screens (ownerTabsHead / ownerTabsTail).
   const tabbed = mode.kind === "edit" && !embed;
+  // Just back from a successful payment and now published: a one-time "You're
+  // live!" celebration (with confetti, via CELEBRATE_SCRIPT). Only here, never
+  // on an ordinary save, and the script drops paid= so a refresh won't replay it.
+  const liveUrl = mode.kind === "edit" ? mode.siteUrl ?? "" : "";
+  const celebrate = mode.kind === "edit" && !embed && !!mode.billing && mode.billing.justPaid && mode.billing.state === "live" && !!liveUrl;
+  const liveBanner = celebrate
+    ? `<div class="notice ok" id="live-celebrate" role="status" data-confetti>
+  <h2 style="margin:0 0 6px">🎉 You're live!</h2>
+  <p style="margin:0 0 10px">Your website is published at <a href="${esc(liveUrl)}" target="_blank" rel="noopener">${esc(liveUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a>.</p>
+  <div class="buttons">
+    <button class="btn" type="button" data-copy="${esc(liveUrl)}">Copy link</button>
+    <a class="btn ghost" href="${esc(liveUrl)}" target="_blank" rel="noopener">Open my website ↗</a>
+    <a class="btn ghost" href="${esc(`https://wa.me/?text=${encodeURIComponent(`My website is live: ${liveUrl}`)}`)}" target="_blank" rel="noopener">Share on WhatsApp</a>
+  </div>
+  <p class="hint" style="margin:10px 0 0">Share it with your customers — you can change anything or add photos anytime.</p>
+</div>`
+    : "";
   const body = `<section${tabbed ? ' class="owner"' : ""}>
 ${tabbed ? ownerTabsHead() : ""}
 ${tabbed ? `<h2 class="sr">Edit your website</h2>` : `<h1>${mode.kind === "edit" ? "Edit your website" : "Build your website"}</h1>`}
+${liveBanner}
 ${tabbed && mode.kind === "edit" && mode.saved ? `<p class="notice ok" role="status" id="owner-saved"><strong>Saved.</strong> Your changes are live.</p>` : ""}
 ${mode.kind === "edit" ? "" : `<p class="lead">${draft ? "We filled in what your ad already knows. Check it, add anything you like, then create your website. You can change all of it later." : "Takes about five minutes. Only the first three fields are required; everything else makes your site better."}</p>`}
 ${
@@ -1312,7 +1330,7 @@ ${tabbed && mode.kind === "edit" ? ownerTabsTail(mode) : ""}
     signedIn: mode.kind === "new" ? Boolean(mode.account) : Boolean(mode.signedIn),
     noindex: mode.kind === "edit" || Boolean(draft),
     embed,
-    script: PUBLISH_CONFIRM_SCRIPT + SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : "") + (tabbed ? OWNER_TABS_SCRIPT : ""),
+    script: PUBLISH_CONFIRM_SCRIPT + SUGGEST_SCRIPT + BUILDER_SCRIPT + (embed ? EMBED_SCRIPT : "") + (tabbed ? OWNER_TABS_SCRIPT : "") + (celebrate ? CELEBRATE_SCRIPT : ""),
   });
 }
 
@@ -1394,6 +1412,37 @@ const PUBLISH_CONFIRM_SCRIPT = `
 
 // Shrinks photos client-side, posts with fetch, shows field errors inline.
 // Falls back to the normal multipart post when anything here is unsupported.
+// The "You're live!" celebration (shown once, on the publish return). Copies the
+// link, drops paid= so a refresh won't replay it, and fires one short confetti
+// burst — decorative (aria-hidden), skipped under prefers-reduced-motion.
+const CELEBRATE_SCRIPT = `
+(function(){
+  var box=document.getElementById('live-celebrate'); if(!box) return;
+  [].forEach.call(box.querySelectorAll('[data-copy]'),function(b){
+    b.addEventListener('click',function(){
+      var t=b.getAttribute('data-copy');
+      if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ var o=b.textContent; b.textContent='Copied!'; setTimeout(function(){ b.textContent=o; },1500); }); }
+    });
+  });
+  try{ var u=new URL(window.location.href); if(u.searchParams.has('paid')){ u.searchParams.delete('paid'); u.searchParams.delete('session_id'); history.replaceState(null,'',u.pathname+(u.search||'')+(u.hash||'')); } }catch(_){}
+  if(!window.requestAnimationFrame) return;
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var c=document.createElement('canvas'); c.setAttribute('aria-hidden','true');
+  c.style.cssText='position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999';
+  var w=c.width=window.innerWidth, h=c.height=window.innerHeight; document.body.appendChild(c);
+  var ctx=c.getContext('2d'); if(!ctx){ if(c.parentNode)c.parentNode.removeChild(c); return; }
+  var colors=['#7c3aed','#06b6d4','#f59e0b','#ef4444','#10b981','#ec4899'];
+  var N=140, P=[];
+  for(var i=0;i<N;i++){ P.push({x:w*(0.15+0.7*(i/N)),y:-20-Math.random()*h*0.3,vx:(i%2?1:-1)*(1+Math.random()*4),vy:2+Math.random()*5,s:5+Math.random()*6,r:Math.random()*360,vr:(i%2?1:-1)*(3+Math.random()*6),col:colors[i%colors.length]}); }
+  var start=null, DUR=1600;
+  function frame(ts){ if(start===null)start=ts; var t=ts-start; ctx.clearRect(0,0,w,h);
+    for(var j=0;j<P.length;j++){ var p=P[j]; p.vy+=0.12; p.x+=p.vx; p.y+=p.vy; p.r+=p.vr;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r*Math.PI/180); ctx.globalAlpha=Math.max(0,1-t/DUR); ctx.fillStyle=p.col; ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6); ctx.restore(); }
+    if(t<DUR) requestAnimationFrame(frame); else if(c.parentNode) c.parentNode.removeChild(c);
+  }
+  requestAnimationFrame(frame);
+})();`;
+
 const BUILDER_SCRIPT = `
 (function(){
   var form=document.getElementById('builder'); if(!form||!window.fetch||!window.FormData) return;

@@ -156,3 +156,38 @@ describe("builder: before & after + live photo thumbnails", () => {
     expect(h).toContain("fileThumb(document.getElementById(id))");
   });
 });
+
+describe("you're live celebration", () => {
+  const liveUrl = "https://green-lawns.3pandasite.com/";
+  const billingView = (justPaid: boolean, state: string) =>
+    ({ state, billing: { plan: "basic" } as never, source: "web", prices: planPrices("web"), paidUntil: new Date(Date.now() + 1e10), justPaid }) as never;
+  const page = (extra: Record<string, unknown>) =>
+    builderPage({ kind: "edit", site, key: "k", photoUrl: (k) => k, siteUrl: liveUrl, ...extra }, "N", {}, {}, "3pandasite.com");
+
+  it("shows the banner + confetti once, when just paid and now live", () => {
+    const h = page({ billing: billingView(true, "live") });
+    expect(h).toContain('id="live-celebrate"');
+    expect(h).toContain("You're live!");
+    expect(h).toContain('role="status"');
+    expect(h).toContain(`data-copy="${liveUrl}"`);
+    expect(h).toContain("green-lawns.3pandasite.com");
+    expect(h).toContain("wa.me/?text=");
+    // Confetti script: decorative + reduced-motion aware, included only here.
+    expect(h).toContain("prefers-reduced-motion");
+    expect(h).toContain("requestAnimationFrame");
+  });
+
+  it("does not celebrate before the site is live (payment not yet applied)", () => {
+    const h = page({ billing: billingView(true, "unpublished") });
+    expect(h).not.toContain('id="live-celebrate"');
+    expect(h).not.toContain("prefers-reduced-motion");
+    expect(h).toContain("Thanks, your payment went through"); // graceful fallback
+  });
+
+  it("does not celebrate on an ordinary save", () => {
+    const h = page({ billing: billingView(false, "live"), saved: true });
+    expect(h).not.toContain('id="live-celebrate"');
+    expect(h).not.toContain("prefers-reduced-motion");
+    expect(h).toContain("Saved."); // the normal saved banner
+  });
+});
