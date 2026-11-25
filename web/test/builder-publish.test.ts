@@ -107,3 +107,39 @@ describe("confirm before publishing", () => {
     expect(renew).not.toContain("data-confirm-publish");
   });
 });
+
+describe("builder: before & after + live photo thumbnails", () => {
+  const newPage = (values: Record<string, string> = {}) =>
+    builderPage({ kind: "new" }, "N", {}, values, "3pandasite.com");
+
+  it("offers a before & after uploader, category-gated and hidden until an eligible type is picked", () => {
+    const h = newPage();
+    const fs = h.match(/<fieldset id="ba-fieldset"[^>]*>/)![0];
+    // Carries the allowlist for the builder script and is hidden with no category chosen.
+    expect(fs).toContain("data-show-cats=");
+    expect(fs).toContain("carwash");
+    expect(fs).toContain("hidden");
+    // Pair file inputs + the "our own work" tick.
+    expect(h).toContain('name="ba1Before"');
+    expect(h).toContain('name="ba1After"');
+    expect(h).toContain('name="ba2Before"');
+    expect(h).toContain('name="baAttest"');
+  });
+
+  it("shows the before & after uploader unhidden when an eligible category is already chosen", () => {
+    const fs = newPage({ category: "carwash" }).match(/<fieldset id="ba-fieldset"[^>]*>/)![0];
+    expect(fs).not.toContain("hidden");
+  });
+
+  it("does not show before & after for a non-eligible category (restaurant)", () => {
+    const fs = newPage({ category: "restaurant" }).match(/<fieldset id="ba-fieldset"[^>]*>/)![0];
+    expect(fs).toContain("hidden");
+  });
+
+  it("ships the live-thumbnail script for freshly-picked photos", () => {
+    const h = newPage();
+    expect(h).toContain("data-file-preview");
+    expect(h).toContain("createObjectURL");
+    expect(h).toContain("filePreview(document.getElementById('photos'))");
+  });
+});

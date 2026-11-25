@@ -4,6 +4,7 @@
 // arrives as ~300 KB; without JavaScript the form still posts normally.
 
 import {
+  BEFORE_AFTER_CATEGORIES,
   BEFORE_AFTER_FIELDS,
   CATEGORIES,
   HOURS_TEMPLATE,
@@ -945,6 +946,32 @@ export function beforeAfterFields(site: Site, photoUrl: (k: string) => string, e
 }
 
 /**
+ * The "Before & after" fieldset for the BUILDER (new site). Empty pair-upload
+ * slots plus the "real photos of our own work" tick. Only trades where it fits
+ * use it: it carries data-show-cats so the builder script reveals it when the
+ * owner picks a matching category, and server-side it's hidden unless the
+ * already-chosen category qualifies (a validation re-render). The server
+ * (`createSite`) still enforces the category and the tick.
+ */
+export function builderBeforeAfterFields(category: string, e: (k: string) => string): string {
+  const slots = BEFORE_AFTER_FIELDS.slice(0, MAX_BEFORE_AFTER)
+    .map(
+      ([b, a], i) =>
+        `<div class="row">
+    <div class="field"><label for="${b}">Pair ${i + 1}: before photo</label><input type="file" id="${b}" name="${b}" accept="image/*"></div>
+    <div class="field"><label for="${a}">Pair ${i + 1}: after photo</label><input type="file" id="${a}" name="${a}" accept="image/*"></div>
+  </div>`,
+    )
+    .join("\n  ");
+  return `<fieldset id="ba-fieldset" data-show-cats="${esc(BEFORE_AFTER_CATEGORIES.join(","))}"${beforeAfterAllowed(category) ? "" : " hidden"}><legend>Before &amp; after</legend>
+  <p class="hint">Optional. Up to ${MAX_BEFORE_AFTER} pairs, each a before and an after photo of the same job. Shown in a "Before &amp; after" section on your site.</p>
+  ${slots}
+  <div class="field"><label class="check"><input type="checkbox" name="baAttest" value="yes"> <span>These are real photos of our own work.</span></label>${e("baAttest")}</div>
+  ${e("beforeAfter")}
+</fieldset>`;
+}
+
+/**
  * The "Menu" section for restaurants & bakeries: upload a PDF or a photo of the
  * menu (up to MAX_MENU), with keep-boxes for existing files (edit page). Shown
  * on both the builder and the edit page, but only for food categories — it
@@ -1142,7 +1169,9 @@ export function builderPage(
     .join("")}
   ${e("beforeAfter")}
 </fieldset>`
-        : "";
+        : mode.kind === "new" && !embed
+          ? builderBeforeAfterFields(selectedCat, e)
+          : "";
   const menu = menuFields(selectedCat, mode.kind === "edit" ? mode.site.menu ?? [] : [], mode.kind === "edit" ? mode.photoUrl : null, e);
   const schedule = scheduleFields(selectedCat, mode.kind === "edit" ? mode.site.schedule ?? null : null, mode.kind === "edit" ? mode.photoUrl : null, e);
   const insurance = insuranceFields(selectedCat, v("insurance", site?.insurance ?? ""), e);
@@ -1453,6 +1482,38 @@ const BUILDER_SCRIPT = `
   };
   fileClear(document.getElementById('photos'),'photo');
   fileClear(document.getElementById('video'),'video');
+  // Live thumbnails for freshly-picked photos (before anything is saved). Each
+  // has a Remove button; removing rebuilds the input's file list so the upload
+  // matches what's shown. Progressive: no DataTransfer/objectURL = plain input.
+  var filePreview=function(input){
+    if(!input||!window.DataTransfer||!window.URL||!URL.createObjectURL) return;
+    var grid=document.createElement('div'); grid.className='photos'; grid.setAttribute('data-file-preview','');
+    if(input.parentNode) input.parentNode.appendChild(grid);
+    var urls=[];
+    var render=function(){
+      for(var u=0;u<urls.length;u++) URL.revokeObjectURL(urls[u]);
+      urls=[];
+      while(grid.firstChild) grid.removeChild(grid.firstChild);
+      var files=input.files?[].slice.call(input.files):[];
+      files.forEach(function(f,i){
+        if(f.type.indexOf('image/')!==0) return;
+        var url=URL.createObjectURL(f); urls.push(url);
+        var card=document.createElement('div'); card.className='photo';
+        var img=document.createElement('img'); img.src=url; img.alt='Photo '+(i+1); card.appendChild(img);
+        var ctl=document.createElement('div'); ctl.className='photo-ctl';
+        var rm=document.createElement('button'); rm.type='button'; rm.className='premove'; rm.setAttribute('aria-label','Remove this photo'); rm.innerHTML='&#10005; Remove';
+        rm.addEventListener('click',function(){
+          var dt=new DataTransfer(); var cur=[].slice.call(input.files);
+          cur.forEach(function(g,j){ if(j!==i) dt.items.add(g); });
+          input.files=dt.files;
+          try{ input.dispatchEvent(new Event('change',{bubbles:true})); }catch(_){ render(); }
+        });
+        ctl.appendChild(rm); card.appendChild(ctl); grid.appendChild(card);
+      });
+    };
+    input.addEventListener('change',render); render();
+  };
+  filePreview(document.getElementById('photos'));
   // Prefill "Services and prices" from the chosen business type. Only replaces
   // an empty box or an untouched earlier suggestion, so typed content is kept
   // (including if you just tab past it).

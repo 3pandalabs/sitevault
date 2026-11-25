@@ -873,6 +873,36 @@ describe("menu in the builder (create flow)", () => {
     expect(((await res.json()) as { errors: Record<string, string> }).errors.menu).toBeTruthy();
     expect([...kv.data.keys()].some((k) => k.startsWith("site:"))).toBe(false);
   });
+
+  it("stores before & after pairs uploaded while building an eligible site", async () => {
+    const res = await publicCreate(
+      { category: "carwash", businessName: "Shiny Wash", baAttest: "yes", acct_email: "owner-ba1@example.test" },
+      { ba1Before: jpeg("b.jpg"), ba1After: jpeg("a.jpg") },
+    );
+    expect(res.status).toBe(200);
+    const ba = (JSON.parse(kv.data.get(`site:${onlySlug()}`)!.value) as { beforeAfter?: { before: string; after: string }[] }).beforeAfter!;
+    expect(ba).toHaveLength(1);
+    expect(ba[0]!.before).toMatch(/^sites\//);
+  });
+
+  it("rejects before & after at build time for a non-eligible business", async () => {
+    const res = await publicCreate(
+      { baAttest: "yes", acct_email: "owner-ba2@example.test" }, // base category is restaurant
+      { ba1Before: jpeg("b.jpg"), ba1After: jpeg("a.jpg") },
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.beforeAfter).toBeTruthy();
+    expect([...kv.data.keys()].some((k) => k.startsWith("site:"))).toBe(false);
+  });
+
+  it("requires the our-own-work tick for before & after pairs", async () => {
+    const res = await publicCreate(
+      { category: "carwash", businessName: "Shiny Wash", acct_email: "owner-ba3@example.test" }, // no baAttest
+      { ba1Before: jpeg("b.jpg"), ba1After: jpeg("a.jpg") },
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.baAttest).toBeTruthy();
+  });
 });
 
 describe("menu upload endpoint (Upload button)", () => {
