@@ -71,6 +71,7 @@ const CATEGORY_WORD: Partial<Record<CategoryKey, string>> = {
   clinic: "clinic",
   fitness: "fitness",
   auto: "auto",
+  carwash: "carwash",
   realestate: "realty",
   petcare: "pets",
 };
