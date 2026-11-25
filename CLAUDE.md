@@ -165,9 +165,9 @@ Email + password (PBKDF2-SHA256, 100k iterations, the Workers max). KV: `acct:<i
 - Privacy and terms pages (`pages.ts`) describe the shared account; change them
   with any change to what it stores.
 
-## One website per business
+## One website per account
 
-No accounts, so the business PHONE is the identity: one live site per phone (`phone:<digits>` -> slug, `phoneIdentity` drops formatting and the US 1). Create (public and internal) and phone edits are refused with `PHONE_TAKEN`; removal frees the number; renames re-point it. Same name in the same town (`nt:<name>|<town>`) is only flagged (`possibleDuplicateOf`, in KV metadata and the admin list), never blocked. AdVault adds one site per AdVault account on top. Admin override for a shared number: delete the `phone:` key by hand.
+The limit is **one website per account**, not per phone number. Create (`/new` redirect, the create check and claim) and AdVault's internal create (409 `account_has_site`) all refuse a second site for an account; admins are exempt ("Build another website"). A phone number is NOT globally unique any more (removed 2026-11-25): two different businesses/accounts may use the same number, and an owner can set their site's phone to anything — the old `phone:<digits>` index and `PHONE_TAKEN` are gone. Same name in the same town (`nt:<name>|<town>`) is still only flagged (`possibleDuplicateOf`, in KV metadata and the admin list), never blocked.
 
 ## Billing & stats
 

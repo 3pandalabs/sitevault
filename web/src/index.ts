@@ -152,7 +152,7 @@ import { policyPathKind } from "./policies.js";
 import { DRAFT_ID, HANDOFF_JTI_TTL_SECONDS, allowEmbedFraming, verifyCreateHandoff, verifyHandoff } from "./embed.js";
 import { ADVAULT_WEB_ORIGIN, SIGNIN_NONCE_TTL_SECONDS, mintSigninToken, safeLocalPath, verifySigninToken } from "./signin.js";
 import { DRAFT_TTL_MS, draftExpired, draftFileKeys, draftPrefill, loadDraft, saveDraft, type Draft, type DraftFile } from "./drafts.js";
-import { esc, phoneIdentity, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
+import { esc, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
 export interface Env {
@@ -2168,33 +2168,14 @@ function checkPhotos(files: File[], existing: number, maxBytes = MAX_PHOTO_BYTES
 // a second location): it is flagged for admin review, never blocked.
 // AdVault adds its own stronger rule on top: one site per AdVault account.
 
-const phoneKey = (phone: string) => `phone:${phoneIdentity(phone)}`;
 const nameTownKey = (name: string, city: string) => `nt:${slugify(name)}|${slugify(city.split(",")[0] ?? "")}`;
 
-/** The live site already using this phone (other than `self`), or null. */
-async function phoneOwner(env: Env, phone: string, self?: string): Promise<string | null> {
-  const slug = await env.SITES.get(phoneKey(phone));
-  if (!slug || slug === self) return null;
-  const site = await loadSite(env, slug);
-  if (site?.status !== "live") return null;
-  // An unpaid draft (BILLING on, never published) holds the number for 2 days
-  // only, so an abandoned checkout can't lock the business out for good.
-  if (site.billing?.status === "pending" && Date.now() - Date.parse(site.createdAt) > PENDING_PHONE_HOLD_MS) return null;
-  return slug;
-}
-
-const PENDING_PHONE_HOLD_MS = 2 * 24 * 60 * 60 * 1000;
-
-const PHONE_TAKEN =
-  "A website already exists for this phone number. Use its edit link to change it, or email sitevault@3pandalabs.com if you didn't make it.";
-
 async function indexSite(env: Env, site: Site): Promise<void> {
-  if (!site.adminTest) await env.SITES.put(phoneKey(site.phone), site.slug);
   await env.SITES.put(nameTownKey(site.businessName, site.city), site.slug);
 }
 
-async function unindexSite(env: Env, site: Pick<Site, "slug" | "phone" | "businessName" | "city">): Promise<void> {
-  for (const k of [phoneKey(site.phone), nameTownKey(site.businessName, site.city)]) {
+async function unindexSite(env: Env, site: Pick<Site, "slug" | "businessName" | "city">): Promise<void> {
+  for (const k of [nameTownKey(site.businessName, site.city)]) {
     if ((await env.SITES.get(k)) === site.slug) await env.SITES.delete(k);
   }
 }
@@ -2320,7 +2301,6 @@ async function createForAdvault(
     const has = existing ? (await accountSites(env, existing))[0] : undefined;
     if (has) return { ok: false, conflict: { slug: has.slug, siteUrl: has.siteUrl } };
   }
-  if (!adminTest && content && (await phoneOwner(env, content.phone))) errors.phone = PHONE_TAKEN;
   if (!content || Object.keys(errors).length > 0) return { ok: false, errors };
   // Before the account is touched, so losing the address changes nothing.
   const slug = await reserveNewAddress(env, content, requested);
@@ -2651,8 +2631,6 @@ async function createSite(request: Request, env: Env, ctx: ExecutionContext): Pr
     const problem = await requestedAddressProblem(env, requested);
     if (problem) errors.slug = problem;
   }
-  const adminMaker = !!signedIn && isAdminEmail(env, signedIn.email);
-  if (!adminMaker && parsed.ok && (await phoneOwner(env, parsed.value.phone))) errors.phone = PHONE_TAKEN;
   if (signedIn && !isAdminEmail(env, signedIn.email) && (await accountSites(env, signedIn)).length > 0) {
     errors.form = "Your account already has a website (one per account). Open My website to edit it.";
   }
@@ -2771,7 +2749,6 @@ async function updateSite(request: Request, env: Env, slug: string): Promise<Res
     // Going back to one of its own old addresses is allowed.
     if (errors.slug === "") delete errors.slug;
   }
-  if (!site.adminTest && parsed.ok && (await phoneOwner(env, parsed.value.phone, site.slug))) errors.phone = PHONE_TAKEN;
   if (form.video && (form.video.type !== "video/mp4" || form.video.size > MAX_VIDEO_BYTES)) {
     errors.video = `Use one MP4 video, up to ${Math.round(MAX_VIDEO_BYTES / 1024 / 1024)} MB.`;
   }
