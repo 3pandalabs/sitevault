@@ -310,7 +310,9 @@ export function checkoutParams(opts: {
   }
   const sep = returnUrl.includes("?") ? "&" : "?";
   p.push(
-    ["success_url", `${returnUrl}${sep}paid=1`],
+    // {CHECKOUT_SESSION_ID} is substituted by Stripe: the edit page verifies the
+    // session on return and publishes at once, so it doesn't wait on the webhook.
+    ["success_url", `${returnUrl}${sep}paid=1&session_id={CHECKOUT_SESSION_ID}`],
     ["cancel_url", returnUrl],
     ["client_reference_id", slug],
     ["metadata[app]", "sitevault"],
