@@ -1652,12 +1652,17 @@ const BUILDER_SCRIPT = `
   function shrink(file){
     return new Promise(function(resolve){
       if(!window.createImageBitmap){ resolve(file); return; }
+      // Never let a slow or undecodable image (e.g. an iPhone HEIC that
+      // createImageBitmap/toBlob can stall on) hang the submit: if resizing
+      // hasn't finished in time, send the original — the server resizes too.
+      var done=false; var finish=function(f){ if(done) return; done=true; resolve(f); };
+      setTimeout(function(){ finish(file); }, 15000);
       createImageBitmap(file).then(function(bmp){
         var max=1600, s=Math.min(1, max/Math.max(bmp.width,bmp.height));
         var c=document.createElement('canvas'); c.width=Math.round(bmp.width*s); c.height=Math.round(bmp.height*s);
         c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
-        c.toBlob(function(b){ resolve(b && b.size < file.size ? new File([b], (file.name||'photo').replace(/\\.\\w+$/,'')+'.jpg', {type:'image/jpeg'}) : file); }, 'image/jpeg', 0.82);
-      }).catch(function(){ resolve(file); });
+        c.toBlob(function(b){ finish(b && b.size < file.size ? new File([b], (file.name||'photo').replace(/\\.\\w+$/,'')+'.jpg', {type:'image/jpeg'}) : file); }, 'image/jpeg', 0.82);
+      }).catch(function(){ finish(file); });
     });
   }
   // "Preview my website": a normal post to /preview in a new tab, never the fetch below.
