@@ -143,6 +143,12 @@ describe("builder: before & after + live photo thumbnails", () => {
     expect(h).toContain("filePreview(document.getElementById('photos'))");
   });
 
+  it("guards image resizing with a timeout so the submit can't hang on a stalled photo", () => {
+    const h = newPage();
+    expect(h).toContain("createImageBitmap");
+    expect(h).toContain("setTimeout(function(){ finish(file); }, 15000)");
+  });
+
   it("shows a thumbnail with a Remove button on each before & after input", () => {
     const h = newPage();
     expect(h).toContain("data-file-thumb");
