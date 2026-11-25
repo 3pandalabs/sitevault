@@ -1514,6 +1514,8 @@ const BUILDER_SCRIPT = `
     input.addEventListener('change',render); render();
   };
   filePreview(document.getElementById('photos'));
+  // Before & after inputs: a "Clear" button once a photo is picked, like the others.
+  ['ba1Before','ba1After','ba2Before','ba2After'].forEach(function(id){ fileClear(document.getElementById(id),'photo'); });
   // Prefill "Services and prices" from the chosen business type. Only replaces
   // an empty box or an untouched earlier suggestion, so typed content is kept
   // (including if you just tab past it).

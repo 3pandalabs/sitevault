@@ -142,4 +142,8 @@ describe("builder: before & after + live photo thumbnails", () => {
     expect(h).toContain("createObjectURL");
     expect(h).toContain("filePreview(document.getElementById('photos'))");
   });
+
+  it("wires a Clear option onto each before & after input", () => {
+    expect(newPage()).toContain("['ba1Before','ba1After','ba2Before','ba2After'].forEach");
+  });
 });
