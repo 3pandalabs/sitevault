@@ -81,9 +81,10 @@ describe("pages", () => {
     expect((await call(ORIGIN + "/")).headers.get("content-security-policy")).toContain("connect-src 'self' https://counts.3pandalabs.com");
     expect((await call("https://nobody.3pandasite.test/")).headers.get("content-security-policy") ?? "").not.toContain("counts.");
     const sent: string[] = [];
-    const js = helperScript([]).split("\n(function(){\nvar KEY")[0]!;
+    const js = helperScript([]).split("(function(){
+var KEY")[0]!;
     const run = (location: object, stored: Record<string, string> = {}) =>
-      new Script(js.slice(0, js.indexOf("(function(){\nvar KEY") >= 0 ? js.indexOf("(function(){\nvar KEY") : undefined)).runInNewContext({
+      new Script(js).runInNewContext({
         location, URL, URLSearchParams, document: { referrer: "https://www.linkedin.com/feed/abc" },
         performance: { getEntriesByType: () => [{ type: "navigate" }] },
         localStorage: { getItem: (k: string) => stored[k] ?? null, setItem: (k: string, v: string) => void (stored[k] = v), removeItem: (k: string) => void delete stored[k] },
