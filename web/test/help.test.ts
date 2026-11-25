@@ -81,8 +81,7 @@ describe("pages", () => {
     expect((await call(ORIGIN + "/")).headers.get("content-security-policy")).toContain("connect-src 'self' https://counts.3pandalabs.com");
     expect((await call("https://nobody.3pandasite.test/")).headers.get("content-security-policy") ?? "").not.toContain("counts.");
     const sent: string[] = [];
-    const js = helperScript([]).split("(function(){
-var KEY")[0]!;
+    const js = helperScript([]).split("(function(){\nvar KEY")[0]!;
     const run = (location: object, stored: Record<string, string> = {}) =>
       new Script(js).runInNewContext({
         location, URL, URLSearchParams, document: { referrer: "https://www.linkedin.com/feed/abc" },
