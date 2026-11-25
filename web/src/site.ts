@@ -25,6 +25,7 @@ export const CATEGORIES = {
   clinic: { label: "Medical clinic", brand: "#075985" },
   fitness: { label: "Fitness & yoga", brand: "#991b1b" },
   auto: { label: "Auto repair", brand: "#374151" },
+  carwash: { label: "Car wash & detailing", brand: "#1d4ed8" },
   realestate: { label: "Real estate", brand: "#1e3a5f" },
   petcare: { label: "Pet care", brand: "#3f6212" },
   other: { label: "Other local business", brand: "#334155" },
@@ -54,6 +55,7 @@ export const SERVICE_TEMPLATES: Record<CategoryKey, string> = {
   clinic: "General consultation\nHealth check-up\nVaccinations\nLab tests\nMinor procedures",
   fitness: "Personal training\nGroup classes\nYoga classes\nMonthly membership\nDrop-in session",
   auto: "Oil change\nBrake service\nTire rotation & replacement\nEngine diagnostics\nAC service\nState inspection",
+  carwash: "Exterior wash\nFull-service wash\nInterior cleaning\nFull detail\nWax & polish\nWash membership",
   realestate: "Buyer representation\nSeller listing\nHome valuation\nProperty management\nRental search",
   petcare: "Dog walking\nPet sitting\nGrooming\nBoarding\nNail trim",
   other: "",
@@ -232,6 +234,7 @@ export const BEFORE_AFTER_CATEGORIES: readonly CategoryKey[] = [
   "hvac",
   "handyman",
   "auto",
+  "carwash",
 ];
 
 export function beforeAfterAllowed(category: string): boolean {

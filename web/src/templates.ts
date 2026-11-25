@@ -104,6 +104,7 @@ const THEMES: Partial<Record<CategoryKey, Theme>> = {
   hvac: { bg: "#F7FAFC", band: "#EAF2F7", card: "#FFFFFF", ink: "#0F2733", muted: "#4B5F6B", line: "#DCE8EF", primary: "#0C4A6E", accent: "#EA580C", ...TRADE },
   handyman: { bg: "#FAF8F5", band: "#F2EBE2", card: "#FFFFFF", ink: "#292524", muted: "#6B5E52", line: "#E7DDD0", primary: "#78350F", accent: "#D97706", ...TRADE },
   auto: { bg: "#F4F4F5", band: "#EBEBEE", card: "#FFFFFF", ink: "#18181B", muted: "#52525B", line: "#E0E0E4", primary: "#1F2937", accent: "#EA580C", ...TRADE },
+  carwash: { bg: "#F5F9FF", band: "#E6F0FD", card: "#FFFFFF", ink: "#0B1F3A", muted: "#475B75", line: "#D6E4F5", primary: "#1D4ED8", accent: "#0891B2", ...TRADE },
   // Beauty — elegant serif, soft, pill, airy, slow
   salon: { bg: "#FDF8F6", band: "#F8EEEA", card: "#FFFFFF", ink: "#2A211E", muted: "#7B6A64", line: "#EFE0DB", primary: "#9D174D", accent: "#BE185D", ...BEAUTY },
   barber: { bg: "#F6F4F1", band: "#ECE7E1", card: "#FFFFFF", ink: "#292524", muted: "#6B6259", line: "#E6DED5", primary: "#292524", accent: "#B45309", ...BEAUTY },
