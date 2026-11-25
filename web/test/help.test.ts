@@ -77,6 +77,26 @@ describe("pages", () => {
     expect(await (await call(`${ORIGIN}/faq`)).text()).toContain("How much does a website cost?");
   });
 
+  it("counts visits only from pages with the helper, sending no path past the first segment", async () => {
+    expect((await call(ORIGIN + "/")).headers.get("content-security-policy")).toContain("connect-src 'self' https://counts.3pandalabs.com");
+    expect((await call("https://nobody.3pandasite.test/")).headers.get("content-security-policy") ?? "").not.toContain("counts.");
+    const sent: string[] = [];
+    const js = helperScript([]).split("(function(){\nvar KEY")[0]!;
+    const run = (location: object, stored: Record<string, string> = {}) =>
+      new Script(js).runInNewContext({
+        location, URL, URLSearchParams, document: { referrer: "https://www.linkedin.com/feed/abc" },
+        performance: { getEntriesByType: () => [{ type: "navigate" }] },
+        localStorage: { getItem: (k: string) => stored[k] ?? null, setItem: (k: string, v: string) => void (stored[k] = v), removeItem: (k: string) => void delete stored[k] },
+        navigator: { sendBeacon: (_u: string, b: string) => void sent.push(b) },
+      });
+    const host = "sitevault.3pandalabs.com";
+    run({ hostname: host, pathname: "/edit/lawns", search: "?key=SECRET" });
+    expect(JSON.parse(sent[0]!)).toEqual({ v: 1, h: "www.linkedin.com", s: "", m: "", g: 0, p: "/edit" });
+    run({ hostname: host, pathname: "/", search: "?nocount=1" });
+    run({ hostname: "lawns.3pandasite.com", pathname: "/", search: "" });
+    expect(sent).toHaveLength(1);
+  });
+
   it("never loads on a customer host", async () => {
     expect(await (await call("https://nobody.3pandasite.test/")).text()).not.toContain("helper.js");
   });

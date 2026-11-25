@@ -193,6 +193,7 @@ No accounts, so the business PHONE is the identity: one live site per phone (`ph
 - **Accessibility is required** (US ADA website suits): landmarks, headings,
   alt text, focus outlines, 44px targets, 4.5:1 contrast for every
   `CATEGORIES[*].brand` colour against white.
+- **Visits to sitevault.3pandalabs.com itself** (2026-11-25): `COUNT` in `helper-client.ts` beacons to our own counter (3pandalabs/admin `visits/`, admin page Visitors tab). Totals only; first path segment only. Never on customer sites.
 - **Privacy**: no third-party analytics or trackers, on SiteVault or
   customer sites; the ONLY cookie is the sign-in cookie on the main site, set only when someone signs in (our own aggregate visit counts are described on the privacy page). Maps are a link, never an embed. Change the privacy page in the
   same PR as any change to what is stored.

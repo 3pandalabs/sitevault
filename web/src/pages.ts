@@ -656,6 +656,7 @@ const SOURCE_LABELS: Record<string, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   whatsapp: "WhatsApp",
+  linkedin: "LinkedIn",
   advault: "AdVault ads",
   direct: "Direct or typed in",
   other: "Other websites",
@@ -1930,7 +1931,7 @@ export function privacyPage(): string {
     path: "/privacy",
     body: `<section class="prose">
 <h1>Privacy</h1>
-<p>Last updated 24 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
+<p>Last updated 25 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
 <h2>What we store</h2>
 <ul>
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
@@ -1943,11 +1944,12 @@ export function privacyPage(): string {
   <li><strong>Which apps you use</strong>: with your account we record which app you created it on (SiteVault or AdVault) and when you first used each one (your first website here, your first ad campaign in AdVault), so we know whether you use SiteVault, AdVault or both and can offer benefits that depend on it, for example to customers who use only SiteVault.</li>
   <li><strong>A short-lived counter per network address</strong> to limit how many sites can be created in a day. It expires after about a day.</li>
   <li><strong>Visit counts for each website, in total only</strong>: per day, the number of visits and of taps on the call and directions buttons, grouped by rough location (country and city, as worked out by Cloudflare), device type (phone, tablet or computer) and where visitors came from (for example YouTube, Google or a typed-in address). We don't store visitors' IP addresses, the full address of the page they came from, or their browser details, and we keep no record of any individual visitor. The business owner sees these totals on their edit page.</li>
+  <li><strong>Visit counts for sitevault.3pandalabs.com itself, in total only</strong>: per day, the section of the site, the kind of place visits came from (for example YouTube, LinkedIn or a site that links to us), country and device type. No IP address, browser details or anything that identifies you, and no record of any one visitor.</li>
   <li><strong>If you pay for a plan</strong>: payments are handled by Stripe, which processes your card details; we never see or store them. We store the Stripe customer and subscription IDs for your website and the email address Stripe gives us for the payer, plus your plan, paid-until date and offer credits.</li>
 </ul>
 <h2>What we don't do</h2>
 <ul>
-  <li>No advertising trackers or third-party analytics on SiteVault or on the websites it makes. Visit counts are kept by SiteVault itself, as described above.</li>
+  <li>No advertising trackers or third-party analytics on SiteVault or on the websites it makes. Visit counts are kept by us (3PandaLabs), as described above.</li>
   <li>One cookie only, and only when you sign in: a sign-in cookie on sitevault.3pandalabs.com that keeps you signed in. The websites we make (on 3pandasite.com) never set or read cookies.</li>
   <li>We don't sell or share your details. They're shown on your website because you asked us to publish them.</li>
 </ul>
