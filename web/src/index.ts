@@ -113,6 +113,7 @@ import {
   type CheckoutKind,
   type PriceIds,
 } from "./billing.js";
+import { APP_COOKIE_SET, APP_PAYMENTS_MESSAGE, appModePage, appSignal, isAppRequest } from "./app.js";
 import { cancelSubscription, createCheckoutSession, createPortalSession, retrieveCheckoutSession, verifyStripeSignature } from "./stripe.js";
 import { TAP_KINDS, classifySource, hitFor, isBot, isPrefetch, readStats, recordHit, tapSource, type TapKind } from "./stats.js";
 import {
@@ -200,9 +201,44 @@ const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    return httpsRedirect(request, env) ?? withHsts(request, env, await handle(request, env, ctx));
+    return httpsRedirect(request, env) ?? withHsts(request, env, await withAppMode(request, env, await handle(request, env, ctx)));
   },
 } satisfies ExportedHandler<Env>;
+
+/** Embed mode (AdVault's frame) is left exactly as it was: no app-mode rewriting there. */
+function isEmbedRequest(url: URL): boolean {
+  return url.pathname.startsWith("/embed/") || url.pathname === "/api/embed/sites" || url.searchParams.get("embed") === "1";
+}
+
+/**
+ * Android app (TWA): payments on the website only (TODO(android-payments):
+ * temporary, see app.ts). On the MAIN host, for a request from the app: set
+ * the sv_app session cookie when the request itself says so, and send HTML
+ * with every payment option replaced by APP_PAYMENTS_MESSAGE.
+ */
+async function withAppMode(request: Request, env: Env, res: Response): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.hostname !== new URL(env.PUBLIC_ORIGIN).hostname || isEmbedRequest(url) || !isAppRequest(request)) return res;
+  const isHtml = (res.headers.get("content-type") ?? "").startsWith("text/html");
+  const signal = appSignal(request);
+  if (!isHtml && !signal) return res;
+  const headers = new Headers(res.headers);
+  if (signal) headers.append("set-cookie", APP_COOKIE_SET);
+  let body: BodyInit | null = res.body;
+  if (isHtml && res.body && request.method !== "HEAD") {
+    const out = appModePage(await res.text(), headers.get("content-security-policy"), nonce());
+    body = out.page;
+    if (out.csp) headers.set("content-security-policy", out.csp);
+    headers.delete("content-length");
+  }
+  return new Response(body, { status: res.status, statusText: res.statusText, headers });
+}
+
+/** Checkout/portal asked for from the app: refused (the buttons aren't shown there anyway). */
+function appPaymentsBlocked(): Response {
+  const page = messagePage("Pay on our website", APP_PAYMENTS_MESSAGE, "In the app").replace('<section class="hero"', '<section class="hero" data-app-blocked');
+  return html(page, 403);
+}
 
 /**
  * The MAIN host only, and only when PUBLIC_ORIGIN is https (so a local run
@@ -441,6 +477,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (path === "/api/internal/sites") return createInternal(request, env);
     if (path === "/api/internal/drafts") return createDraftInternal(request, env);
     if (path === "/api/embed/sites") return embedCreate(request, env);
+    // TODO(android-payments): no payments from inside the Android app (app.ts).
+    if ((path === "/api/billing/checkout" || path === "/api/billing/portal") && isAppRequest(request)) return appPaymentsBlocked();
     if (path === "/api/billing/checkout") return billingCheckout(request, env);
     if (path === "/api/billing/portal") return billingPortal(request, env);
     if (path === "/webhooks/stripe") return stripeWebhook(request, env);
