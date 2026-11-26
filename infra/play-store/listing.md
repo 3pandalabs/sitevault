@@ -1,6 +1,6 @@
 # Google Play listing: SiteVault
 
-Package `com.threepandalabs.sitevault` · Developer: 3PandaLabs LLC (organization account) · Category: **Business** · Free to install · No ads in the app · No purchases through Google Play Billing. SiteVault builds one-page websites for local businesses: free to build, paid yearly to publish (Basic $49/year, Pro $89/year with visitor stats; festive prices Basic $29/year and Pro $59/year, locked for life, if paid by January 31, 2027), plus offer credits (5 for $10), paid by card through Stripe Checkout on the web. US only. Google isn't requiring Play Billing for US users while the US court order stands (support.google.com/googleplay/android-developer/answer/15582165). Answer the Play Console payments declaration to match.
+Package `com.threepandalabs.sitevault` · Developer: 3PandaLabs LLC (organization account) · Category: **Business** · Free to install · No ads in the app · **The Android app sells nothing (2026-11-26, owner decision, US-only launch): no payment buttons or links in the app, and NO prices or "pay on our website" wording in this listing or its screenshots** (Play lists the store listing as a place where steering to other payment methods is prohibited; see sitevault CLAUDE.md "Android app: payments on the website only"). On the web, SiteVault builds one-page websites for local businesses: free to build, paid yearly to publish (Basic $49/year, Pro $89/year with visitor stats; festive prices Basic $29/year and Pro $59/year, locked for life, if paid by January 31, 2027), plus offer credits (5 for $10), paid by card through Stripe Checkout on the web. US only. Google isn't requiring Play Billing for US users while the US court order stands (support.google.com/googleplay/android-developer/answer/15582165). Answer the Play Console payments declaration to match.
 
 Every claim below matches the code as of 2026-11-22 (`web/src/billing.ts`, `wrangler.jsonc` BILLING=on, the /terms and /privacy pages). Update this file with any pricing or data change.
 
@@ -32,12 +32,10 @@ WHAT'S ON YOUR SITE
 YOUR SITE, YOUR FACTS
 SiteVault shows only what you type. No made-up claims, no ads, no cookies and no trackers on your website.
 
-SIMPLE PRICING
-• Free to build. Pay only when you publish.
-• Basic: $49 a year. Pro: $89 a year, with visitor stats (visits, where they came from, and call and directions taps).
-• Festive season price: Basic $29 a year or Pro $59 a year, locked for life, when you join by January 31, 2027.
-• Optional offer credits: 5 for $10.
-• Billed yearly. Cancel any time; your site stays up until the end of the paid year.
+YOUR ACCOUNT
+• Free to download and free to build.
+• Plans are managed from your SiteVault account.
+• Pro adds visitor stats: visits, where they came from, and call and directions taps.
 
 Edit your website any time from the app. Your SiteVault sign-in also works in AdVault, our YouTube ads app for local businesses.
 
