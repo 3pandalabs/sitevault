@@ -195,7 +195,7 @@ The limit is **one website per account**, not per phone number. Create (`/new` r
   `CATEGORIES[*].brand` colour against white.
 - **Visits to sitevault.3pandalabs.com itself** (2026-11-25): `COUNT` in `helper-client.ts` beacons to our own counter (3pandalabs/admin `visits/`, admin page Visitors tab). Totals only; first path segment only. Never on customer sites.
 - **Privacy**: no third-party analytics or trackers, on SiteVault or
-  customer sites; the ONLY cookie is the sign-in cookie on the main site, set only when someone signs in (our own aggregate visit counts are described on the privacy page). Maps are a link, never an embed. Change the privacy page in the
+  customer sites; the ONLY cookies are the sign-in cookie on the main site, set only when someone signs in, and the Android app's `sv_app` session cookie (no ID; see "Android app: payments on the website only") (our own aggregate visit counts are described on the privacy page). Maps are a link, never an embed. Change the privacy page in the
   same PR as any change to what is stored.
 - Edit access is a **secret edit key** (only its SHA-256 is stored), shown
   once on the done page. **No self-service delete** (2026-11-15): owners email sitevault@3pandalabs.com; ops confirms by calling the site phone, cancels any Stripe subscription, checks no AdVault campaign links to it, then `POST /api/admin/sites/<slug>/remove` (ADMIN_TOKEN). Removal deletes photos and keeps a `removed` record
@@ -214,6 +214,16 @@ before the first Play upload, 2026-11-22). `/.well-known/assetlinks.json` is
 `ASSET_LINKS` in `src/pwa.ts`: the upload key now; add EVERY Play App Signing
 fingerprint once the Play app exists. Build, signing, listing copy and policy
 answers: `infra/play-store/README.md` and `listing.md`.
+
+## Android app: payments on the website only (TODO: revisit Play alternative billing at 10%)
+
+TEMPORARY (owner decision 2026-11-26, US-only Play launch; `TODO(android-payments)` in code). Google Play's US rules mean taking Stripe payments in the app, or linking out to a payment page, needs a Google program and a ~10% fee. So inside the app there is NO way to start a payment and NO link to one; people pay on the website in a normal browser.
+
+- **Detection (`src/app.ts`, server side):** in the app = `?source=twa` (the TWA `startUrl`), a `Referer` starting `android-app://com.threepandalabs.sitevault`, or the `sv_app=1` cookie (session, not HttpOnly, no ID) set by the Worker when either signal is seen. Main host only; embed mode (`/embed/*`, `/api/embed/sites`, `?embed=1`) is untouched.
+- **Hiding:** pages wrap payment UI in `payOnly()` (replaced by `APP_PAYMENTS_MESSAGE`, adjacent ones merged) or `payDrop()` (removed). `withAppMode` (index.ts fetch wrapper) runs `stripPayments` on every main-host HTML response in app mode, with a backstop that removes any `/api/billing/` form and Stripe/`siteOffer=` link that missed its markers. `POST /api/billing/checkout` and `/portal` answer 403 in app mode. **Any new payment button or paid link must be wrapped** (or it is only caught by the backstop if it is one of those forms/links).
+- **Wrapped today:** edit page "Plan & billing" buttons (publish, renew, upgrade, buy credits, Manage billing, Finish in AdVault + the "$10 in AdVault" text), the done page's publish buttons, the edit page's AdVault offer-ad link, the signed-in header "Video ads" link, the home page's AdVault promo box ($10 website / "Make a YouTube ad, $X").
+- **Shared cookie jar:** a TWA uses Chrome's cookies, so `sv_app` can reach a normal Chrome tab. App-mode pages carry `<html data-sv-app>` and `APP_MODE_SCRIPT` (own nonce added to the CSP): a tab with the app signal keeps a sessionStorage flag; a tab without it (and not an installed PWA window) clears the cookie and reloads once, so the browser shows payments again.
+- Wording: ONE constant `APP_PAYMENTS_MESSAGE`. Tests: `test/app-payments.test.ts`, `test/app-mode-script.test.ts`. Privacy page lists the cookie.
 
 ## Git
 

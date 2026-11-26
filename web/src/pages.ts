@@ -62,6 +62,7 @@ import type { HelpTopic } from "./help.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
 import { EMBED_SCRIPT } from "./embed.js";
 import { chartCard, type Row } from "./charts.js";
+import { payDrop, payOnly } from "./app.js";
 import { DOLLARS, PACK_CREDITS, planCovers, type Billing, type CheckoutKind, type PlanPrices, type SiteState, type Source } from "./billing.js";
 import type { SiteStats } from "./stats.js";
 
@@ -379,7 +380,7 @@ ${opts.embed ? "" : `<div class="backdrop" aria-hidden="true"><i class="b1"></i>
   <div class="brand"><a class="logo" href="/">Site<span>Vault</span></a><a class="tag" href="https://3pandalabs.com" target="_blank" rel="noopener noreferrer">by 3PandaLabs</a></div>
   <nav class="links">${
     opts.signedIn
-      ? `<a class="plain" href="/go/advault?to=/dashboard">Video ads</a>${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a>${opts.admin || !opts.owner ? `<a class="btn small" href="/new">Build my website</a>` : ""}${shownEmail(opts.email) ? `<span class="plain signed-in" title="Signed in">${esc(shownEmail(opts.email)!)}</span>` : ""}<form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
+      ? `${payDrop(`<a class="plain" href="/go/advault?to=/dashboard">Video ads</a>`)}${opts.admin ? `<a class="plain" href="/admin">Admin</a>` : ""}<a class="plain" href="/account">My website</a>${opts.admin || !opts.owner ? `<a class="btn small" href="/new">Build my website</a>` : ""}${shownEmail(opts.email) ? `<span class="plain signed-in" title="Signed in">${esc(shownEmail(opts.email)!)}</span>` : ""}<form method="post" action="/logout"><button class="plain" type="submit" style="color:#f87171">Sign out</button></form>`
       : `<a class="btn small" href="/login">Sign in</a>`
   }</nav>
 </div></header>`}
@@ -472,10 +473,10 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
   ${plansBlock(billingOn, festiveUntil !== null)}
   ${signedIn ? `<p class="notice" style="margin:0 0 16px">✓ You're signed in${who ? ` as <b>${esc(who)}</b>` : ""}. ${owner ? "Your website is one tap away." : "Pick up where you left off."}</p>` : ""}
   <div style="display:flex;flex-wrap:wrap;gap:12px">${signedIn ? `<a class="btn" href="/account">${owner ? "Go to my website" : "Go to my account"}</a>` : `<a class="btn" href="/login">Sign in to get started</a>`}<a class="btn ghost" href="#features">What you get</a></div>
-  <div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+  ${payDrop(`<div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
     <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included, and longer while your AdVault plan runs.</span></p>
     <a class="btn" href="${signedIn ? "/go/advault?to=/dashboard" : "https://advault.3pandalabs.com"}">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
-  </div>
+  </div>`)}
 </section>
 <section id="how-it-works">
   <h2>Three simple steps</h2>
@@ -575,7 +576,8 @@ export function billingSection(slug: string, key: string, v: BillingView, siteUr
   const rows: string[] = [];
   let status = "";
   if (v.state === "unpublished" && v.source === "advault") {
-    status = `<p>Your website isn't published yet. Finish in AdVault: pay $${DOLLARS.advaultSetup} (the first year of Pro included, and longer while your AdVault plan runs) on your campaign's website card, and it goes live at once.</p>`;
+    // TODO(android-payments): payDrop/payOnly = hidden in the Android app (app.ts).
+    status = `<p>Your website isn't published yet.${payDrop(` Finish in AdVault: pay $${DOLLARS.advaultSetup} (the first year of Pro included, and longer while your AdVault plan runs) on your campaign's website card, and it goes live at once.`)}</p>`;
   } else if (v.state === "unpublished") {
     status = `<p>Your website isn't published yet. Visitors see "This site isn't published yet" until you pay.</p>`;
   } else {
@@ -644,9 +646,9 @@ export function billingSection(slug: string, key: string, v: BillingView, siteUr
   ${v.justPaid && v.state !== "live" ? `<p class="notice ok" role="status">Thanks, your payment went through. It can take a minute to show here.</p>` : ""}
   ${status}
   <dl class="facts">${rows.join("")}</dl>
-  ${buttons.join("")}
+  ${payOnly(`${buttons.join("")}
   <p class="hint">Changing your current special uses 1 credit. Clearing it is free. Upgrading from Basic to Pro starts a new yearly Pro plan; the unused part of Basic is credited to your next payment. Payments are handled by Stripe.</p>
-  <div class="buttons">${extra}</div>
+  <div class="buttons">${extra}</div>`)}
   </div>
 </details>`;
 }
@@ -900,9 +902,10 @@ export const ADVAULT_ORIGIN = "https://advault.3pandalabs.com";
 export function advaultOfferLink(site: Pick<Site, "slug" | "source">, embed = false): string {
   // Embedded in AdVault: open AdVault in the whole tab, not inside the frame.
   const style = ` style="display:inline-block;padding:12px 0;min-height:44px"${embed ? ' target="_top"' : ""}`;
-  return site.source === "advault"
+  // TODO(android-payments): leads to a paid AdVault offer ad; hidden in the Android app (app.ts).
+  return payDrop(site.source === "advault"
     ? `<a${style} href="${esc(`${ADVAULT_ORIGIN}/dashboard?siteOffer=${encodeURIComponent(site.slug)}`)}">Also run this offer as a YouTube ad with AdVault →</a>`
-    : `<a${style} href="${esc(ADVAULT_ORIGIN)}">Turn this offer into a video ad</a>`;
+    : `<a${style} href="${esc(ADVAULT_ORIGIN)}">Turn this offer into a video ad</a>`);
 }
 
 /**
@@ -1775,7 +1778,7 @@ export function donePage(opts: {
   const ready = pub
     ? `<div class="notice" style="margin-top:16px">
   <p><strong>Publish your website.</strong> It's saved, but visitors see "This site isn't published yet" until you pay. Pro adds visitor stats: how many people visit, where they come from, and how many tap to call.</p>
-  ${publishButtons(pub.slug, pub.key, pub.prices, opts.siteUrl)}
+  ${payOnly(publishButtons(pub.slug, pub.key, pub.prices, opts.siteUrl))}
 </div>`
     : "";
   return layout({
@@ -2088,7 +2091,7 @@ export function privacyPage(): string {
 <h2>What we don't do</h2>
 <ul>
   <li>No advertising trackers or third-party analytics on SiteVault or on the websites it makes. Visit counts are kept by us (3PandaLabs), as described above.</li>
-  <li>One cookie only, and only when you sign in: a sign-in cookie on sitevault.3pandalabs.com that keeps you signed in. The websites we make (on 3pandasite.com) never set or read cookies.</li>
+  <li>Two cookies at most, both on sitevault.3pandalabs.com only: a sign-in cookie, set only when you sign in, that keeps you signed in; and, only in our Android app, a cookie named <code>sv_app</code> that just says the page is open in the app (it holds no ID and ends when the browser session ends). The websites we make (on 3pandasite.com) never set or read cookies.</li>
   <li>We don't sell or share your details. They're shown on your website because you asked us to publish them.</li>
 </ul>
 <h2>Where it's kept</h2>
