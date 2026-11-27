@@ -58,6 +58,7 @@ const BRAND_PRESETS = [
 ];
 import { MAX_RENAMES } from "./address.js";
 import { esc } from "./util.js";
+import { HOME_CSS, heroStage, statsDemo, tradesMarquee } from "./home.js";
 import type { HelpTopic } from "./help.js";
 import { SUGGEST_SCRIPT, suggestChips, type SuggestContext } from "./suggest.js";
 import { EMBED_SCRIPT } from "./embed.js";
@@ -465,19 +466,19 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
     email,
     title: "SiteVault — A website for your business in 5 minutes | by 3PandaLabs",
     path: "/",
-    body: `<section class="hero">
-  <span class="pill">Websites for local businesses</span>
-  <h1>Your business online in five minutes.</h1>
+    body: `${HOME_CSS}
+<section class="sv-hero">
+  <div>
+  <span class="pill"><span class="sv-live"></span>Websites for local businesses</span>
+  <h1 class="sv-h1">Your business online in <span class="sv-scrib"><span class="sv-shim">five minutes.</span><svg viewBox="0 0 300 20" preserveAspectRatio="none" aria-hidden="true"><path d="M3 14 C 60 4, 120 18, 180 9 S 270 6, 297 12" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/></svg></span></h1>
   <p class="lead">No designer, no tech skills. Tell us what you do, add a few photos, and get a clean, phone-friendly website customers can call you from.</p>
   <p class="price">${priceLine(billingOn, festiveUntil)}</p>
-  ${plansBlock(billingOn, festiveUntil !== null)}
   ${signedIn ? `<p class="notice" style="margin:0 0 16px">✓ You're signed in${who ? ` as <b>${esc(who)}</b>` : ""}. ${owner ? "Your website is one tap away." : "Pick up where you left off."}</p>` : ""}
-  <div style="display:flex;flex-wrap:wrap;gap:12px">${signedIn ? `<a class="btn" href="/account">${owner ? "Go to my website" : "Go to my account"}</a>` : `<a class="btn" href="/login">Sign in to get started</a>`}<a class="btn ghost" href="#features">What you get</a></div>
-  ${payDrop(`<div class="notice" style="margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
-    <p style="margin:0;font-size:1.125rem;font-weight:500;line-height:1.5">Want more customers? Get a YouTube video ad, shown to people nearby.<span style="display:block;margin-top:6px;font-size:1rem;font-weight:400;color:var(--fg2)">From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included, and longer while your AdVault plan runs.</span></p>
-    <a class="btn" href="${signedIn ? "/go/advault?to=/dashboard" : "https://advault.3pandalabs.com"}">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
-  </div>`)}
+  <div class="sv-cta">${signedIn ? `<a class="btn sv-shine" href="/account">${owner ? "Go to my website" : "Go to my account"}</a>` : `<a class="btn sv-shine" href="/login">Sign in to get started</a>`}<a class="btn ghost" href="#plans">See plans</a></div>
+  </div>
+  ${heroStage()}
 </section>
+${tradesMarquee()}
 <section id="how-it-works">
   <h2>Three simple steps</h2>
   <div class="steps">
@@ -489,14 +490,28 @@ export function homePage(billingOn = false, festiveUntil: Date | null = null, ow
 <section id="features">
   <h2>What's on your site</h2>
   <div class="steps">
-    <div class="card"><h3>Tap to call and text</h3><p>Big buttons, made for phones, where most customers find you.</p></div>
-    <div class="card"><h3>Services and prices</h3><p>Exactly what you offer, in your own words.</p></div>
-    <div class="card"><h3>Hours, area, directions</h3><p>Everything a customer checks before they call.</p></div>
-    <div class="card"><h3>Fast and private</h3><p>Loads quickly on any phone. No cookies, no trackers.</p></div>
-    <div class="card"><h3>Visitor stats <span class="pill" style="margin:0 0 0 6px;padding:2px 8px;vertical-align:middle">Pro</span></h3><p>How many people visit each day, and how many tapped Call or Directions.</p></div>
-    <div class="card"><h3>Where they found you <span class="pill" style="margin:0 0 0 6px;padding:2px 8px;vertical-align:middle">Pro</span></h3><p>Google, YouTube, Facebook, WhatsApp or your AdVault ad, and which towns they're in.</p></div>
+    <div class="card"><span class="ic" aria-hidden="true">📞</span><h3>Tap to call and text</h3><p>Big buttons, made for phones, where most customers find you.</p></div>
+    <div class="card"><span class="ic" aria-hidden="true">🧾</span><h3>Services and prices</h3><p>Exactly what you offer, in your own words.</p></div>
+    <div class="card"><span class="ic" aria-hidden="true">📍</span><h3>Hours, area, directions</h3><p>Everything a customer checks before they call.</p></div>
+    <div class="card"><span class="ic" aria-hidden="true">⚡</span><h3>Fast and private</h3><p>Loads quickly on any phone. No cookies, no trackers.</p></div>
+    <div class="card"><span class="ic" aria-hidden="true">📈</span><h3>Visitor stats <span class="pill" style="margin:0 0 0 6px;padding:2px 8px;vertical-align:middle">Pro</span></h3><p>How many people visit each day, and how many tapped Call or Directions.</p></div>
+    <div class="card"><span class="ic" aria-hidden="true">🧭</span><h3>Where they found you <span class="pill" style="margin:0 0 0 6px;padding:2px 8px;vertical-align:middle">Pro</span></h3><p>Google, YouTube, Facebook, WhatsApp or your AdVault ad, and which towns they're in.</p></div>
   </div>
   <p class="plan-note">Pro features come with the Pro plan. <a href="#plans">Compare Basic and Pro</a>.</p>
+</section>
+${statsDemo()}
+<section id="sv-pricing" aria-labelledby="sv-pricing-h">
+  <div class="sv-head"><p class="sv-kick">Plans</p><h2 class="sv-h2" id="sv-pricing-h">Simple, <span class="sv-shim">yearly pricing.</span></h2><p class="price">${priceLine(billingOn, festiveUntil)}</p></div>
+  ${plansBlock(billingOn, festiveUntil !== null)}
+  ${payDrop(`<div class="sv-promo">
+    <p>Want more customers? Get a YouTube video ad, shown to people nearby.<span>From your photos, by <a href="https://advault.3pandalabs.com">AdVault</a>. Make your website there and it's $${DOLLARS.advaultSetup} with the first year of Pro included, and longer while your AdVault plan runs.</span></p>
+    <a class="btn" href="${signedIn ? "/go/advault?to=/dashboard" : "https://advault.3pandalabs.com"}">Make a YouTube ad, $${DOLLARS.advaultAd}</a>
+  </div>`)}
+</section>
+<section class="sv-final">
+  <h2 class="sv-h2">Your customers are searching. <span class="sv-shim">Be there.</span></h2>
+  <p>A few details and a few photos. Your website is live in about five minutes.</p>
+  <div class="sv-cta">${signedIn ? `<a class="btn sv-shine" href="/account">${owner ? "Go to my website" : "Go to my account"}</a>` : `<a class="btn sv-shine" href="/login">Sign in to get started</a>`}</div>
 </section>`,
   });
 }
