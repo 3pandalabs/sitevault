@@ -2,7 +2,7 @@
 
 Package `com.threepandalabs.sitevault` · Developer: 3PandaLabs LLC (organization account) · Category: **Business** · Free to install · No ads in the app · **The Android app sells nothing (2026-11-26, owner decision, US-only launch): no payment buttons or links in the app, and NO prices or "pay on our website" wording in this listing or its screenshots** (Play lists the store listing as a place where steering to other payment methods is prohibited; see sitevault CLAUDE.md "Android app: payments on the website only"). On the web, SiteVault builds one-page websites for local businesses: free to build, paid yearly to publish (Basic $49/year, Pro $89/year with visitor stats; festive prices Basic $29/year and Pro $59/year, locked for life, if paid by January 31, 2027), plus offer credits (5 for $10), paid by card through Stripe Checkout on the web. US only. Google isn't requiring Play Billing for US users while the US court order stands (support.google.com/googleplay/android-developer/answer/15582165). Answer the Play Console payments declaration to match.
 
-Every claim below matches the code as of 2026-11-22 (`web/src/billing.ts`, `wrangler.jsonc` BILLING=on, the /terms and /privacy pages). Update this file with any pricing or data change.
+Every claim below matches the code as of 2026-11-25 (`web/src/billing.ts`, `wrangler.jsonc` BILLING=on, the /terms and /privacy pages). Update this file with any pricing or data change.
 
 ## App name (30)
 SiteVault by 3PandaLabs
@@ -26,6 +26,7 @@ WHAT'S ON YOUR SITE
 • Your services and prices, in your own words.
 • Hours, service area and a map link.
 • A photo gallery, and a menu or price list (PDF or photo) if you have one.
+• Before & after photos, for trades like cleaning, landscaping, auto and car washes.
 • A current special offer you can change from your phone.
 • Reviews from your customers, shown only after you approve them.
 
