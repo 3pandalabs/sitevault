@@ -16,6 +16,8 @@ import { CATEGORIES, headline, insuranceAllowed, isMenuPdf, listingsAllowed, men
 import { POLICY_KINDS, POLICY_META, policyBody, renderPolicyMarkup } from "./policies.js";
 import { asTemplate, isTemplate, TEMPLATE_FAMILY, themeFor, withBrandColor, type TemplateKey, type Theme } from "./templates.js";
 import { esc, jsonForScript, mapsHref, smsHref, telHref } from "./util.js";
+import { LEAD_CSS, googleReviewLine, siteLeadSections } from "./leads-pages.js";
+import type { LeadSource } from "./leads.js";
 
 export type RenderContext = {
   /** Absolute URL this site is served at (canonical). */
@@ -42,6 +44,10 @@ export type RenderContext = {
    * the session may see), never an R2 key looked up here.
    */
   photoSrc?: (key: string) => string;
+  /** Quote/booking forms: a fresh idempotency key for this page view (else random). */
+  leadIdem?: string;
+  /** Where this visitor came from (read from the request on the server), carried in the forms. */
+  leadSource?: LeadSource;
 };
 
 // First-party, no-network motion for customer sites. Progressive: adds `.js` to
@@ -770,6 +776,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   // Customer reviews: approved ones with stars + average, and the public
   // "Leave a review" form (posts same-origin to /review, no JS needed; the CSS
   // star rating and a honeypot keep it simple and spam-resistant).
+  const leadSections = siteLeadSections(site, { idem: ctx.leadIdem ?? crypto.randomUUID().replace(/-/g, ""), source: ctx.leadSource ?? {} });
   const approvedReviews = site.reviews ?? [];
   const rstats = reviewStats(approvedReviews);
   const stars = (n: number) => `<span class="stars" aria-label="${n} out of 5">${"★".repeat(n)}${"☆".repeat(5 - n)}</span>`;
@@ -777,6 +784,7 @@ export function renderSite(site: Site, ctx: RenderContext): string {
   <div class="wrap">
     <p class="kicker">Reviews</p>
     <h2 id="revs-h">Customer reviews</h2>
+    ${googleReviewLine(site)}
     ${
       approvedReviews.length
         ? `<p class="rev-summary">${stars(Math.round(rstats.average))} <strong>${rstats.average.toFixed(1)}</strong> <span>· ${rstats.count} review${rstats.count === 1 ? "" : "s"}</span></p>
@@ -840,6 +848,7 @@ ${hero ? `<meta property="og:image" content="${esc(hero)}">` : ""}
 ${baseCss(theme)}
 ${TEMPLATE_CSS[template]}
 ${proWordmark}
+${LEAD_CSS}
 </style>
 ${ctx.nonce ? `<script nonce="${ctx.nonce}">document.documentElement.className+=' js'</script>` : ""}
 </head>
@@ -860,6 +869,7 @@ ${buildHero(template, { eyebrow: cat.label, name: site.businessName, headline: h
 ${site.offer ? `<p class="offer"><span class="offer-marquee">${esc(site.offer)}</span></p>` : ""}
 ${video}
 ${services}
+${leadSections.booking}
 ${about}
 ${teamHtml}
 ${insuranceHtml}
@@ -871,6 +881,7 @@ ${beforeAfterHtml}
 ${faqHtml}
 ${reviewsHtml}
 ${visit}
+${leadSections.quote}
 <section aria-labelledby="contact-h" class="reveal">
   <div class="wrap">
     <p class="kicker">Get in touch</p>
@@ -969,6 +980,51 @@ export function renderPolicyPage(site: Site, kind: PolicyKind, ctx: RenderContex
   <div class="wrap">
     <p>&copy; ${new Date().getUTCFullYear()} ${esc(site.businessName)}.</p>
     ${legalNav(kind)}
+    <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs.</p>
+  </div>
+</footer>
+</body>
+</html>`;
+}
+
+/**
+ * A business-branded page on the customer site for the booking steps, lead
+ * thank-you/retry and the /review ask: the site's theme and header, no
+ * script, noindex. `body` is already-escaped markup (leads-pages.ts).
+ */
+export function renderSubPage(site: Site, ctx: RenderContext, title: string, body: string): string {
+  const cat = CATEGORIES[site.category];
+  const theme = withBrandColor(themeFor(site.category, cat.brand), site.brandColor);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${esc(`${title} | ${site.businessName}`)}</title>
+<meta name="theme-color" content="${theme.primary}">
+<style>${baseCss(theme)}
+${LEAD_CSS}</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="name" href="${esc(ctx.siteUrl)}">${esc(site.businessName)}</a>
+    <div class="hactions">
+      <a class="btn primary small" href="${esc(telHref(site.phone))}">Call</a>
+    </div>
+  </div>
+</header>
+<main id="main" class="sub-main">
+  <div class="wrap">
+${body}
+  </div>
+</main>
+<footer>
+  <div class="wrap">
+    <p>&copy; ${new Date().getUTCFullYear()} ${esc(site.businessName)}.</p>
+    ${legalNav()}
     <p>Website by <a href="${esc(ctx.homeUrl)}">SiteVault</a> from 3PandaLabs.</p>
   </div>
 </footer>

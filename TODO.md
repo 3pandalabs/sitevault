@@ -147,3 +147,10 @@ problem hits every customer (and every AdVault ad pointing at them).
 - [ ] Set `ADMIN_TOKEN` (takedowns: `POST /api/admin/sites/<slug>/remove`).
 - [ ] Add SiteVault to knowledge_base `tech-stack.md` and an admin flow diagram.
 - [ ] Add the product to the 3pandalabs website / product index repos.
+
+## Leads, bookings, review requests (built 2026-11-27, not deployed)
+
+- [ ] Deploy advault-api with the `/internal/sitevault/leads*` routes first, then this Worker.
+- [ ] Pricing: all of it is on for every published site (`leadFeaturesOn`); decide if it becomes Pro-only (Anil).
+- [ ] Optional: R2 lifecycle rule for `leads/` photos; Turnstile if spam shows up; calendar sync and deposits (v2).
+

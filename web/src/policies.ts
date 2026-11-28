@@ -75,7 +75,7 @@ export function policyDefault(kind: PolicyKind, d: PolicyData): string {
 ${d.name} operates this website at ${d.url}. This Privacy Policy explains what information we collect through this site and how we use it.
 
 ## Information we collect
-- **Information you share with us.** This website has no contact or booking forms. You reach us directly by phone${d.email ? ", by email," : ""} or in person, and anything you choose to tell us that way is used only to respond to you.
+- **Information you share with us.** You can reach us by phone${d.email ? ", by email," : ""} or in person, or use the Request a quote, Call me back or booking forms on this site. If you use a form, we receive what you type: your name and phone number and, if you add them, your email, message, photos, best time to call or the appointment you ask for. We also note the name of the website or ad campaign that brought you here (never the full web address). We use this only to respond to you and, for a booking, to confirm or decline it by email. After a visit we may email you once to ask for a review.
 - **Anonymous visit counts.** We keep simple, aggregate counts of page views and taps on the Call and Directions buttons, so we can see how many people the site reaches. When you arrive from another website, we also record the name of that website (its domain, such as a search engine or social network) — never the full web address you came from. These counts do not identify you: we do not store your name, your IP address, or your browsing history, and we do not use cookies or trackers to collect them.
 
 ## Cookies and tracking
@@ -85,7 +85,7 @@ This website does not use cookies, advertising pixels, or third-party trackers. 
 We use the limited information above to respond to your enquiries, to run and improve this website, and to meet our legal obligations.
 
 ## Sharing
-We do not sell your personal information and we do not share it with advertisers. This website is hosted by our website provider, 3PandaLabs (SiteVault), which handles the anonymous visit counts on our behalf. We may disclose information only where the law requires it.
+We do not sell your personal information and we do not share it with advertisers. This website is hosted by our website provider, 3PandaLabs (SiteVault and AdVault), which handles the anonymous visit counts on our behalf and stores the requests you send through this site's forms, and sends the emails about them, for us. We may disclose information only where the law requires it.
 
 ## Your choices and rights
 Depending on where you live, you may have the right to ask what information we hold about you, to correct it, or to ask us to delete it. Because this site collects so little, there is usually very little to act on. To make a request, contact us using the details below.

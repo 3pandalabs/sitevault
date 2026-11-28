@@ -3,6 +3,7 @@
 // that shrinks photos in the browser before upload, so a 12 MB phone photo
 // arrives as ~300 KB; without JavaScript the form still posts normally.
 
+import { bookingSettingsSection } from "./leads-pages.js";
 import {
   BEFORE_AFTER_CATEGORIES,
   BEFORE_AFTER_FIELDS,
@@ -525,7 +526,9 @@ export type FormMode =
       /** Creating puts the site live at once (billing off, an admin, or an AdVault site with nothing to pay). */
       publishesNow?: boolean;
     }
-  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; pendingReviews?: Review[]; signedIn?: boolean; siteUrl?: string; admin?: boolean; embed?: boolean; saved?: boolean };
+  | { kind: "edit"; site: Site; key: string; photoUrl: (k: string) => string; billing?: BillingView; visitors?: VisitorsView; pendingReviews?: Review[]; signedIn?: boolean; siteUrl?: string; admin?: boolean; embed?: boolean; saved?: boolean;
+      /** The "Bookings, quotes & reviews" form: just saved, or its errors + what was typed. */
+      bookings?: { saved?: boolean; errors?: Record<string, string>; values?: Record<string, string> } };
 
 /**
  * AdVault create mode: the builder inside AdVault's "Make me a website",
@@ -1328,6 +1331,7 @@ ${draft && mode.kind === "new" && mode.account ? `<p class="hint" style="margin:
 ${mode.kind === "edit" && mode.visitors && !tabbed ? visitorsSection(mode.visitors, embed) : ""}
 ${mode.kind === "edit" && mode.billing && !embed ? billingSection(mode.site.slug, mode.key, mode.billing, mode.siteUrl ?? "") : ""}
 ${mode.kind === "edit" ? reviewsModerationSection(mode.site.slug, mode.key, mode.pendingReviews ?? [], mode.site.reviews ?? [], embed) : ""}
+${mode.kind === "edit" ? bookingSettingsSection(mode.site, { key: mode.key, embed, siteUrl: mode.siteUrl ?? "", ...mode.bookings }) : ""}
 ${
   mode.kind === "edit"
     ? `<div style="margin-top:28px" class="notice">
@@ -1910,7 +1914,7 @@ ${opts.error ? `<p class="notice warn" role="alert">${esc(opts.error)}</p>` : ""
   return layout({ title: "Choose a new password — SiteVault", noindex: true, body });
 }
 
-export type AccountSite = { slug: string; name: string; siteUrl: string; state: string; pendingReviews?: number; visitors?: VisitorsView };
+export type AccountSite = { slug: string; name: string; siteUrl: string; state: string; pendingReviews?: number; visitors?: VisitorsView; /** The "Requests from your website" section (leads-pages.ts), already rendered. */ leads?: string };
 
 /** "My websites": every site on the account, and a way to add one made before accounts. */
 export function accountPage(
@@ -1961,7 +1965,7 @@ export function accountPage(
           return `<div class="card" id="${cardId}" style="margin-bottom:12px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px"><h3 style="margin:0">${esc(s.name)}</h3>${bell}</div>
   <p class="hint" style="margin:6px 0 10px"><a href="${esc(s.siteUrl)}" target="_blank" rel="noopener">${esc(s.siteUrl)}</a> · ${esc(STATE[s.state] ?? s.state)}</p>
   <div class="buttons"><a class="btn" href="/edit/${esc(s.slug)}#edit">Edit your website</a><a class="btn ghost" href="/edit/${esc(s.slug)}#view">View your website</a>${s.visitors ? `<a class="btn ghost" href="#${statsId}">Visitors stats</a>` : `<a class="btn ghost" href="/edit/${esc(s.slug)}#stats">Visitors stats</a>`}</div>
-  ${s.visitors ? visitorsSection(s.visitors, false, false, { id: statsId, closeHref: `#${cardId}` }) : ""}</div>`;
+  ${s.visitors ? visitorsSection(s.visitors, false, false, { id: statsId, closeHref: `#${cardId}` }) : ""}${s.leads ?? ""}</div>`;
         })
         .join("")
     : `<p>No website on this account yet. <a href="/new">Build it</a>, or add one you already made below.</p>`;
@@ -2087,7 +2091,7 @@ export function privacyPage(): string {
     path: "/privacy",
     body: `<section class="prose">
 <h1>Privacy</h1>
-<p>Last updated 25 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
+<p>Last updated 27 November 2026. SiteVault is run by 3PandaLabs LLC, a New Jersey company. Contact: <a href="mailto:${CONTACT}">${CONTACT}</a>.</p>
 <h2>What we store</h2>
 <ul>
   <li><strong>The details you enter</strong> (business name, phone, email, address, services, hours and text) and <strong>the photos you upload</strong>. These are published on your website, which is public. Photos are resized for the web.</li>
@@ -2095,6 +2099,8 @@ export function privacyPage(): string {
   <li>If your site was made from <a href="https://advault.3pandalabs.com">AdVault</a>: your business name, offer, ad photos, any before &amp; after photos you added there and <strong>your video ad</strong>, which AdVault sends us when you launch the ad and choose to show it on your website (or when the website is made, if the ad is your own uploaded video).</li>
   <li><strong>Messages from our contact form</strong> (your name, email, subject and message, and your account ID if you're signed in): emailed to us, through AdVault and our email provider Resend, so we can reply. SiteVault keeps no copy, only a counter for your network address, for up to two hours, to stop abuse. Questions typed into the panda helper are matched to our written answers and not stored.</li>
   <li>If you build your website inside AdVault (the full builder shown on AdVault's "Make me a website"), AdVault first sends us those same details and photos as a <strong>draft</strong> so the builder opens filled in. The draft is kept only to build your website: its photos are deleted once the website is made, and an unused draft expires after an hour and is deleted within a day. Building there signs you in to SiteVault with the same sign-in cookie as above, inside AdVault's page.</li>
+  <li><strong>Requests from your website's visitors.</strong> Every website we make has <em>Request a quote</em> and <em>Call me back</em> forms, and <em>Book online</em> if the business turns it on. When a visitor sends one, we pass what they typed (name, phone number, and if they add them: email, message, best time to call, the service and time they ask to book) and where they came from (the name of the site that linked to the page, and campaign tags in the link such as <code>utm_source</code>) to <a href="https://advault.3pandalabs.com">AdVault</a>, our sister app, which keeps the request for the business and emails it to the owner through our email provider Resend. For bookings, AdVault also emails the visitor when the business confirms or declines. SiteVault keeps no copy of these details, only a counter for the visitor's network address, for up to two hours, to stop abuse. <strong>Photos added to a quote request</strong> are resized and stored by us, reachable only through a private link given to the business, and deleted when the website is removed. The owner sees requests on <a href="/account">My website</a> (and in AdVault) and uses them only to answer the visitor.</li>
+  <li><strong>Review requests.</strong> A business can add its Google review link (or Google Place ID) and, if it wants, its Google rating as it types it; we store these with the website and show the rating on it. We never read anything from Google. If the business presses <em>Ask for a review</em> on a request, AdVault emails that visitor once with the link. The QR code on the printable review card is made on our server.</li>
   <li><strong>A scrambled copy of your private edit key</strong>, so we can check it without storing the key itself.</li>
   <li><strong>Your account is one 3PandaLabs account, shared with <a href="https://advault.3pandalabs.com">AdVault</a></strong> (our video-ad app, also by 3PandaLabs): the same email and password sign you in to both, whichever you signed up on. Your sign-in (email and a scrambled, hashed copy of your password, which can't be turned back into the password) is stored by AdVault for both apps; when you sign in here we send AdVault the email and password you typed to check them. SiteVault stores your email, your 3PandaLabs account ID and which websites are yours. Accounts made on SiteVault before 16 November 2026 kept their hashed password here; it moves to the shared account the next time you sign in. While you're signed in we keep a session record that expires after 30 days or when you sign out. When you follow a link between SiteVault and AdVault while signed in, we pass a one-time sign-in code (it works once, for 60 seconds, and contains your account ID and email, never your password) so you arrive signed in to the same account.</li>
   <li><strong>Which apps you use</strong>: with your account we record which app you created it on (SiteVault or AdVault) and when you first used each one (your first website here, your first ad campaign in AdVault), so we know whether you use SiteVault, AdVault or both and can offer benefits that depend on it, for example to customers who use only SiteVault.</li>
@@ -2110,7 +2116,7 @@ export function privacyPage(): string {
   <li>We don't sell or share your details. They're shown on your website because you asked us to publish them.</li>
 </ul>
 <h2>Where it's kept</h2>
-<p>Sites, photos and visit counts are stored and served by Cloudflare, our hosting provider, in its global network. Visitors' browsers connect to Cloudflare to load your site, as with any website. Payment records are kept by Stripe.</p>
+<p>Sites, photos and visit counts are stored and served by Cloudflare, our hosting provider, in its global network. Visitors' browsers connect to Cloudflare to load your site, as with any website. Payment records are kept by Stripe. Visitor requests (quotes, call-backs, bookings) are kept by AdVault, which is run by 3PandaLabs on its own servers.</p>
 <h2>Your choices</h2>
 <p>Change anything at any time with your edit link. Your 3PandaLabs account can be deleted in AdVault (Settings, Delete account) or by emailing us; that ends your sign-in on both apps but doesn't remove your website. To have your website removed, email sitevault@3pandalabs.com with your web address: we confirm with you at the phone number on the site, then take it offline and delete its photos. If you've lost your edit link, email us too and we'll help.</p>
 <h2 id="delete-account">Deleting your account</h2>
@@ -2135,13 +2141,15 @@ export function termsPage(): string {
     path: "/terms",
     body: `<section class="prose">
 <h1>Terms</h1>
-<p>Last updated 24 November 2026. These terms are between you and 3PandaLabs LLC (New Jersey), which runs SiteVault.</p>
+<p>Last updated 27 November 2026. These terms are between you and 3PandaLabs LLC (New Jersey), which runs SiteVault.</p>
 <h2>Your account</h2>
 <p>Your SiteVault account is a single 3PandaLabs account shared with AdVault: the same email and password sign you in to both, whichever you created it on, and it is stored by AdVault. Keep your password to yourself; you're responsible for what's done with your account. Deleting the account ends your sign-in on both apps. Each app's own terms apply to what you do in it, and SiteVault plans are billed separately from AdVault.</p>
 <h2>Your content</h2>
 <p>You must own or run the business, or have its permission. Everything you publish must be true and lawful, and you must have the right to use every photo. Before &amp; after photos must be real photos of your own business's work, not altered to mislead. You keep ownership of your content and give us permission to host and display it on your website.</p>
 <h2>Not allowed</h2>
 <p>Impersonating another business, misleading claims or prices, collecting passwords or payments, illegal goods or services, adult content, hate, or anything that breaks the law. Links to other websites can't be added to page text. We may remove any site that breaks these rules, without notice.</p>
+<h2>Requests and bookings</h2>
+<p>Quote requests, call-back requests and booking requests sent through your website are between you and your customer. A booking is only a request until you confirm it; we don't take payments for it or promise the time is free in your own calendar. Answer people promptly, use their details only to deal with their request, and only ask for a review from people who were really your customers.</p>
 <h2>Real estate</h2>
 <p>Housing-related sites must follow US fair-housing law, including not stating preferences based on protected characteristics.</p>
 <h2>Price</h2>
