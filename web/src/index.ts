@@ -46,7 +46,7 @@
 // D1 STATS (optional): aggregate visit counters, see stats.ts. Writes go
 // through ctx.waitUntil so a stats failure never slows or breaks a page.
 
-import { photoUrl, renderHold, renderPolicyPage, renderSite, reviewResultPage, type RenderContext } from "./render.js";
+import { photoUrl, renderHold, renderPolicyPage, renderSite, renderSubPage, reviewResultPage, type RenderContext } from "./render.js";
 import { ASSET_LINKS, PWA_ICONS, PWA_MANIFEST, SERVICE_WORKER, pngBytes } from "./pwa.js";
 import { OG_PNG } from "./og-image.js";
 import { wordmarkFontBytes } from "./wordmarkFont.js";
@@ -154,6 +154,41 @@ import { DRAFT_ID, HANDOFF_JTI_TTL_SECONDS, allowEmbedFraming, verifyCreateHando
 import { ADVAULT_WEB_ORIGIN, SIGNIN_NONCE_TTL_SECONDS, mintSigninToken, safeLocalPath, verifySigninToken } from "./signin.js";
 import { DRAFT_TTL_MS, draftExpired, draftFileKeys, draftPrefill, loadDraft, saveDraft, type Draft, type DraftFile } from "./drafts.js";
 import { esc, randomKey, safeEqual, sha256Hex, slugify } from "./util.js";
+import {
+  IDEM_RE,
+  LEAD_STATUSES,
+  MAX_LEAD_PHOTOS,
+  MAX_LEAD_PHOTO_BYTES,
+  bookingOn,
+  busyRange,
+  freeSlots,
+  leadFeaturesOn,
+  openDates,
+  parseLeadInput,
+  parseLeadSettings,
+  reviewUrlFor,
+  sourceFromFields,
+  sourceFromRequest,
+  validDate,
+  validPlaceId,
+  type BookingSettings,
+  type Busy,
+  type LeadSource,
+  type LeadStatus,
+} from "./leads.js";
+import { getBusy, listLeads, postLead, requestReview, setLeadStatus, type LeadOwner } from "./leads-api.js";
+import {
+  bookDateBody,
+  bookServiceBody,
+  bookTimeBody,
+  couldntSend,
+  leadRetryBody,
+  leadThanksBody,
+  leadsSection,
+  reviewAskBody,
+  reviewCardPage,
+} from "./leads-pages.js";
+import { qrSvg } from "./qr.js";
 import { MAX_LEN, MAX_RENAMES, addressProblem, normaliseAddress, suggestAddresses } from "./address.js";
 
 export interface Env {
@@ -330,6 +365,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (method === "POST" && tap) return countTap(request, env, ctx, slug, tap[1]!);
     // A visitor leaving a review (same-origin form on the customer site).
     if (method === "POST" && path === "/review") return submitReview(request, env, slug);
+    // Quotes, call-backs and booking requests (leads.ts): forwarded to AdVault.
+    if (method === "POST" && path === "/lead") return submitLead(request, env, slug);
+    if (method === "POST" && path === "/book") return submitBooking(request, env, slug, url);
     // Any other method: 405, never a redirect. A 302 to "/" keeps the method,
     // so a HEAD (before HEAD was routed as GET) looped on itself forever.
     if (method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
@@ -348,6 +386,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     }
     const policyKind = policyPathKind(path);
     if (policyKind) return servePolicyPage(env, slug, site, policyKind);
+    if (path === "/book") return bookPage(request, env, slug, url);
+    if (path === "/review") return reviewAsk(env, slug, url);
     if (path !== "/") return Response.redirect(`https://${url.hostname}/`, 302);
     return serveSite(env, slug, site, { request, ctx, ping: true, count: !head });
   }
@@ -448,6 +488,12 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     }
     m = path.match(/^\/edit\/([a-z0-9-]+)\/view$/);
     if (m) return ownerView(request, env, m[1]!, url.searchParams.get("k") ?? "");
+    m = path.match(/^\/edit\/([a-z0-9-]+)\/review-card$/);
+    if (m) return reviewCard(request, env, m[1]!, url.searchParams.get("k") ?? "");
+    m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/review-link$/);
+    if (m) return reviewLinkInternal(request, env, m[1]!);
+    m = path.match(/^\/lead-photo\/([a-z0-9-]+)\/([A-Za-z0-9_-]{16,}\.(?:jpg|png|webp))$/);
+    if (m) return leadPhoto(env, m[1]!, m[2]!);
     m = path.match(/^\/edit\/([a-z0-9-]+)$/);
     if (m) {
       const target = (await env.SITES.get(siteKey(m[1]!))) ? null : await aliasTarget(env, m[1]!);
@@ -488,6 +534,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext, head = f
     if (m) return uploadMenu(request, env, m[1]!);
     m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/reviews$/);
     if (m) return moderateReviews(request, env, m[1]!);
+    m = path.match(/^\/api\/sites\/([a-z0-9-]+)\/bookings$/);
+    if (m) return saveBookings(request, env, m[1]!);
+    m = path.match(/^\/account\/leads\/([A-Za-z0-9_-]{1,64})\/(status|review-request)$/);
+    if (m) return leadAction(request, env, m[1]!, m[2] as "status" | "review-request");
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/offer$/);
     if (m) return setOfferInternal(request, env, m[1]!);
     m = path.match(/^\/api\/internal\/sites\/([a-z0-9-]+)\/paid$/);
@@ -894,6 +944,7 @@ async function deleteInternal(request: Request, env: Env, url: URL, slug: string
   if (site.billing?.subscriptionId && site.billing.renewing) return json({ ok: false, error: "has_subscription" }, 409);
 
   await deletePhotos(env, siteFileKeys(site));
+  for (const sl of [site.slug, ...(site.aliases ?? [])]) await deleteLeadPhotos(env, sl);
   await unindexSite(env, site);
   const old = site.aliases ?? [];
   for (const a of old) if ((await env.SITES.get(aliasKey(a))) === site.slug) await env.SITES.delete(aliasKey(a));
@@ -958,7 +1009,12 @@ async function serveSite(
   const isPreview = Boolean(style) || Boolean(previewBrand);
   if (visit.count !== false && countsVisits(site, cfg, now) && !isPreview) countView(env, visit.ctx, visit.request, site);
   const n = nonce();
-  const res = html(renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) && !isPreview, previewTemplate: style, previewBrandColor: previewBrand ?? undefined, nonce: n }), 200, n);
+  const leadSource = sourceFromRequest(new URL(visit.request.url), visit.request.headers.get("referer"));
+  const res = html(
+    renderSite(site, { ...renderCtx(env, slug), ping: visit.ping && Boolean(env.STATS) && !isPreview, previewTemplate: style, previewBrandColor: previewBrand ?? undefined, nonce: n, leadIdem: randomKey(12), leadSource }),
+    200,
+    n,
+  );
   if (isPreview) {
     res.headers.set("x-robots-tag", "noindex");
     res.headers.set("cache-control", "no-store");
@@ -1141,7 +1197,8 @@ async function editPage(request: Request, env: Env, slug: string, key: string, j
   }
   const site = await finalizeCheckoutOnReturn(request, env, authed);
   const signedIn = Boolean(await currentAccount(env.SITES, request));
-  return builder(env, { ...(await editMode(env, site, key, justPaid)), signedIn, saved });
+  const bookingsSaved = new URL(request.url).searchParams.get("bk") === "1";
+  return builder(env, { ...(await editMode(env, site, key, justPaid)), signedIn, saved, ...(bookingsSaved ? { bookings: { saved: true } } : {}) });
 }
 
 /**
@@ -1206,7 +1263,8 @@ async function embedEditPage(request: Request, env: Env, slug: string, saved: bo
   const site = await authorize(env, slug, "", request);
   if (!site) return embedMessage("Please reopen", EMBED_EXPIRED, 403);
   if (site.source !== "advault") return embedMessage("Edit on SiteVault", "This website was made on SiteVault. Edit it at sitevault.3pandalabs.com.", 409);
-  return builder(env, { ...(await editMode(env, site, "", false, true)), signedIn: true, embed: true, saved });
+  const bookingsSaved = new URL(request.url).searchParams.get("bk") === "1";
+  return builder(env, { ...(await editMode(env, site, "", false, true)), signedIn: true, embed: true, saved, ...(bookingsSaved ? { bookings: { saved: true } } : {}) });
 }
 
 /**
@@ -1365,6 +1423,7 @@ async function createDraftInternal(request: Request, env: Env): Promise<Response
     photos,
     pairs: pairFiles,
     video: form.video ? await put(form.video, false) : null,
+    ...(validPlaceId(form.fields.placeId) ? { placeId: form.fields.placeId } : {}),
     createdAt: new Date(now).toISOString(),
     exp: now + DRAFT_TTL_MS,
   };
@@ -1568,6 +1627,7 @@ async function embedCreate(request: Request, env: Env): Promise<Response> {
       menu: form.menu,
       schedule: form.schedule,
       listings: listingPick.ok ? listingPick.items : [],
+      placeId: draft.placeId ?? null,
     },
     errors,
   );
@@ -1777,6 +1837,319 @@ async function authorize(env: Env, slug: string, key: string, request?: Request)
   if (request.method !== "GET" && !sameOrigin(request, env.PUBLIC_ORIGIN)) return null;
   const account = await currentAccount(env.SITES, request);
   return account && account.id === site.ownerId ? site : null;
+}
+
+// ---------------------------------------------------------------------------
+// Quotes, call-backs, bookings and review requests (leads.ts, 2026-11-27).
+// The lead itself is NOT stored here: it goes straight to AdVault
+// (leads-api.ts), which keeps it and sends every email. SiteVault keeps the
+// owner's settings on the site and the customer's photos in R2 leads/<slug>/.
+
+const LEADS_PER_IP_PER_HOUR = 6;
+
+/** The owner's shared-account ids, when SiteVault knows them (never an id-only test address). */
+function leadOwnerOf(a: Account | null): LeadOwner {
+  const out: LeadOwner = {};
+  if (a?.advaultUserId) out.advaultUserId = a.advaultUserId;
+  if (a && !isIdOnlyAccount(a) && !emailProblem(a.email)) out.email = a.email;
+  return out;
+}
+
+async function siteLeadOwner(env: Env, site: Site): Promise<LeadOwner> {
+  return leadOwnerOf(site.ownerId ? await loadAccount(env.SITES, site.ownerId) : null);
+}
+
+/** A customer site that may take leads right now: live, published (not unpaid/paused) and inside the plan gate. */
+async function leadSite(env: Env, slug: string): Promise<Site | null> {
+  const site = await loadSite(env, slug);
+  if (!site || site.status !== "live") return null;
+  const state = siteState(site, billingConfig(env), new Date());
+  if (state === "unpublished" || state === "paused") return null;
+  return leadFeaturesOn(site) ? site : null;
+}
+
+function subPage(env: Env, site: Site, title: string, body: string, status = 200): Response {
+  const res = html(renderSubPage(site, renderCtx(env, site.slug), title, body), status);
+  res.headers.set("x-robots-tag", "noindex");
+  return res;
+}
+
+const notHere = () => html(messagePage("This website isn't available", "It may have been removed by its owner."), 404);
+
+/** Counts only well-formed submissions (a typo never uses one up). */
+async function leadRateLimited(request: Request, env: Env, slug: string): Promise<boolean> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const key = `rl:lead:${await sha256Hex(`${ip}:${slug}:${Math.floor(Date.now() / 3_600_000)}`)}`;
+  const n = Number((await env.SITES.get(key)) ?? "0");
+  if (n >= LEADS_PER_IP_PER_HOUR) return true;
+  await env.SITES.put(key, String(n + 1), { expirationTtl: 7200 });
+  return false;
+}
+
+function leadPhotoProblem(files: File[]): string | null {
+  if (files.length > MAX_LEAD_PHOTOS) return `Up to ${MAX_LEAD_PHOTOS} photos.`;
+  for (const f of files) {
+    if (!PHOTO_TYPES.includes(f.type)) return "Add photos as JPG, PNG, WebP or HEIC.";
+    if (f.size > MAX_LEAD_PHOTO_BYTES) return `Each photo must be under ${Math.round(MAX_LEAD_PHOTO_BYTES / 1024 / 1024)} MB.`;
+  }
+  return null;
+}
+
+/** Web-sized, under leads/<slug>/ with an unguessable name (the link is the only way to it). */
+async function storeLeadPhotos(env: Env, slug: string, files: File[]): Promise<string[]> {
+  const keys: string[] = [];
+  for (const f of files) {
+    const { bytes, type } = await webSize(env, f);
+    const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
+    const key = `leads/${slug}/${randomKey(18)}.${ext}`;
+    await env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: type } });
+    keys.push(key);
+  }
+  return keys;
+}
+
+const leadPhotoUrl = (env: Env, key: string) => `${env.PUBLIC_ORIGIN}/lead-photo/${key.slice("leads/".length)}`;
+
+// GET /lead-photo/<slug>/<file> (main host): a customer's photo for the
+// owner. Private by its unguessable name; never indexed or cached publicly.
+async function leadPhoto(env: Env, slug: string, file: string): Promise<Response> {
+  const obj = await env.PHOTOS.get(`leads/${slug}/${file}`);
+  if (!obj) return new Response("Not found", { status: 404 });
+  return new Response(obj.body, {
+    headers: {
+      "content-type": obj.httpMetadata?.contentType ?? "image/jpeg",
+      "cache-control": "private, max-age=86400",
+      "x-robots-tag": "noindex",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+    },
+  });
+}
+
+/** Every lead photo of a site (removal and the admin delete take them too). */
+async function deleteLeadPhotos(env: Env, slug: string): Promise<void> {
+  // Best effort: a cleanup hiccup never blocks the removal itself.
+  try {
+    let cursor: string | undefined;
+    do {
+      const list = await env.PHOTOS.list({ prefix: `leads/${slug}/`, cursor });
+      if (list.objects.length) await env.PHOTOS.delete(list.objects.map((o) => o.key));
+      cursor = list.truncated ? list.cursor : undefined;
+    } while (cursor);
+  } catch (err) {
+    console.warn("lead photo cleanup failed", slug, String(err));
+  }
+}
+
+// POST /lead on a customer site: "Request a quote" or "Call me back".
+async function submitLead(request: Request, env: Env, slug: string): Promise<Response> {
+  const site = await leadSite(env, slug);
+  if (!site) return notHere();
+  const form = await readForm(request);
+  const f = form?.fields ?? {};
+  const kind: "quote" | "callback" = f.kind === "callback" ? "callback" : "quote";
+  const idem = IDEM_RE.test(f.idem ?? "") ? f.idem! : randomKey(12);
+  const source = sourceFromFields(f);
+  const title = kind === "quote" ? "Request a quote" : "Call me back";
+  const retry = (notice: string, errors: Record<string, string>, status: number) =>
+    subPage(env, site, title, leadRetryBody(site, kind, { idem, source, values: f, errors, notice }), status);
+  if (!form) return retry(couldntSend(site), {}, 400);
+  // Honeypot: a bot gets the same thanks and nothing is sent.
+  if ((f.website ?? "").trim()) return subPage(env, site, "Thank you", leadThanksBody(site, kind));
+  const parsed = parseLeadInput(kind, f);
+  const files = kind === "quote" ? form.files : [];
+  const errors: Record<string, string> = parsed.ok ? {} : { ...parsed.errors };
+  const photoErr = leadPhotoProblem(files);
+  if (photoErr) errors.photos = photoErr;
+  if (!parsed.ok || Object.keys(errors).length) return retry("Please check the highlighted fields.", errors, 400);
+  if (await leadRateLimited(request, env, site.slug)) return retry(`You've sent a few requests already. Please call ${site.phone}.`, {}, 429);
+  const keys = await storeLeadPhotos(env, site.slug, files);
+  const owner = await siteLeadOwner(env, site);
+  const sent = await postLead(advaultApi(env), {
+    slug: site.slug,
+    kind,
+    ...parsed.value,
+    ...(keys.length ? { photoUrls: keys.map((k) => leadPhotoUrl(env, k)) } : {}),
+    ...(Object.keys(source).length ? { source } : {}),
+    idempotencyKey: `${site.slug}:${idem}`,
+    ...(owner.email ? { ownerEmail: owner.email } : {}),
+    ...(owner.advaultUserId ? { advaultUserId: owner.advaultUserId } : {}),
+  });
+  if (!sent.ok) {
+    // Nothing was kept: the photos go, and the visitor keeps what they typed.
+    if (keys.length) await env.PHOTOS.delete(keys);
+    return retry(couldntSend(site), {}, 503);
+  }
+  console.log("lead_sent", { slug: site.slug, kind, photos: keys.length });
+  return subPage(env, site, "Thank you", leadThanksBody(site, kind));
+}
+
+/** The booking steps' source: carried in the query, else read from this request. */
+function bookingSource(url: URL, request: Request, fields: Record<string, string>): LeadSource {
+  const carried = sourceFromFields(fields);
+  return Object.keys(carried).length ? carried : sourceFromRequest(url, request.headers.get("referer"));
+}
+
+async function busyFor(env: Env, site: Site, now: Date): Promise<Busy[]> {
+  const range = busyRange(site.booking!, now);
+  // Couldn't ask: show the open hours anyway; AdVault still refuses a taken slot (409).
+  return (await getBusy(advaultApi(env), site.slug, range.from, range.to)) ?? [];
+}
+
+const serviceIndex = (b: BookingSettings, raw: string | undefined) => {
+  const n = Number(raw);
+  return raw !== undefined && raw !== "" && Number.isInteger(n) && n >= 0 && n < b.services.length ? n : null;
+};
+
+// GET /book on a customer site: service -> day -> time + details.
+async function bookPage(request: Request, env: Env, slug: string, url: URL): Promise<Response> {
+  const site = await leadSite(env, slug);
+  if (!site) return notHere();
+  if (!bookingOn(site)) return Response.redirect(`https://${url.hostname}/`, 302);
+  const b = site.booking!;
+  const q = Object.fromEntries(url.searchParams);
+  const source = bookingSource(url, request, q);
+  const svc = serviceIndex(b, q.service);
+  if (svc === null) return subPage(env, site, "Book online", bookServiceBody(site, b, source));
+  const now = new Date();
+  const busy = await busyFor(env, site, now);
+  const service = b.services[svc]!;
+  if (!validDate(q.date)) return subPage(env, site, "Choose a day", bookDateBody(site, b, svc, openDates(b, service, now, busy), source));
+  const slots = freeSlots(b, service, q.date!, now, busy);
+  return subPage(env, site, "Choose a time", bookTimeBody(site, b, svc, q.date!, slots, { idem: randomKey(12), source }));
+}
+
+// POST /book on a customer site: a booking REQUEST (status "requested" in
+// AdVault; the owner confirms or declines and AdVault emails the customer).
+async function submitBooking(request: Request, env: Env, slug: string, url: URL): Promise<Response> {
+  const site = await leadSite(env, slug);
+  if (!site) return notHere();
+  if (!bookingOn(site)) return Response.redirect(`https://${url.hostname}/`, 303);
+  const b = site.booking!;
+  const form = await readForm(request);
+  const f = form?.fields ?? {};
+  const source = sourceFromFields(f);
+  const svc = serviceIndex(b, f.service);
+  if (!form || svc === null || !validDate(f.date)) return subPage(env, site, "Book online", bookServiceBody(site, b, source, "Please choose a service and a time again."), 400);
+  if ((f.website ?? "").trim()) return subPage(env, site, "Request sent", leadThanksBody(site, "booking"));
+  const idem = IDEM_RE.test(f.idem ?? "") ? f.idem! : randomKey(12);
+  const service = b.services[svc]!;
+  const now = new Date();
+  const date = f.date!;
+  const again = async (notice: string, errors: Record<string, string>, status: number) => {
+    const slots = freeSlots(b, service, date, now, await busyFor(env, site, now));
+    return subPage(env, site, "Choose a time", bookTimeBody(site, b, svc, date, slots, { idem, source, values: f, errors, notice, chosen: f.start }), status);
+  };
+  const parsed = parseLeadInput("booking", f);
+  const slot = freeSlots(b, service, date, now, await busyFor(env, site, now)).find((s) => s.start === f.start);
+  const errors: Record<string, string> = parsed.ok ? {} : { ...parsed.errors };
+  if (!slot) errors.start = "Please pick one of the free times.";
+  if (!parsed.ok || !slot) return again("Please check the highlighted fields.", errors, 400);
+  if (await leadRateLimited(request, env, site.slug)) return again(`You've sent a few requests already. Please call ${site.phone}.`, {}, 429);
+  const owner = await siteLeadOwner(env, site);
+  const sent = await postLead(advaultApi(env), {
+    slug: site.slug,
+    kind: "booking",
+    ...parsed.value,
+    booking: { service: service.name, durationMin: service.durationMin, start: slot.start, timezone: b.timezone },
+    ...(Object.keys(source).length ? { source } : {}),
+    idempotencyKey: `${site.slug}:${idem}`,
+    ...(owner.email ? { ownerEmail: owner.email } : {}),
+    ...(owner.advaultUserId ? { advaultUserId: owner.advaultUserId } : {}),
+  });
+  if (!sent.ok && sent.reason === "slot_taken") return again("Sorry, that time was just taken. Please pick another.", {}, 409);
+  if (!sent.ok) return again(couldntSend(site), {}, 503);
+  console.log("lead_sent", { slug: site.slug, kind: "booking" });
+  return subPage(env, site, "Request sent", leadThanksBody(site, "booking"));
+}
+
+// GET /review on a customer site: a friendly ask, then Google's review page.
+async function reviewAsk(env: Env, slug: string, url: URL): Promise<Response> {
+  const site = await leadSite(env, slug);
+  if (!site) return notHere();
+  const target = reviewUrlFor(site);
+  if (!target) return Response.redirect(`https://${url.hostname}/`, 302);
+  return subPage(env, site, "Leave a review", reviewAskBody(site, target));
+}
+
+/** The customer-site /review address (what the printed QR code opens). */
+const reviewPageUrl = (env: Env, slug: string) => `${siteUrl(env, slug).replace(/\/$/, "")}/review`;
+
+// GET /api/internal/sites/<slug>/review-link (INTERNAL_TOKEN): where AdVault's
+// review-request emails send customers. Follows renames.
+async function reviewLinkInternal(request: Request, env: Env, slug: string): Promise<Response> {
+  const auth = bearer(request, env.INTERNAL_TOKEN);
+  if (auth !== "ok") return json({ ok: false, error: auth === "off" ? "internal_disabled" : "unauthorized" }, auth === "off" ? 503 : 401);
+  const site = await liveSiteFollowingAliases(env, slug);
+  if (!site) return json({ url: null, error: "not_found" }, 404);
+  return json({ url: reviewUrlFor(site) });
+}
+
+// GET /edit/<slug>/review-card: the owner's printable QR card (edit key or session).
+async function reviewCard(request: Request, env: Env, slug: string, key: string): Promise<Response> {
+  const site = await authorize(env, slug, key, request);
+  if (!site) return html(messagePage("Sign in to see this", "Open your website from My website, then print the card from Bookings & reviews.", "Can't open"), 403);
+  if (!reviewUrlFor(site)) return html(messagePage("Add your Google review link first", "Edit your website, then add it under Bookings, quotes & reviews.", "No review link"), 404);
+  const page = reviewPageUrl(env, site.slug);
+  const qr = qrSvg(page, { title: `QR code for ${page}` });
+  if (!qr) return html(messagePage("Can't make this card", "Your web address is too long for a QR code. Email us and we'll help.", "Error"), 500);
+  const n = nonce();
+  const res = html(reviewCardPage(site, page, qr, n), 200, n);
+  res.headers.set("referrer-policy", "no-referrer");
+  return res;
+}
+
+// POST /api/sites/<slug>/bookings: the editor's "Bookings, quotes & reviews" form.
+async function saveBookings(request: Request, env: Env, slug: string): Promise<Response> {
+  const form = await readForm(request);
+  const key = form?.fields.key ?? "";
+  const site = await authorize(env, slug, key, request);
+  if (!site || !form) return redirectTo(env, "/login");
+  const embed = form.fields.embed === "1";
+  const back = (extra: string) => `/edit/${encodeURIComponent(site.slug)}?${embed ? "embed=1" : `k=${encodeURIComponent(key)}`}${extra}#bookings`;
+  if (!leadFeaturesOn(site)) return redirectTo(env, back(""));
+  const parsed = parseLeadSettings(form.fields);
+  if (!parsed.ok) {
+    const mode = await editMode(env, site, key, false, embed);
+    const signedIn = Boolean(await currentAccount(env.SITES, request));
+    return builder(env, { ...mode, signedIn, ...(embed ? { embed: true } : {}), bookings: { errors: parsed.errors, values: form.fields } }, undefined, undefined, 400);
+  }
+  // Start from the freshest copy (a webhook or another save may have landed).
+  const fresh = (await loadSite(env, site.slug)) ?? site;
+  const next: Site = {
+    ...fresh,
+    booking: parsed.booking,
+    reviewLink: parsed.reviewLink,
+    // Cleared link = no review page at all; a pasted link keeps AdVault's Place ID as a spare.
+    placeId: parsed.placeId ?? (parsed.reviewLink ? fresh.placeId ?? null : null),
+    googleRating: parsed.googleRating,
+    updatedAt: new Date().toISOString(),
+  };
+  await saveSite(env, next);
+  return redirectTo(env, back("&bk=1"));
+}
+
+// POST /account/leads/<id>/status | /review-request (session + Origin): the
+// owner acts on a lead; AdVault sends the email to the customer.
+async function leadAction(request: Request, env: Env, id: string, action: "status" | "review-request"): Promise<Response> {
+  const account = await currentAccount(env.SITES, request);
+  if (!account || !sameOrigin(request, env.PUBLIC_ORIGIN)) return redirectTo(env, "/login");
+  const form = await readForm(request);
+  const slug = form?.fields.slug ?? "";
+  const site = /^[a-z0-9-]{1,64}$/.test(slug) ? await ownedSite(env, account, slug) : null;
+  const done = (flash: string) => redirectTo(env, `/account?lead=${flash}#leads`);
+  if (!site || !leadFeaturesOn(site)) return done("failed");
+  const owner = leadOwnerOf(account);
+  if (action === "status") {
+    const status = form?.fields.status as LeadStatus;
+    if (!LEAD_STATUSES.includes(status)) return done("failed");
+    return done((await setLeadStatus(advaultApi(env), id, status, owner)) ? "ok" : "failed");
+  }
+  const reviewUrl = reviewUrlFor(site);
+  if (!reviewUrl) return done("nolink");
+  // AdVault's email links straight to Google (the owner's own review link).
+  const r = await requestReview(advaultApi(env), id, reviewUrl, owner);
+  return done(r === "ok" ? "asked" : r === "already" ? "already" : "failed");
 }
 
 // ---------------------------------------------------------------------------
@@ -2069,9 +2442,21 @@ async function accountHome(request: Request, env: Env, url: URL, claimError?: st
         : pw === "error"
           ? "Couldn't update your password right now. Please try again."
           : undefined;
+  const admin = isAdminEmail(env, account.email);
+  const sites = await accountSites(env, account, !admin);
+  // An owner's requests (quotes, call-backs, bookings), from AdVault, which keeps them.
+  if (!admin) {
+    const flash = url.searchParams.get("lead") ?? undefined;
+    for (const s of sites) {
+      const site = await ownedSite(env, account, s.slug);
+      if (!site || !leadFeaturesOn(site)) continue;
+      const leads = await listLeads(advaultApi(env), site.slug, leadOwnerOf(account));
+      s.leads = leadsSection({ slug: site.slug, businessName: site.businessName }, leads, { reviewUrl: reviewUrlFor(site), flash });
+    }
+  }
   return html(
     // Admins (many sites) see the list as before; an owner sees their site's visitors.
-    accountPage(isIdOnlyAccount(account) ? "an AdVault test customer" : account.email, await accountSites(env, account, !isAdminEmail(env, account.email)), {
+    accountPage(isIdOnlyAccount(account) ? "an AdVault test customer" : account.email, sites, {
       claimError,
       claimed: url.searchParams.get("claimed") === "1",
       admin: isAdminEmail(env, account.email),
@@ -2287,6 +2672,8 @@ async function insertSite(
   menuFiles: File[] = [],
   scheduleFile: File | null = null,
   listingItems: { photo: File; price: string; details: string; status: Listing["status"] }[] = [],
+  /** Optional Google Place ID from AdVault's Maps prefill (the review link, leads.ts). */
+  placeId: string | null = null,
 ) {
   const key = randomKey();
   const nowDate = new Date();
@@ -2315,6 +2702,7 @@ async function insertSite(
     ...content,
     slug,
     ...media,
+    ...(placeId && validPlaceId(placeId) ? { placeId } : {}),
     status: "live",
     source,
     editKeyHash: await sha256Hex(key),
@@ -2356,6 +2744,8 @@ async function createForAdvault(
     menu?: File[];
     schedule?: File | null;
     listings?: ListingItem[];
+    /** Google Place ID (optional; older AdVault versions don't send it). */
+    placeId?: string | null;
   },
   errors: FieldErrors,
 ): Promise<
@@ -2401,6 +2791,7 @@ async function createForAdvault(
     input.menu ?? [],
     input.schedule ?? null,
     input.listings ?? [],
+    input.placeId ?? null,
   );
   if (owner) await addSiteToAccount(env.SITES, owner, made.slug);
   return { ok: true, made };
@@ -2441,6 +2832,7 @@ async function createInternal(request: Request, env: Env): Promise<Response> {
       files: form.files,
       video: form.video,
       pairs: pairs.ok ? pairs.pairs : [],
+      placeId: validPlaceId(form.fields.placeId) ? form.fields.placeId! : null,
     },
     errors,
   );
@@ -2955,6 +3347,7 @@ async function removeSite(env: Env, site: Site): Promise<void> {
   // Keep the record (status removed) so the slug isn't handed to someone else
   // and an abuse report can still be traced; the content is the photos.
   await deletePhotos(env, siteFileKeys(site));
+  for (const sl of [site.slug, ...(site.aliases ?? [])]) await deleteLeadPhotos(env, sl);
   const { beforeAfter: _pairs, ...rest } = site;
   await saveSite(env, { ...rest, photos: [], video: null, status: "removed", updatedAt: new Date().toISOString() });
   await unindexSite(env, site);

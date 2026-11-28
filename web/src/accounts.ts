@@ -217,7 +217,7 @@ export async function verifyAdvaultLogin(
   }
 }
 
-type AdvaultApi = { apiUrl: string | undefined; token: string | undefined };
+export type AdvaultApi = { apiUrl: string | undefined; token: string | undefined };
 
 /** POST to an AdVault internal route; null on any failure (unconfigured, down, timeout). */
 async function advaultPost(api: AdvaultApi, path: string, body: unknown): Promise<{ status: number; body: Record<string, unknown> } | null> {

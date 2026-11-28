@@ -47,6 +47,8 @@ export type Draft = {
   photos: DraftFile[];
   pairs: { before: DraftFile; after: DraftFile }[];
   video: DraftFile | null;
+  /** Google Place ID from AdVault's Maps prefill (optional): becomes site.placeId. */
+  placeId?: string;
   createdAt: string;
   /** ms epoch; refused after this. */
   exp: number;

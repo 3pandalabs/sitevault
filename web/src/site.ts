@@ -6,6 +6,7 @@
 // card, not a page that can send visitors elsewhere (that is how a free page
 // builder becomes a phishing host).
 
+import type { BookingSettings, GoogleRating } from "./leads.js";
 import type { Billing } from "./billing.js";
 import { asBrandColor, asTemplate, type TemplateKey } from "./templates.js";
 
@@ -177,6 +178,14 @@ export type Site = SiteContent & {
    * current; see policies.ts. Absent = every page is on its default.
    */
   policies?: Partial<Record<PolicyKind, string>>;
+  /** Online booking requests (leads.ts). Absent = never set up. */
+  booking?: BookingSettings;
+  /** The owner's Google review link (leads.ts parseReviewLink: Google hosts only). */
+  reviewLink?: string | null;
+  /** Google Place ID (from AdVault's Maps prefill, or pasted by the owner): builds the review link when reviewLink is empty. */
+  placeId?: string | null;
+  /** The owner's own Google rating, typed by them (never fetched from Google). */
+  googleRating?: GoogleRating | null;
   status: "live" | "removed";
   source: "web" | "advault";
   editKeyHash: string;
